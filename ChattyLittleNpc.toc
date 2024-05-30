@@ -3,6 +3,6 @@
 ## Notes: Prints the npc text in chat.
 ## Author: Tuubbyy
 ## Version: 0.0.1
-## SavedVariables: ChattyLittleNpcDB
+## SavedVariables: ChattyLittleNpcTextsFromMissingFilesDB
 
 ChattyLittleNpc.lua
