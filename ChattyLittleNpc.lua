@@ -32,14 +32,38 @@ end
 -- Function to play sound based on quest title, phase, and optional text
 local function PlayQuestSound(questId, questTitle, phase)
     StopCurrentSound()  -- Ensure no sound is playing before starting a new one
-    local soundPath = "Interface\\AddOns\\ChattyLittleNpc\\Sounds\\" .. phase .. "_" .. questTitle .. ".wav"
+
+    -- List of backup folders if the sound is not found in the current zone folder
+    local backupFolders = { "Landfall", "Pandaren Campaign", "Scenario", "Timewalking" }
+
+    local basePath = "Interface\\AddOns\\ChattyLittleNpc\\Sounds\\"
+
+    -- First try the current zone
+    local currentZone = GetZoneText()
+    local soundPath = basePath .. currentZone .. "\\" .. questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
     local success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-    if success then
-        lastSoundHandle = newSoundHandle  -- Only update handle if playing was successful
-    else
+    if not success then
+        -- If the sound file in the current zone folder fails, try the backup folders
+        for _, folder in ipairs(backupFolders) do
+            soundPath = basePath .. folder .. "\\" .. questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
+            print(soundPath)  -- Debugging output to check paths
+            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+            if success then
+                lastSoundHandle = newSoundHandle
+                print("Playing sound from: " .. soundPath)
+                break
+            end
+        end
+    end
+
+    -- If no file was successfully played
+    if not success then
         LogMissingSound(questId, questTitle, phase)
+    else
+        lastSoundHandle = newSoundHandle  -- Update the handle if playing was successful
     end
 end
+
 
 -- Event handler function
 local function OnEvent(self, event, ...)
@@ -54,14 +78,19 @@ local function OnEvent(self, event, ...)
         if event == "QUEST_DETAIL" then
             questTitle = GetTitleText()
             questId = GetQuestID()
+            local qq = GetCategoryList
+            print(qq)
+            print(questId)
             PlayQuestSound(questId, questTitle, "Desc")
         elseif event == "QUEST_PROGRESS" then
             questTitle = GetTitleText()
             questId = GetQuestID()
+            print(questId)
             PlayQuestSound(questId, questTitle, "Prog")
         elseif event == "QUEST_COMPLETE" then
             questTitle = GetTitleText()
             questId = GetQuestID()
+            print(questId)
             PlayQuestSound(questId, questTitle, "Comp")
         end
     elseif event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED" then
