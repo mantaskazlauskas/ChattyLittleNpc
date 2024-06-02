@@ -4,7 +4,6 @@ local lastSoundHandle = nil  -- Variable to store the last played sound handle
 ChattyLittleNpcTextsFromMissingFilesDB = ChattyLittleNpcTextsFromMissingFilesDB or {}  -- Initialize the saved variable as an empty table if it doesn't exist
 
 -- Register events for quest progression and NPC interaction
-frame:RegisterEvent("QUEST_ACCEPTED")
 frame:RegisterEvent("QUEST_DETAIL")
 frame:RegisterEvent("GOSSIP_CLOSED")
 frame:RegisterEvent("QUEST_FINISHED")
@@ -22,13 +21,6 @@ local function StopCurrentSound()
     end
 end
 
--- Function to log missing sounds
-local function LogMissingSound(questId, questTitle, phase)
-    ChattyLittleNpcTextsFromMissingFilesDB[questId] = ChattyLittleNpcTextsFromMissingFilesDB[questId] or {}
-    ChattyLittleNpcTextsFromMissingFilesDB[questId][phase] = "Missing file for quest: " .. questTitle .. ", phase: " .. phase
-    print(ChattyLittleNpcTextsFromMissingFilesDB[questId][phase])
-end
-
 -- Function to play sound based on quest title, phase, and optional text
 local function PlayQuestSound(questId, questTitle, phase)
     StopCurrentSound()  -- Ensure no sound is playing before starting a new one
@@ -40,17 +32,16 @@ local function PlayQuestSound(questId, questTitle, phase)
 
     -- First try the current zone
     local currentZone = GetZoneText()
-    local soundPath = basePath .. currentZone .. "\\" .. questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
-    local success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+    local fileName = questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
+    local soundPath = basePath .. currentZone .. "\\" .. fileName
+    local success, newSoundHandle = PlaySoundFile(soundPath, "Dialog")
     if not success then
-        -- If the sound file in the current zone folder fails, try the backup folders
+        -- If the sound file in the current zone folder fails, try the backup folders for quest categories and types
         for _, folder in ipairs(backupFolders) do
             soundPath = basePath .. folder .. "\\" .. questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
-            print(soundPath)  -- Debugging output to check paths
-            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+            success, newSoundHandle = PlaySoundFile(soundPath, "Dialog")
             if success then
                 lastSoundHandle = newSoundHandle
-                print("Playing sound from: " .. soundPath)
                 break
             end
         end
@@ -58,7 +49,7 @@ local function PlayQuestSound(questId, questTitle, phase)
 
     -- If no file was successfully played
     if not success then
-        LogMissingSound(questId, questTitle, phase)
+        print("Missing voiceover file: " .. fileName)
     else
         lastSoundHandle = newSoundHandle  -- Update the handle if playing was successful
     end
@@ -74,27 +65,22 @@ local function OnEvent(self, event, ...)
         if addonName == "ChattyLittleNpc" then
             ChattyLittleNpcTextsFromMissingFilesDB = ChattyLittleNpcTextsFromMissingFilesDB or {}
         end
-    elseif event == "QUEST_DETAIL" or event == "QUEST_ACCEPTED" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
+    elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
         if event == "QUEST_DETAIL" then
             questTitle = GetTitleText()
             questId = GetQuestID()
-            local qq = GetCategoryList
-            print(qq)
-            print(questId)
             PlayQuestSound(questId, questTitle, "Desc")
         elseif event == "QUEST_PROGRESS" then
             questTitle = GetTitleText()
             questId = GetQuestID()
-            print(questId)
             PlayQuestSound(questId, questTitle, "Prog")
         elseif event == "QUEST_COMPLETE" then
             questTitle = GetTitleText()
             questId = GetQuestID()
-            print(questId)
             PlayQuestSound(questId, questTitle, "Comp")
         end
-    elseif event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED" then
-        StopCurrentSound()  -- Stop any currently playing sounds when the quest window is closed
+    -- elseif event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED" then
+    --     StopCurrentSound()  -- Stop any currently playing sounds when the quest window is closed
     end
 end
 
