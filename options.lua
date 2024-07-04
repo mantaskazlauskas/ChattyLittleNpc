@@ -19,6 +19,12 @@ local options = {
             get = function(info) return ChattyLittleNpc.db.profile.printMissingFiles end,
             set = function(info, value) ChattyLittleNpc.db.profile.printMissingFiles = value end,
         },
+        resetFramePos = {
+            type = 'execute',
+            name = 'Reset Replay Frame Position',
+            desc = 'Reset the replay frame position to its default values.',
+            func = function() ChattyLittleNpc:ResetFramePosition() end,
+        },
     },
 }
 

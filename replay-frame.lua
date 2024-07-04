@@ -17,6 +17,19 @@ function ChattyLittleNpc:LoadFramePosition()
     self.displayFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
 end
 
+function ChattyLittleNpc:ResetFramePosition()
+    self.db.profile.framePos = {
+        point = "CENTER",
+        relativeTo = nil,
+        relativePoint = "CENTER",
+        xOfs = 500,
+        yOfs = 0
+    }
+    if self.displayFrame then
+        self:LoadFramePosition()
+    end
+end
+
 function ChattyLittleNpc:ShowDisplayFrame(questTitle)
     if not self.displayFrame then
         self.displayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent)
@@ -46,7 +59,7 @@ function ChattyLittleNpc:ShowDisplayFrame(questTitle)
         self.replayButton = CreateFrame("Button", nil, self.displayFrame)
         self.replayButton:SetSize(12, 12)
         self.replayButton:SetPoint("LEFT", self.stopButton, "RIGHT", 5, 0)
-        self.replayButton:SetNormalTexture("Interface\\AddOns\\ChattyLittleNpc\\Textures\\replay_button_red.tga") -- Custom texture
+        self.replayButton:SetNormalTexture("Interface\\AddOns\\ChattyLittleNpc\\Textures\\replay_button_red.tga")
         self.replayButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
         self.replayButton:SetScript("OnClick", function()
             if ChattyLittleNpc.currentQuestId and ChattyLittleNpc.currentPhase then
@@ -58,11 +71,9 @@ function ChattyLittleNpc:ShowDisplayFrame(questTitle)
         self.displayText:SetPoint("LEFT", self.replayButton, "RIGHT", 10, 0)
         self.displayText:SetJustifyH("LEFT")
         
-        -- Set custom font size
         local font, height, flags = self.displayText:GetFont()
         self.displayText:SetFont(font, height + 2, flags)
     else
-        -- Load the frame position if it already exists
         self:LoadFramePosition()
     end
 

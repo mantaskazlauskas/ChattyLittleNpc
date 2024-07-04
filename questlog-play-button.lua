@@ -10,7 +10,7 @@ function PlayButton:AttachPlayButton(detailsFrame)
     playButton = CreateFrame("Button", "ChattyNPCPlayButton", detailsFrame, "UIPanelButtonTemplate")
     playButton:SetSize(70, 25)
     playButton:SetPoint("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30)
-    playButton:SetText("PLay Audio")
+    playButton:SetText("Play Audio")
     playButton:SetScript("OnClick", function()
         local questID = C_QuestLog.GetSelectedQuest()
         if questID then

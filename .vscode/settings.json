@@ -20,6 +20,7 @@
         "NORMAL_FONT_COLOR",
         "CANCEL",
         "Settings",
-        "InterfaceOptions_AddCategory"
+        "InterfaceOptions_AddCategory",
+        "QuestMapFrame"
     ]
 }
