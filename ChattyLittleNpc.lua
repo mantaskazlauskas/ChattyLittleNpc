@@ -1,97 +1,128 @@
-local frame = CreateFrame("Frame")
+---@class ChattyLittleNpc
+local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
+ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 
-local lastSoundHandle = nil  -- Variable to store the last played sound handle
-ChattyLittleNpcTextsFromMissingFilesDB = ChattyLittleNpcTextsFromMissingFilesDB or {}  -- Initialize the saved variable as an empty table if it doesn't exist
+local defaults = {
+    profile = {
+        playVoiceoversOnClose = true,
+        printMissingFiles = false,
+        framePos = { -- Default position
+            point = "CENTER",
+            relativeTo = nil,
+            relativePoint = "CENTER",
+            xOfs = 500,
+            yOfs = 0
+        }
+    }
+}
 
--- Register events for quest progression and NPC interaction
-frame:RegisterEvent("QUEST_DETAIL")
-frame:RegisterEvent("GOSSIP_CLOSED")
-frame:RegisterEvent("QUEST_FINISHED")
-frame:RegisterEvent("GOSSIP_SHOW")
-frame:RegisterEvent("QUEST_GREETING")
-frame:RegisterEvent("QUEST_PROGRESS")
-frame:RegisterEvent("QUEST_COMPLETE")
-frame:RegisterEvent("ADDON_LOADED")  -- Register the ADDON_LOADED event to initialize the database
+local lastSoundHandle = nil
+ChattyLittleNpc.currentQuestId = nil
+ChattyLittleNpc.currentPhase = nil
+local expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 
--- Function to stop currently playing sound
-local function StopCurrentSound()
+function ChattyLittleNpc:OnInitialize()
+    self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
+    self:RegisterChatCommand("chattylittlenpc", "HandleSlashCommands")
+    self:SetupOptions()
+end
+
+function ChattyLittleNpc:OnEnable()
+    self:RegisterEvent("QUEST_DETAIL")
+    self:RegisterEvent("GOSSIP_CLOSED")
+    self:RegisterEvent("QUEST_FINISHED")
+    self:RegisterEvent("QUEST_PROGRESS")
+    self:RegisterEvent("QUEST_COMPLETE")
+
+    if self.displayFrame then
+        self:LoadFramePosition()
+    end
+
+    local detailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
+    if detailsFrame then
+        self.PlayButton:AttachPlayButton(detailsFrame)
+    end
+    hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
+    QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
+    QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+end
+
+function ChattyLittleNpc:OnDisable()
+    self:UnregisterEvent("QUEST_DETAIL")
+    self:UnregisterEvent("GOSSIP_CLOSED")
+    self:UnregisterEvent("QUEST_FINISHED")
+    self:UnregisterEvent("QUEST_PROGRESS")
+    self:UnregisterEvent("QUEST_COMPLETE")
+end
+
+function ChattyLittleNpc:StopCurrentSound()
     if lastSoundHandle and type(lastSoundHandle) == "number" then
         StopSound(lastSoundHandle)
-        lastSoundHandle = nil  -- Reset the sound handle after stopping
+        lastSoundHandle = nil
     end
 end
 
--- Function to play sound based on quest title, phase, and optional text
-local function PlayQuestSound(questId, questTitle, phase)
-    StopCurrentSound()  -- Ensure no sound is playing before starting a new one
+function ChattyLittleNpc:PlayQuestSound(questId, phase)
+    self:StopCurrentSound()
 
-    -- List of backup folders if the sound is not found in the current zone folder
-    local backupFolders = { "Landfall", "Pandaren Campaign", "Scenario", "Timewalking" }
+    self.currentQuestId = questId
+    self.currentPhase = phase
 
-    local basePath = "Interface\\AddOns\\ChattyLittleNpc\\Sounds\\"
+    local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
+    local fileName = questId .. "_" .. phase .. ".mp3"
+    local soundPath, success, newSoundHandle
 
-    -- First try the current zone
-    local currentZone = GetZoneText()
-    local fileName = questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
-    local soundPath = basePath .. currentZone .. "\\" .. fileName
-    local success, newSoundHandle = PlaySoundFile(soundPath, "Dialog")
-    if not success then
-        -- If the sound file in the current zone folder fails, try the backup folders for quest categories and types
-        for _, folder in ipairs(backupFolders) do
-            soundPath = basePath .. folder .. "\\" .. questId .. "_" .. phase .. "_" .. questTitle .. ".mp3"
-            success, newSoundHandle = PlaySoundFile(soundPath, "Dialog")
-            if success then
-                lastSoundHandle = newSoundHandle
-                break
+    success = false
+
+    for _, folder in ipairs(expansions) do
+        soundPath = basePath .. folder .. "\\" .. "voiceovers" .. "\\" .. fileName
+        success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+        if success then
+            lastSoundHandle = newSoundHandle
+            local questTitle = C_QuestLog.GetTitleForQuestID(questId)
+            local suffix = ""
+            if phase == "Desc" then
+                suffix = "(description)"
+            elseif phase == "Prog" then
+                suffix = "(progression)"
+            elseif phase == "Comp" then
+                suffix = "(completion)"
             end
+            self:ShowDisplayFrame(questTitle .. " " .. suffix)
+            break
         end
     end
 
-    -- If no file was successfully played
-    if not success then
+    if not success and self.db.profile.printMissingFiles then
         print("Missing voiceover file: " .. fileName)
-    else
-        lastSoundHandle = newSoundHandle  -- Update the handle if playing was successful
     end
 end
 
+function ChattyLittleNpc:QUEST_DETAIL()
+    local questId = GetQuestID()
+    self:PlayQuestSound(questId, "Desc")
+end
 
--- Event handler function
-local function OnEvent(self, event, ...)
-    -- print(event)
-    local questId, questTitle
-    if event == "ADDON_LOADED" then
-        local addonName = ...
-        if addonName == "ChattyLittleNpc" then
-            ChattyLittleNpcTextsFromMissingFilesDB = ChattyLittleNpcTextsFromMissingFilesDB or {}
-        end
-    elseif event == "QUEST_DETAIL" or event == "QUEST_PROGRESS" or event == "QUEST_COMPLETE" then
-        if event == "QUEST_DETAIL" then
-            questTitle = GetTitleText()
-            questId = GetQuestID()
-            PlayQuestSound(questId, questTitle, "Desc")
-        elseif event == "QUEST_PROGRESS" then
-            questTitle = GetTitleText()
-            questId = GetQuestID()
-            PlayQuestSound(questId, questTitle, "Prog")
-        elseif event == "QUEST_COMPLETE" then
-            questTitle = GetTitleText()
-            questId = GetQuestID()
-            PlayQuestSound(questId, questTitle, "Comp")
-        end
-    -- elseif event == "GOSSIP_CLOSED" or event == "QUEST_FINISHED" then
-    --     StopCurrentSound()  -- Stop any currently playing sounds when the quest window is closed
+function ChattyLittleNpc:QUEST_PROGRESS()
+    local questId = GetQuestID()
+    self:PlayQuestSound(questId, "Prog")
+end
+
+function ChattyLittleNpc:QUEST_COMPLETE()
+    local questId = GetQuestID()
+    self:PlayQuestSound(questId, "Comp")
+end
+
+function ChattyLittleNpc:GOSSIP_CLOSED()
+    if not self.db.profile.playVoiceoversOnClose then
+        self:StopCurrentSound()
+        if self.displayFrame then self.displayFrame:Hide() end
     end
 end
 
-frame:SetScript("OnEvent", OnEvent)
-
--- Command to manually trigger the sound (optional)
-SLASH_QUESTSOUND1 = "/questsound"
-SlashCmdList["QUESTSOUND"] = function(msg, phase)
-    local questId = tonumber(msg)
-    local questInfo = C_QuestLog.GetInfo(questId)
-    local questTitle = questInfo and questInfo.title or "Unknown"
-    PlayQuestSound(questId, questTitle, phase or "Desc", "Manual trigger")
-    print("Played sound for quest: " .. questTitle .. " phase: " .. (phase or "Desc"))
+function ChattyLittleNpc:QUEST_FINISHED()
+    if not self.db.profile.playVoiceoversOnClose then
+        self:StopCurrentSound()
+        if self.displayFrame then self.displayFrame:Hide() end
+    end
 end

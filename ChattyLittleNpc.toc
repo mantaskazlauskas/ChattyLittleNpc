@@ -1,8 +1,15 @@
 ## Interface: 
 ## Title: Chatty Little NPC
-## Notes: Prints the npc text in chat.
-## Author: Tuubbyy
-## Version: 0.0.1
-## SavedVariables: ChattyLittleNpcTextsFromMissingFilesDB
+## Notes: A simple addon that plays pre-recorded voice files for quest Description, Progression and Completion stages.
+## Author: Tuubby
+## Version: 1.0.4
+
+Libs\AceAddon-3.0\AceAddon-3.0.xml
+Libs\AceConsole-3.0\AceConsole-3.0.xml
+Libs\AceEvent-3.0\AceEvent-3.0.xml
 
 ChattyLittleNpc.lua
+options.lua
+slash.lua
+replay-frame.lua
+questlog-play-button.lua
