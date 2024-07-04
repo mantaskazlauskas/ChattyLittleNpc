@@ -21,6 +21,7 @@
         "CANCEL",
         "Settings",
         "InterfaceOptions_AddCategory",
-        "QuestMapFrame"
+        "QuestMapFrame",
+        "QuestUtils_GetQuestName"
     ]
 }

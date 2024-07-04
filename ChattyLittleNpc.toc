@@ -4,10 +4,7 @@
 ## Author: Tuubby
 ## Version: 1.0.5
 ## SavedVariables: ChattyLittleNpcDB
-
-Libs\AceAddon-3.0\AceAddon-3.0.xml
-Libs\AceConsole-3.0\AceConsole-3.0.xml
-Libs\AceEvent-3.0\AceEvent-3.0.xml
+## Dependencies: Ace3
 
 ChattyLittleNpc.lua
 options.lua

@@ -62,6 +62,14 @@ function ChattyLittleNpc:StopCurrentSound()
     end
 end
 
+local GetTitleForQuestID = function(questID)
+    if C_QuestLog and C_QuestLog.GetTitleForQuestID then
+        return C_QuestLog.GetTitleForQuestID(questID)
+    elseif QuestUtils_GetQuestName then
+        return QuestUtils_GetQuestName(questID)
+    end
+end
+
 function ChattyLittleNpc:PlayQuestSound(questId, phase)
     self:StopCurrentSound()
 
@@ -79,7 +87,7 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
         success, newSoundHandle = PlaySoundFile(soundPath, "Master")
         if success then
             lastSoundHandle = newSoundHandle
-            local questTitle = C_QuestLog.GetTitleForQuestID(questId)
+            local questTitle = GetTitleForQuestID(questId)
             local suffix = ""
             if phase == "Desc" then
                 suffix = "(description)"
