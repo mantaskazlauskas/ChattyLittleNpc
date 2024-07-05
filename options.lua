@@ -1,4 +1,8 @@
+---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+
+local Options = {}
+ChattyLittleNpc.Options = Options
 
 local options = {
     name = "Chatty Little Npc",
@@ -23,16 +27,16 @@ local options = {
             type = 'execute',
             name = 'Reset Replay Frame Position',
             desc = 'Reset the replay frame position to its default values.',
-            func = function() ChattyLittleNpc:ResetFramePosition() end,
+            func = function() ChattyLittleNpc.ReplayFrame:ResetFramePosition() end,
         },
     },
 }
 
-function ChattyLittleNpc:SetupOptions()
+function Options:SetupOptions()
     if not self.optionsFrame then
         LibStub("AceConfig-3.0"):RegisterOptionsTable("ChattyLittleNpc", options)
         self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("ChattyLittleNpc", "Chatty Little Npc")
     end
 end
 
-ChattyLittleNpc:SetupOptions()
+Options:SetupOptions()

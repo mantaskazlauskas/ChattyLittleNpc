@@ -2,6 +2,7 @@
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
+ChattyLittleNpc.Options = ChattyLittleNpc.Options
 
 local defaults = {
     profile = {
@@ -21,12 +22,13 @@ ChattyLittleNpc.lastSoundHandle = nil
 ChattyLittleNpc.currentQuestId = nil
 ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
+ChattyLittleNpc.dialogState = nil
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
-    self:RegisterChatCommand("chattylittlenpc", "HandleSlashCommands")
-    self:SetupOptions()
+    self:RegisterChatCommand("clnpc", "HandleSlashCommands")
+    self.Options:SetupOptions()
 end
 
 function ChattyLittleNpc:OnEnable()
@@ -57,12 +59,26 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("QUEST_COMPLETE")
 end
 
+function ChattyLittleNpc:IsDialogEnabled()
+    local isDialogEnabled = GetCVar("Sound_EnableDialog");
+    return isDialogEnabled
+end
+
 function ChattyLittleNpc:MuteDialogSound()
     SetCVar("Sound_EnableDialog", 0)
 end
 
-function ChattyLittleNpc:UnmuteDialogSound()
-    SetCVar("Sound_EnableDialog", 1)
+function ChattyLittleNpc:SaveDialogState()
+    self.dialogState = nil
+    self.dialogState = self:IsDialogEnabled()
+end
+
+function ChattyLittleNpc:ResetDialogToLastState()
+    if (self.dialogState ~= nil) then
+        SetCVar("Sound_EnableDialog", self.dialogState)
+    end
+
+    self.dialogState = nil
 end
 
 function ChattyLittleNpc:StopCurrentSound()
@@ -118,34 +134,39 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
 end
 
 function ChattyLittleNpc:QUEST_DETAIL()
-    ChattyLittleNpc:MuteDialogSound()
-    local questId = GetQuestID()
-    self:PlayQuestSound(questId, "Desc")
+    ChattyLittleNpc:HandlePlaybackStart("Desc")
 end
 
 function ChattyLittleNpc:QUEST_PROGRESS()
-    ChattyLittleNpc:MuteDialogSound()
-    local questId = GetQuestID()
-    self:PlayQuestSound(questId, "Prog")
+    ChattyLittleNpc:HandlePlaybackStart("Prog")
 end
 
 function ChattyLittleNpc:QUEST_COMPLETE()
-    ChattyLittleNpc:MuteDialogSound()
-    local questId = GetQuestID()
-    self:PlayQuestSound(questId, "Comp")
+    ChattyLittleNpc:HandlePlaybackStart("Comp")
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
-    self:UnmuteDialogSound()
-    if not self.db.profile.playVoiceoversOnClose then       
-        self:StopCurrentSound()
-        if self.ReplayFrame then self.ReplayFrame:Hide() end
-    end
+    ChattyLittleNpc:HandlePlaybackStop()
 end
 
 function ChattyLittleNpc:QUEST_FINISHED()
-    self:UnmuteDialogSound()
-    if not self.db.profile.playVoiceoversOnClose then       
+    ChattyLittleNpc:HandlePlaybackStop()
+end
+
+
+function ChattyLittleNpc:HandlePlaybackStart(questPhase)
+    self:SaveDialogState()
+    if (self.dialogState) then
+        self:MuteDialogSound()
+    end
+
+    local questId = GetQuestID()
+    self:PlayQuestSound(questId, questPhase)
+end
+
+function ChattyLittleNpc:HandlePlaybackStop()
+    self:ResetDialogToLastState()
+    if not self.db.profile.playVoiceoversOnClose then
         self:StopCurrentSound()
         if self.ReplayFrame then self.ReplayFrame:Hide() end
     end
