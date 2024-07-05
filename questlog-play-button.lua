@@ -1,4 +1,7 @@
+---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+
+local ReplayFrame = ChattyLittleNpc.ReplayFrame
 
 local PlayButton = {}
 ChattyLittleNpc.PlayButton = PlayButton
@@ -11,8 +14,11 @@ function PlayButton:GetSelectedQuest()
     else
         local selectedIndex = GetQuestLogSelection()
         if selectedIndex and selectedIndex > 0 then
-            local _, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
-            print(questID)
+            local quesTitle, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
+            ChattyLittleNpc.currentQuestId = questID
+            ChattyLittleNpc.currentPhase = "desc"
+            ChattyLittleNpc.currentQuestTitle = quesTitle
+            ReplayFrame.ShowDisplayFrame(quesTitle .. " (description)")
             return questID
         end
     end
@@ -26,7 +32,8 @@ function PlayButton:AttachPlayButton(detailsFrame)
     playButton:SetPoint("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30)
     playButton:SetText("Play Audio")
     playButton:SetScript("OnClick", function()
-        local questID = PlayButton.GetSelectedQuest()
+        local questID = PlayButton:GetSelectedQuest()
+        
         if questID then
             ChattyLittleNpc:PlayQuestSound(questID, "Desc")
         end
@@ -35,7 +42,7 @@ function PlayButton:AttachPlayButton(detailsFrame)
 end
 
 function PlayButton:UpdatePlayButton()
-    local questID = PlayButton.GetSelectedQuest()
+    local questID = PlayButton:GetSelectedQuest()
     if questID and playButton then
         playButton:Show()
     else

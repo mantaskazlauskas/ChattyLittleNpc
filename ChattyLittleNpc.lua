@@ -1,6 +1,7 @@
 ---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
+ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
 
 local defaults = {
     profile = {
@@ -19,6 +20,7 @@ local defaults = {
 local lastSoundHandle = nil
 ChattyLittleNpc.currentQuestId = nil
 ChattyLittleNpc.currentPhase = nil
+ChattyLittleNpc.currentQuestTitle = nil
 local expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 
 function ChattyLittleNpc:OnInitialize()
@@ -34,8 +36,8 @@ function ChattyLittleNpc:OnEnable()
     self:RegisterEvent("QUEST_PROGRESS")
     self:RegisterEvent("QUEST_COMPLETE")
 
-    if self.displayFrame then
-        self:LoadFramePosition()
+    if self.ReplayFrame.displayFrame then
+        self.ReplayFrame:LoadFramePosition()
     end
 
     local detailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
@@ -62,7 +64,7 @@ function ChattyLittleNpc:StopCurrentSound()
     end
 end
 
-local GetTitleForQuestID = function(questID)
+function ChattyLittleNpc:GetTitleForQuestID(questID)
     if C_QuestLog and C_QuestLog.GetTitleForQuestID then
         return C_QuestLog.GetTitleForQuestID(questID)
     elseif QuestUtils_GetQuestName then
@@ -87,7 +89,8 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
         success, newSoundHandle = PlaySoundFile(soundPath, "Master")
         if success then
             lastSoundHandle = newSoundHandle
-            local questTitle = GetTitleForQuestID(questId)
+            local questTitle = self:GetTitleForQuestID(questId)
+            ChattyLittleNpc.currentQuestTitle = questTitle
             local suffix = ""
             if phase == "Desc" then
                 suffix = "(description)"
@@ -96,7 +99,8 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
             elseif phase == "Comp" then
                 suffix = "(completion)"
             end
-            self:ShowDisplayFrame(questTitle .. " " .. suffix)
+
+            self.ReplayFrame:ShowDisplayFrame()
             break
         end
     end
@@ -124,13 +128,13 @@ end
 function ChattyLittleNpc:GOSSIP_CLOSED()
     if not self.db.profile.playVoiceoversOnClose then
         self:StopCurrentSound()
-        if self.displayFrame then self.displayFrame:Hide() end
+        if self.ReplayFrame then self.ReplayFrame:Hide() end
     end
 end
 
 function ChattyLittleNpc:QUEST_FINISHED()
     if not self.db.profile.playVoiceoversOnClose then
         self:StopCurrentSound()
-        if self.displayFrame then self.displayFrame:Hide() end
+        if self.ReplayFrame then self.ReplayFrame:Hide() end
     end
 end
