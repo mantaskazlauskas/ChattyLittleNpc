@@ -44,8 +44,17 @@ function ChattyLittleNpc:OnEnable()
 
     local detailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if detailsFrame then
-        self.PlayButton:AttachPlayButton(detailsFrame)
+        self.PlayButton:AttachPlayButton("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30, "ChattyNPCPlayButton")
     end
+    
+    if QuestLogFrame then
+        self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogFramePlayButton")
+    end
+
+    if QuestLogDetailFrame then
+        self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogDetailFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
+    end
+
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
     QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
@@ -170,4 +179,9 @@ function ChattyLittleNpc:HandlePlaybackStop()
         self:StopCurrentSound()
         if self.ReplayFrame then self.ReplayFrame:Hide() end
     end
+end
+
+function ChattyLittleNpc:IsRetailVersion()
+    -- This function checks if the game version is Retail by trying to access an API exclusive to Retail
+    return C_QuestLog ~= nil
 end

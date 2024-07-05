@@ -6,10 +6,10 @@ local ReplayFrame = ChattyLittleNpc.ReplayFrame
 local PlayButton = {}
 ChattyLittleNpc.PlayButton = PlayButton
 
-local playButton
+PlayButton.buttons = {}
 
 function PlayButton:GetSelectedQuest()
-    if IsRetailVersion() and C_QuestLog and C_QuestLog.GetSelectedQuest then
+    if ChattyLittleNpc:IsRetailVersion() and C_QuestLog and C_QuestLog.GetSelectedQuest then
         return C_QuestLog.GetSelectedQuest()
     else
         local selectedIndex = GetQuestLogSelection()
@@ -25,40 +25,37 @@ function PlayButton:GetSelectedQuest()
     return nil
 end
 
-function PlayButton:AttachPlayButton(detailsFrame)
-    if not detailsFrame then return end
-    playButton = CreateFrame("Button", "ChattyNPCPlayButton", detailsFrame, "UIPanelButtonTemplate")
-    playButton:SetSize(70, 25)
-    playButton:SetPoint("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30)
-    playButton:SetText("Play Audio")
-    playButton:SetScript("OnClick", function()
+function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
+    local button = CreateFrame("Button", buttonName, relativeTo, "UIPanelButtonTemplate")
+    button:SetSize(80, 25)
+    button:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
+    button:SetText("Play Audio")
+    button:SetScript("OnClick", function()
         local questID = PlayButton:GetSelectedQuest()
-        
         if questID then
             ChattyLittleNpc:PlayQuestSound(questID, "Desc")
         end
     end)
-    playButton:Hide()
+    button:Hide()
+
+    PlayButton.buttons[buttonName] = button
 end
 
 function PlayButton:UpdatePlayButton()
     local questID = PlayButton:GetSelectedQuest()
-    if questID and playButton then
-        playButton:Show()
-    else
-        if playButton then
-            playButton:Hide()
+    for buttonName, button in pairs(PlayButton.buttons) do
+        if questID then
+            button:Show()
+        else
+            button:Hide()
         end
     end
 end
 
 function PlayButton:HidePlayButton()
-    if playButton then
-        playButton:Hide()
+    for buttonName, button in pairs(PlayButton.buttons) do
+        button:Hide()
     end
 end
 
-function IsRetailVersion()
-    -- This function checks if the game version is Retail by trying to access an API exclusive to Retail
-    return C_QuestLog ~= nil
-end
+
