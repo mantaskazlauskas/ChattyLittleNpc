@@ -9,6 +9,30 @@ local options = {
     handler = ChattyLittleNpc,
     type = 'group',
     args = {
+        useMaleVoice = {
+            type = 'toggle',
+            name = 'Use Male Voice',
+            desc = 'Toggle to play voiceovers in a male voice.',
+            get = function(info) return ChattyLittleNpc.db.profile.useMaleVoice end,
+            set = function(info, value)
+                ChattyLittleNpc.db.profile.useMaleVoice = value
+                if value then
+                    ChattyLittleNpc.db.profile.useFemaleVoice = false
+                end
+            end,
+        },
+        useFemaleVoice = {
+            type = 'toggle',
+            name = 'Use Female Voice',
+            desc = 'Toggle to play voiceovers in a female voice.',
+            get = function(info) return ChattyLittleNpc.db.profile.useFemaleVoice end,
+            set = function(info, value)
+                ChattyLittleNpc.db.profile.useFemaleVoice = value
+                if value then
+                    ChattyLittleNpc.db.profile.useMaleVoice = false
+                end
+            end,
+        },
         playVoiceoversOnClose = {
             type = 'toggle',
             name = 'Play Voiceovers On Close',

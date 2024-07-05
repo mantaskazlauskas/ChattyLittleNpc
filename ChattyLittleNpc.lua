@@ -6,6 +6,8 @@ ChattyLittleNpc.Options = ChattyLittleNpc.Options
 
 local defaults = {
     profile = {
+        useMaleVoice = true,
+        useFemaleVoice = false,
         playVoiceoversOnClose = true,
         printMissingFiles = false,
         framePos = { -- Default position
@@ -117,7 +119,10 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
     success = false
 
     for _, folder in ipairs(self.expansions) do
-        soundPath = basePath .. folder .. "\\" .. "voiceovers" .. "\\" .. fileName
+
+        local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
+        local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
+
         success, newSoundHandle = PlaySoundFile(soundPath, "Master")
         if success then
             self.lastSoundHandle = newSoundHandle
@@ -142,6 +147,16 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
     end
 end
 
+function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
+    if self.db.profile.useMaleVoice then
+        return corePathToVoiceovers .. "male" .. "\\".. fileName
+    elseif self.db.profile.useFemaleVoice then
+        return corePathToVoiceovers .. "female" .. "\\".. fileName
+    else 
+        return corePathToVoiceovers .. fileName -- try the old directory if user didnt update voiceovers
+    end
+end
+
 function ChattyLittleNpc:QUEST_DETAIL()
     ChattyLittleNpc:HandlePlaybackStart("Desc")
 end
@@ -161,7 +176,6 @@ end
 function ChattyLittleNpc:QUEST_FINISHED()
     ChattyLittleNpc:HandlePlaybackStop()
 end
-
 
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     self:SaveDialogState()
