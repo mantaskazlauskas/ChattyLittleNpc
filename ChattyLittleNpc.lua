@@ -17,11 +17,11 @@ local defaults = {
     }
 }
 
-local lastSoundHandle = nil
+ChattyLittleNpc.lastSoundHandle = nil
 ChattyLittleNpc.currentQuestId = nil
 ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
-local expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
@@ -57,10 +57,18 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("QUEST_COMPLETE")
 end
 
+function ChattyLittleNpc:MuteDialogSound()
+    SetCVar("Sound_EnableDialog", 0)
+end
+
+function ChattyLittleNpc:UnmuteDialogSound()
+    SetCVar("Sound_EnableDialog", 1)
+end
+
 function ChattyLittleNpc:StopCurrentSound()
-    if lastSoundHandle and type(lastSoundHandle) == "number" then
-        StopSound(lastSoundHandle)
-        lastSoundHandle = nil
+    if self.lastSoundHandle and type(self.lastSoundHandle) == "number" then
+        StopSound(self.lastSoundHandle)
+        self.lastSoundHandle = nil
     end
 end
 
@@ -74,7 +82,6 @@ end
 
 function ChattyLittleNpc:PlayQuestSound(questId, phase)
     self:StopCurrentSound()
-
     self.currentQuestId = questId
     self.currentPhase = phase
 
@@ -84,11 +91,11 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
 
     success = false
 
-    for _, folder in ipairs(expansions) do
+    for _, folder in ipairs(self.expansions) do
         soundPath = basePath .. folder .. "\\" .. "voiceovers" .. "\\" .. fileName
         success, newSoundHandle = PlaySoundFile(soundPath, "Master")
         if success then
-            lastSoundHandle = newSoundHandle
+            self.lastSoundHandle = newSoundHandle
             local questTitle = self:GetTitleForQuestID(questId)
             ChattyLittleNpc.currentQuestTitle = questTitle
             local suffix = ""
@@ -111,29 +118,34 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
 end
 
 function ChattyLittleNpc:QUEST_DETAIL()
+    ChattyLittleNpc:MuteDialogSound()
     local questId = GetQuestID()
     self:PlayQuestSound(questId, "Desc")
 end
 
 function ChattyLittleNpc:QUEST_PROGRESS()
+    ChattyLittleNpc:MuteDialogSound()
     local questId = GetQuestID()
     self:PlayQuestSound(questId, "Prog")
 end
 
 function ChattyLittleNpc:QUEST_COMPLETE()
+    ChattyLittleNpc:MuteDialogSound()
     local questId = GetQuestID()
     self:PlayQuestSound(questId, "Comp")
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
-    if not self.db.profile.playVoiceoversOnClose then
+    self:UnmuteDialogSound()
+    if not self.db.profile.playVoiceoversOnClose then       
         self:StopCurrentSound()
         if self.ReplayFrame then self.ReplayFrame:Hide() end
     end
 end
 
 function ChattyLittleNpc:QUEST_FINISHED()
-    if not self.db.profile.playVoiceoversOnClose then
+    self:UnmuteDialogSound()
+    if not self.db.profile.playVoiceoversOnClose then       
         self:StopCurrentSound()
         if self.ReplayFrame then self.ReplayFrame:Hide() end
     end

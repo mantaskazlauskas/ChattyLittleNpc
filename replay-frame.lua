@@ -63,7 +63,7 @@ function ReplayFrame:ShowDisplayFrame()
         ReplayFrame.replayButton = CreateFrame("Button", nil, ReplayFrame.displayFrame)
         ReplayFrame.replayButton:SetSize(12, 12)
         ReplayFrame.replayButton:SetPoint("LEFT", ReplayFrame.stopButton, "RIGHT", 5, 0)
-        ReplayFrame.replayButton:SetNormalTexture("Interface\\AddOns\\ChattyLittleNpc\\Textures\\replay_button_red.tga")
+        ReplayFrame.replayButton:SetNormalTexture("Interface\\AddOns\\ChattyLittleNpc\\Textures\\Play.tga")
         ReplayFrame.replayButton:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight")
         ReplayFrame.replayButton:SetScript("OnClick", function()
             if ChattyLittleNpc.currentQuestId and ChattyLittleNpc.currentPhase then
