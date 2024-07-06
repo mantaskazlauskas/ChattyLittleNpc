@@ -124,6 +124,11 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
         local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
 
         success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+        if (success == nil) then
+            soundPath = ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+        end
+
         if success then
             self.lastSoundHandle = newSoundHandle
             local questTitle = self:GetTitleForQuestID(questId)
@@ -143,7 +148,7 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
     end
 
     if not success and self.db.profile.printMissingFiles then
-        print("Missing voiceover file: " .. fileName)
+        print("Missing voiceover file: " .. soundPath)
     end
 end
 
@@ -152,9 +157,13 @@ function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
         return corePathToVoiceovers .. "male" .. "\\".. fileName
     elseif self.db.profile.useFemaleVoice then
         return corePathToVoiceovers .. "female" .. "\\".. fileName
-    else 
+    else
         return corePathToVoiceovers .. fileName -- try the old directory if user didnt update voiceovers
     end
+end
+
+function ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+    return corePathToVoiceovers .. fileName -- try the old directory if user didnt update voiceovers
 end
 
 function ChattyLittleNpc:QUEST_DETAIL()
