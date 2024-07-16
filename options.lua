@@ -18,6 +18,7 @@ local options = {
                 ChattyLittleNpc.db.profile.useMaleVoice = value
                 if value then
                     ChattyLittleNpc.db.profile.useFemaleVoice = false
+                    ChattyLittleNpc.db.profile.useBothVoices = false
                 end
             end,
         },
@@ -30,6 +31,20 @@ local options = {
                 ChattyLittleNpc.db.profile.useFemaleVoice = value
                 if value then
                     ChattyLittleNpc.db.profile.useMaleVoice = false
+                    ChattyLittleNpc.db.profile.useBothVoices = false
+                end
+            end,
+        },
+        useBothVoices = {
+            type = 'toggle',
+            name = 'Use Both Voices',
+            desc = 'Toggle to play voiceovers in male and female voices if possible.',
+            get = function(info) return ChattyLittleNpc.db.profile.useBothVoices end,
+            set = function(info, value)
+                ChattyLittleNpc.db.profile.useBothVoices = value
+                if value then
+                    ChattyLittleNpc.db.profile.useMaleVoice = false
+                    ChattyLittleNpc.db.profile.useFemaleVoice = false
                 end
             end,
         },

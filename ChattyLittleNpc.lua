@@ -8,6 +8,7 @@ local defaults = {
     profile = {
         useMaleVoice = true,
         useFemaleVoice = false,
+        useBothVoices = false,
         playVoiceoversOnClose = true,
         printMissingFiles = false,
         framePos = { -- Default position
@@ -48,7 +49,7 @@ function ChattyLittleNpc:OnEnable()
     if detailsFrame then
         self.PlayButton:AttachPlayButton("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30, "ChattyNPCPlayButton")
     end
-    
+
     if QuestLogFrame then
         self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogFramePlayButton")
     end
@@ -68,6 +69,27 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("QUEST_FINISHED")
     self:UnregisterEvent("QUEST_PROGRESS")
     self:UnregisterEvent("QUEST_COMPLETE")
+end
+
+function ChattyLittleNpc:getNpcID(unit)
+    local guid = UnitGUID(unit)
+    if guid then
+        local unitType, _, _, _, _, npcID = strsplit("-", guid)
+        if unitType == "Creature" or unitType == "Vehicle" then
+            return tonumber(npcID)
+        end
+    end
+    return nil
+end
+
+function ChattyLittleNpc:getUnitInfo(unit)
+    local name = UnitName(unit) or "Unknown"
+    local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
+    local sexStr = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or "Unknown"
+    local npcID = self:getNpcID(unit) or "Unknown"
+    local race = UnitRace(unit) or "Unknown"
+
+    return name, sexStr, race, npcID
 end
 
 function ChattyLittleNpc:IsDialogEnabled()
@@ -107,7 +129,7 @@ function ChattyLittleNpc:GetTitleForQuestID(questID)
     end
 end
 
-function ChattyLittleNpc:PlayQuestSound(questId, phase)
+function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
     self:StopCurrentSound()
     self.currentQuestId = questId
     self.currentPhase = phase
@@ -119,15 +141,23 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
     success = false
 
     for _, folder in ipairs(self.expansions) do
-
         local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
-        local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
+        local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
 
-        success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-        if (success == nil) then
-            soundPath = ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+        local retryCount = 0
+        repeat
             success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-        end
+            if success == nil then
+                if retryCount == 0 then
+                    soundPath = ChattyLittleNpc:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
+                elseif retryCount == 1 then
+                    soundPath = ChattyLittleNpc:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+                else
+                    soundPath = ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+                end
+                retryCount = retryCount + 1
+            end
+        until success or retryCount > 2  -- Retry until success or tried all voiceover directories
 
         if success then
             self.lastSoundHandle = newSoundHandle
@@ -152,14 +182,28 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase)
     end
 end
 
-function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName)
+function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
     if self.db.profile.useMaleVoice then
-        return corePathToVoiceovers .. "male" .. "\\".. fileName
+        return self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
     elseif self.db.profile.useFemaleVoice then
-        return corePathToVoiceovers .. "female" .. "\\".. fileName
+        return self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+    elseif (self.db.profile.useBothVoices and (npcGender == "Male" or npcGender == "Female")) then
+        if npcGender == "Male" then
+            return self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
+        elseif npcGender == "Female" then
+            return self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+        end
     else
-        return corePathToVoiceovers .. fileName -- try the old directory if user didnt update voiceovers
+        return self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
     end
+end
+
+function ChattyLittleNpc:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+    return corePathToVoiceovers .. "female" .. "\\".. fileName
+end
+
+function ChattyLittleNpc:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
+    return corePathToVoiceovers .. "male" .. "\\".. fileName
 end
 
 function ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
@@ -193,7 +237,8 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     end
 
     local questId = GetQuestID()
-    self:PlayQuestSound(questId, questPhase)
+    local name, sexStr, race, npcID = self:getUnitInfo("npc")
+    self:PlayQuestSound(questId, questPhase, sexStr)
 end
 
 function ChattyLittleNpc:HandlePlaybackStop()
