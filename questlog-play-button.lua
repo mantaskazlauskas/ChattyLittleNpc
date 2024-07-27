@@ -9,7 +9,7 @@ ChattyLittleNpc.PlayButton = PlayButton
 PlayButton.buttons = {}
 
 function PlayButton:GetSelectedQuest()
-    if ChattyLittleNpc:IsRetailVersion() and C_QuestLog and C_QuestLog.GetSelectedQuest then
+    if ChattyLittleNpc.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest then
         return C_QuestLog.GetSelectedQuest()
     else
         local selectedIndex = GetQuestLogSelection()

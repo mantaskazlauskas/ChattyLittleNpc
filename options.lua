@@ -62,6 +62,25 @@ local options = {
             get = function(info) return ChattyLittleNpc.db.profile.printMissingFiles end,
             set = function(info, value) ChattyLittleNpc.db.profile.printMissingFiles = value end,
         },
+        logNpcTexts = {
+            type = 'toggle',
+            name = 'Track NPC data',
+            desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
+            get = function(info) return ChattyLittleNpc.db.profile.logNpcTexts end,
+            set = function(info, value)
+                ChattyLittleNpc.db.profile.logNpcTexts = value
+                if not value then
+                    ChattyLittleNpc.db.profile.printNpcTexts = false
+                end
+            end,
+        },
+        printNpcTexts = {
+            type = 'toggle',
+            name = 'Print NPC data (if tracking enabled)',
+            desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
+            get = function(info) return ChattyLittleNpc.db.profile.printNpcTexts end,
+            set = function(info, value) ChattyLittleNpc.db.profile.printNpcTexts = value end,
+        },
         resetFramePos = {
             type = 'execute',
             name = 'Reset Replay Frame Position',
