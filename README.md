@@ -1,4 +1,4 @@
-# Chatty Little NPC
+# Chatty Little NPC!
 
 Dive deeper into your game with the AI Voiceover Chatty Little NPC Addon. This addon enriches your gameplay by enhancing text-based quest dialogues with pre-recorded, AI-generated voiceovers. Featuring two main voices, it provides a straightforward yet effective auditory enhancement to your game, focusing on clarity and immersive storytelling.
 
