@@ -14,7 +14,7 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 
 ## Future Plans
 
-(DONE) ~~What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices.~~ 
-(In Progress) In even further future, it would be nice to generate voiceovers for different races and body types ~~(learning how to train my own voices at the moment during my free time)~~ (edit: got some helping hands with model training so things are moving).
+- (DONE) ~~What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices.~~ 
+- (In Progress) In even further future, it would be nice to generate voiceovers for different races and body types ~~(learning how to train my own voices at the moment during my free time)~~ (edit: got some helping hands with model training so things are moving).
 
 ## [Chatty Little NPC Discord](https://discord.gg/fSczNjQ6)
