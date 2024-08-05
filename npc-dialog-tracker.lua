@@ -4,7 +4,6 @@ local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local NpcDialogTracker = {}
 ChattyLittleNpc.NpcDialogTracker = NpcDialogTracker
 
--- remove any new line tags and player identifyable data so that this would fit everyone.
 function NpcDialogTracker:cleanText(text)
     text = text:gsub("\n\n", " ")
     text = text:gsub("\r\n", " ")
@@ -170,9 +169,10 @@ function NpcDialogTracker:HandleQuestTexts(event)
     elseif unitType == "Player" then -- POPUP QUESTS
         self:storeNpcInfo("Player", "", "", 0)
         self:storeQuestInfo(0, questID, event, text)
+    elseif unitType == "GameObject" then -- Quests from GameObjects
+        self:storeUnitInfo(unitType, unitName, "", unitType, { questId = questID, questText = text, eventType = event } )
     else -- HANDLE QUESTS FROM INVENTORY ITEMS
-        if ChattyLittleNpc.currentItemInfo.ItemID and ChattyLittleNpc.currentItemInfo.ItemName and ChattyLittleNpc.currentItemInfo.ItemText then
-            ChattyLittleNpc.currentItemInfo.ItemName = select(1, C_Item.GetItemInfo(ChattyLittleNpc.currentItemInfo.ItemID))
+        if ChattyLittleNpc.currentItemInfo.ItemID and ChattyLittleNpc.currentItemInfo.ItemName and (ChattyLittleNpc.currentItemInfo.ItemText or text) then
             self:storeUnitInfo(ChattyLittleNpc.currentItemInfo.ItemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText , "Item", { questId = questID, questText = text, eventType = event } )
         end
     end

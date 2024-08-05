@@ -22,6 +22,7 @@
         "Settings",
         "InterfaceOptions_AddCategory",
         "QuestMapFrame",
-        "QuestUtils_GetQuestName"
+        "QuestUtils_GetQuestName",
+        "GameTooltip_Hide"
     ]
 }

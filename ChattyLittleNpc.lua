@@ -33,15 +33,32 @@ ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
 ChattyLittleNpc.dialogState = nil
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.currentItemInfo = {
     ItemID = nil,
     ItemName = nil,
     ItemText = nil
 }
 
+
+hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot, onSelf)
+    ChattyLittleNpc.currentItemInfo.ItemID = nil
+    ChattyLittleNpc.currentItemInfo.ItemName = nil
+    ChattyLittleNpc.currentItemInfo.ItemText = nil
+    local itemID = C_Container.GetContainerItemID(bag, slot)
+    if itemID then
+        local itemName = select(1 ,C_Item.GetItemInfo(itemID))
+        ChattyLittleNpc.currentItemInfo.ItemID = itemID
+        ChattyLittleNpc.currentItemInfo.ItemName = itemName
+        local itemText = ItemTextGetText()
+        if(itemText) then
+            ChattyLittleNpc.currentItemInfo.ItemText = itemText
+        end
+    end
+end)
+
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
-    self:RegisterChatCommand("clnpc", "HandleSlashCommands")
     self.Options:SetupOptions()
 
     self.locale = GetLocale()
@@ -80,6 +97,8 @@ function ChattyLittleNpc:OnEnable()
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
     QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+
+    self:GetLoadedExpansionVoiceoverPacks()
 end
 
 function ChattyLittleNpc:OnDisable()
@@ -140,40 +159,62 @@ function ChattyLittleNpc:StopCurrentSound()
         StopSound(self.lastSoundHandle)
         self.lastSoundHandle = nil
     end
+
+    self.ReplayFrame.currentPlayingQuest = nil
+    self.ReplayFrame:UpdateDisplayFrame()
 end
 
 function ChattyLittleNpc:GetTitleForQuestID(questID)
-    if ChattyLittleNpc.useNamespaces then
+    if self.useNamespaces then
         return C_QuestLog.GetTitleForQuestID(questID)
     elseif QuestUtils_GetQuestName then
         return QuestUtils_GetQuestName(questID)
     end
 end
 
-function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
+function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
+    for _, expansion in ipairs(self.expansions) do
+        local voiceoverPackName = "ChattyLittleNpc_" .. expansion
+        local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
+        if isLoaded then
+            table.insert(self.loadedVoiceoverPacks, expansion)
+        end
+    end
+end
 
+function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
+    local questTitle = self:GetTitleForQuestID(questId)
     self:StopCurrentSound()
     self.currentQuestId = questId
     self.currentPhase = phase
 
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
     local fileName = questId .. "_" .. phase .. ".mp3"
-    local soundPath, success, newSoundHandle
+    local success, newSoundHandle
+
+    self.currentQuestTitle = questTitle
+    local suffix = ""
+    if phase == "Desc" then
+        suffix = " (description"
+    elseif phase == "Prog" then
+        suffix = " (progression"
+    elseif phase == "Comp" then
+        suffix = " (completion"
+    end
 
     success = false
-
-    for _, folder in ipairs(self.expansions) do
+    for _, folder in ipairs(self.loadedVoiceoverPacks) do
         local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
         local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
         local retryCount = 0
         repeat
             if success == nil then
                 if retryCount == 1 then
-                    soundPath = ChattyLittleNpc:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
+                    soundPath = self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
                 elseif retryCount == 2 then
-                    soundPath = ChattyLittleNpc:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+                    soundPath = self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
                 elseif retryCount == 3 then
-                    soundPath = ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+                    soundPath = self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
                 end
                 retryCount = retryCount + 1
             end
@@ -182,25 +223,20 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
 
         if success then
             self.lastSoundHandle = newSoundHandle
-            local questTitle = self:GetTitleForQuestID(questId)
-            ChattyLittleNpc.currentQuestTitle = questTitle
-            local suffix = ""
-            if phase == "Desc" then
-                suffix = "(description)"
-            elseif phase == "Prog" then
-                suffix = "(progression)"
-            elseif phase == "Comp" then
-                suffix = "(completion)"
-            end
 
+            self.ReplayFrame:AddQuestToQueue(questId, questTitle .. suffix .. ")", phase, npcGender)
             self.ReplayFrame:ShowDisplayFrame()
             break
         end
     end
 
     if not success and self.db.profile.printMissingFiles then
-        print("Missing voiceover file: " .. soundPath)
+        self.ReplayFrame:AddQuestToQueue(questId, questTitle .. suffix .. ", voiceover missing)", phase, npcGender)
+        print("Missing voiceover file: " .. fileName)
     end
+
+    self.ReplayFrame.currentPlayingQuest = questId .. phase -- Track the currently playing quest
+    self.ReplayFrame:UpdateDisplayFrame()
 end
 
 function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
@@ -228,72 +264,56 @@ function ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
 end
 
 function ChattyLittleNpc:ADDON_LOADED()
-    ChattyLittleNpc.NpcDialogTracker:InitializeTables()
-
-    hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot, onSelf)
-        ChattyLittleNpc.currentItemInfo.ItemID = nil
-        ChattyLittleNpc.currentItemInfo.ItemName = nil
-        ChattyLittleNpc.currentItemInfo.ItemText = nil
-        local itemID = C_Container.GetContainerItemID(bag, slot)
-        if itemID then
-            local itemName = select(1 ,C_Item.GetItemInfo(itemID))
-            ChattyLittleNpc.currentItemInfo.ItemID = itemID
-            ChattyLittleNpc.currentItemInfo.ItemName = itemName
-            local itemText = ItemTextGetText()
-            if(itemText) then
-                ChattyLittleNpc.currentItemInfo.ItemText = itemText
-            end
-        end
-    end)
+    self.NpcDialogTracker:InitializeTables()
 end
 
 function ChattyLittleNpc:GOSSIP_SHOW()
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleGossipText()
+        self.NpcDialogTracker:HandleGossipText()
     end
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
-    ChattyLittleNpc:HandlePlaybackStop()
+    self:HandlePlaybackStop()
 end
 
 function ChattyLittleNpc:QUEST_GREETING()
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
+        self.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
     end
 end
 
 function ChattyLittleNpc:QUEST_DETAIL()
-    ChattyLittleNpc:HandlePlaybackStart("Desc")
+    self:HandlePlaybackStart("Desc")
 
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_DETAIL")
+        self.NpcDialogTracker:HandleQuestTexts("QUEST_DETAIL")
     end
 end
 
 function ChattyLittleNpc:QUEST_PROGRESS()
-    ChattyLittleNpc:HandlePlaybackStart("Prog")
+    self:HandlePlaybackStart("Prog")
 
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_PROGRESS")
+        self.NpcDialogTracker:HandleQuestTexts("QUEST_PROGRESS")
     end
 end
 
 function ChattyLittleNpc:QUEST_COMPLETE()
-    ChattyLittleNpc:HandlePlaybackStart("Comp")
+    self:HandlePlaybackStart("Comp")
 
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
+        self.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
     end
 end
 
 function ChattyLittleNpc:QUEST_FINISHED()
-    ChattyLittleNpc:HandlePlaybackStop()
+    self:HandlePlaybackStop()
 end
 
 function ChattyLittleNpc:ITEM_TEXT_READY()
     if self.db.profile.logNpcTexts then
-        ChattyLittleNpc.NpcDialogTracker:HandleItemTextReady()
+        self.NpcDialogTracker:HandleItemTextReady()
     end
 end
 
@@ -305,15 +325,17 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
 
     local questId = GetQuestID()
     local gender = select(2, self:getUnitInfo("npc"))
-    self:PlayQuestSound(questId, questPhase, gender)
+    if questId > 0 then
+        self:PlayQuestSound(questId, questPhase, gender)
+    end
 end
 
 function ChattyLittleNpc:HandlePlaybackStop()
     self:ResetDialogToLastState()
     if not self.db.profile.playVoiceoversOnClose then
         self:StopCurrentSound()
-        if ChattyLittleNpc.ReplayFrame then
-            ChattyLittleNpc.ReplayFrame.displayFrame:Hide()
+        if self.ReplayFrame then
+            self.ReplayFrame.displayFrame:Hide()
         end
     end
 end
