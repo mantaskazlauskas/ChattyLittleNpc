@@ -62,12 +62,10 @@ function ReplayFrame:ResetFramePosition()
     end
 end
 
-
-
 function ReplayFrame:CreateDisplayFrame()
     if not ReplayFrame.displayFrame then
         ReplayFrame.displayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent, "BackdropTemplate")
-        ReplayFrame.displayFrame:SetSize(380, 210)  -- Initial size
+        ReplayFrame.displayFrame:SetSize(310, 210)  -- Initial size
         ReplayFrame:LoadFramePosition()
     
         ReplayFrame.displayFrame:SetBackdrop({
@@ -87,8 +85,16 @@ function ReplayFrame:CreateDisplayFrame()
             ReplayFrame:SaveFramePosition()
         end)
 
-        ReplayFrame.displayFrame:SetScript("OnEnter", ReplayFrame:FadeInFrame(ReplayFrame.displayFrame))
-        ReplayFrame.displayFrame:SetScript("OnLeave", ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame))
+        local function fadeInFrame()
+            UIFrameFadeIn(ReplayFrame.displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 1)
+        end
+
+        local function fadeOutFrame()
+            UIFrameFadeOut(ReplayFrame.displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 0.3)
+        end
+
+        ReplayFrame.displayFrame:SetScript("OnEnter", fadeInFrame)
+        ReplayFrame.displayFrame:SetScript("OnLeave", fadeOutFrame)
 
         local closeButton = CreateFrame("Button", nil, ReplayFrame.displayFrame, "UIPanelCloseButton")
         closeButton:SetSize(20, 20)  -- Standard close button size
@@ -101,11 +107,11 @@ function ReplayFrame:CreateDisplayFrame()
 
         for i = 1, 5 do
             local buttonFrame = CreateFrame("Frame", nil, ReplayFrame.displayFrame, "BackdropTemplate")
-            buttonFrame:SetSize(370, 35)
+            buttonFrame:SetSize(280, 35)
             buttonFrame:SetPoint("TOP", ReplayFrame.displayFrame, "TOP", 0, -((i-1) * 40) - 40)
             buttonFrame:EnableMouse(true)
-            buttonFrame:SetScript("OnEnter", ReplayFrame:FadeInFrame())
-            buttonFrame:SetScript("OnLeave", ReplayFrame:FadeOutFrame())
+            buttonFrame:SetScript("OnEnter", fadeInFrame)
+            buttonFrame:SetScript("OnLeave", fadeOutFrame)
 
             local stopButton = CreateFrame("Frame", nil, buttonFrame)
             stopButton:SetSize(12, 12)
@@ -118,11 +124,11 @@ function ReplayFrame:CreateDisplayFrame()
                 GameTooltip:SetOwner(stopButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Stop and remove quest voiceover from list.")
                 GameTooltip:Show()
-                ReplayFrame:FadeIdFrame(ReplayFrame.displayFrame)
+                fadeInFrame()
             end)
             stopButton:SetScript("OnLeave", function()
                 GameTooltip_Hide()
-                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+                fadeOutFrame()
             end)
             stopButton:SetScript("OnMouseDown", function()
                 local quest = self.questQueue[i]
@@ -147,11 +153,11 @@ function ReplayFrame:CreateDisplayFrame()
                 GameTooltip:SetOwner(replayButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Play quest voiceover.")
                 GameTooltip:Show()
-                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
+                fadeInFrame()
             end)
             replayButton:SetScript("OnLeave", function()
                 GameTooltip_Hide()
-                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+                fadeOutFrame()
             end)
             replayButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
@@ -173,11 +179,11 @@ function ReplayFrame:CreateDisplayFrame()
                 GameTooltip:SetOwner(descButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Play quest description voiceover (will add it to the list).")
                 GameTooltip:Show()
-                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
+                fadeInFrame()
             end)
             descButton:SetScript("OnLeave", function()
                 GameTooltip_Hide()
-                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+                fadeOutFrame()
             end)
             descButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
@@ -192,6 +198,9 @@ function ReplayFrame:CreateDisplayFrame()
             displayText:SetPoint("LEFT", descButton, "RIGHT", 10, 0)
             displayText:SetJustifyH("LEFT")
             displayText:SetWordWrap(false)
+            displayText:EnableMouse(true)
+            displayText:SetScript("OnEnter", fadeInFrame)
+            displayText:SetScript("OnLeave", fadeOutFrame)
 
             ReplayFrame.buttons[i] = {frame = buttonFrame, text = displayText}
         end
@@ -215,14 +224,14 @@ function ReplayFrame:UpdateDisplayFrame()
         local quest = ReplayFrame.questQueue[i]
         if quest then
             local truncatedTitle = quest.title
-            if string.len(quest.title) > 40 then
-                truncatedTitle = string.sub(quest.title, 1, 37) .. "..."
+            if string.len(quest.title) > 30 then
+                truncatedTitle = string.sub(quest.title, 1, 25) .. "..."
             end
-            
+
             if ReplayFrame.currentPlayingQuest == quest.id .. quest.phase then
-                button.text:SetText("-> " .. truncatedTitle)
+                button.text:SetText("-> " .. truncatedTitle) -- Highlight with arrow
             else
-                button.text:SetText(truncatedTitle:gsub("-> ", ""))
+                button.text:SetText(truncatedTitle:gsub("-> ", "")) -- Remove any existing arrow
             end
 
             button.frame:Show()
@@ -232,25 +241,15 @@ function ReplayFrame:UpdateDisplayFrame()
                 GameTooltip:SetOwner(button.frame, "ANCHOR_RIGHT")
                 GameTooltip:SetText(quest.title)
                 GameTooltip:Show()
-                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
             end)
             button.text:SetScript("OnLeave", function()
                 GameTooltip_Hide()
-                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
             end)
         else
             button.frame:Hide()
         end
     end
     ReplayFrame.displayFrame:Show()
-end
-
-function ReplayFrame:FadeInFrame(displayFrame)
-    UIFrameFadeIn(displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 1)
-end
-
-function ReplayFrame:FadeOutFrame(displayFrame)
-    UIFrameFadeOut(displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 0.3)
 end
 
 function ReplayFrame:ShowDisplayFrame()
@@ -261,3 +260,4 @@ function ReplayFrame:ShowDisplayFrame()
     ReplayFrame:CreateDisplayFrame()
     ReplayFrame:UpdateDisplayFrame()
 end
+
