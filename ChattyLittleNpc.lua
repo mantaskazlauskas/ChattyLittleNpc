@@ -31,7 +31,7 @@ ChattyLittleNpc.lastSoundHandle = nil
 ChattyLittleNpc.currentQuestId = nil
 ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
-ChattyLittleNpc.dialogState = nil
+ChattyLittleNpc.dialogState = GetCVar("Sound_DialogVolume")
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.currentItemInfo = {
@@ -132,29 +132,21 @@ function ChattyLittleNpc:getUnitInfo(unit)
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
-function ChattyLittleNpc:IsDialogEnabled()
-    local isDialogEnabled = GetCVar("Sound_EnableDialog");
-    return isDialogEnabled
-end
-
-function ChattyLittleNpc:MuteDialogSound()
-    SetCVar("Sound_EnableDialog", 0)
-end
-
-function ChattyLittleNpc:SaveDialogState()
-    self.dialogState = nil
-    self.dialogState = self:IsDialogEnabled()
+function ChattyLittleNpc:LowerDialogVolume()
+    SetCVar("Sound_DialogVolume", 0.3)
+    C_Timer.After(3, function ()
+        self:ResetDialogToLastState()
+    end)
 end
 
 function ChattyLittleNpc:ResetDialogToLastState()
-    if (self.dialogState ~= nil) then
+    if self.dialogState then
         SetCVar("Sound_EnableDialog", self.dialogState)
     end
-
-    self.dialogState = nil
 end
 
 function ChattyLittleNpc:StopCurrentSound()
+    self:ResetDialogToLastState()
     if self.lastSoundHandle and type(self.lastSoundHandle) == "number" then
         StopSound(self.lastSoundHandle)
         self.lastSoundHandle = nil
@@ -318,9 +310,8 @@ function ChattyLittleNpc:ITEM_TEXT_READY()
 end
 
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
-    self:SaveDialogState()
     if (self.dialogState) then
-        self:MuteDialogSound()
+        self:LowerDialogVolume()
     end
 
     local questId = GetQuestID()
@@ -331,7 +322,6 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
 end
 
 function ChattyLittleNpc:HandlePlaybackStop()
-    self:ResetDialogToLastState()
     if not self.db.profile.playVoiceoversOnClose then
         self:StopCurrentSound()
         if self.ReplayFrame then

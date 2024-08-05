@@ -62,6 +62,8 @@ function ReplayFrame:ResetFramePosition()
     end
 end
 
+
+
 function ReplayFrame:CreateDisplayFrame()
     if not ReplayFrame.displayFrame then
         ReplayFrame.displayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent, "BackdropTemplate")
@@ -85,6 +87,9 @@ function ReplayFrame:CreateDisplayFrame()
             ReplayFrame:SaveFramePosition()
         end)
 
+        ReplayFrame.displayFrame:SetScript("OnEnter", ReplayFrame:FadeInFrame(ReplayFrame.displayFrame))
+        ReplayFrame.displayFrame:SetScript("OnLeave", ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame))
+
         local closeButton = CreateFrame("Button", nil, ReplayFrame.displayFrame, "UIPanelCloseButton")
         closeButton:SetSize(20, 20)  -- Standard close button size
         closeButton:SetPoint("TOPRIGHT", ReplayFrame.displayFrame, "TOPRIGHT", -5, -5)
@@ -98,6 +103,9 @@ function ReplayFrame:CreateDisplayFrame()
             local buttonFrame = CreateFrame("Frame", nil, ReplayFrame.displayFrame, "BackdropTemplate")
             buttonFrame:SetSize(370, 35)
             buttonFrame:SetPoint("TOP", ReplayFrame.displayFrame, "TOP", 0, -((i-1) * 40) - 40)
+            buttonFrame:EnableMouse(true)
+            buttonFrame:SetScript("OnEnter", ReplayFrame:FadeInFrame())
+            buttonFrame:SetScript("OnLeave", ReplayFrame:FadeOutFrame())
 
             local stopButton = CreateFrame("Frame", nil, buttonFrame)
             stopButton:SetSize(12, 12)
@@ -105,12 +113,17 @@ function ReplayFrame:CreateDisplayFrame()
             stopButton.texture = stopButton:CreateTexture(nil, "ARTWORK")
             stopButton.texture:SetAllPoints()
             stopButton.texture:SetTexture("Interface\\Buttons\\UI-StopButton")
+            stopButton:EnableMouse(true)
             stopButton:SetScript("OnEnter", function()
                 GameTooltip:SetOwner(stopButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Stop and remove quest voiceover from list.")
                 GameTooltip:Show()
+                ReplayFrame:FadeIdFrame(ReplayFrame.displayFrame)
             end)
-            stopButton:SetScript("OnLeave", GameTooltip_Hide)
+            stopButton:SetScript("OnLeave", function()
+                GameTooltip_Hide()
+                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+            end)
             stopButton:SetScript("OnMouseDown", function()
                 local quest = self.questQueue[i]
                 if self.currentPlayingQuest == quest.id .. quest.phase then
@@ -129,12 +142,17 @@ function ReplayFrame:CreateDisplayFrame()
             replayButton.texture = replayButton:CreateTexture(nil, "ARTWORK")
             replayButton.texture:SetAllPoints()
             replayButton.texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Textures\\Play.tga")
+            replayButton:EnableMouse(true)
             replayButton:SetScript("OnEnter", function()
                 GameTooltip:SetOwner(replayButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Play quest voiceover.")
                 GameTooltip:Show()
+                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
             end)
-            replayButton:SetScript("OnLeave", GameTooltip_Hide)
+            replayButton:SetScript("OnLeave", function()
+                GameTooltip_Hide()
+                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+            end)
             replayButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
                 if quest then
@@ -150,12 +168,17 @@ function ReplayFrame:CreateDisplayFrame()
             descButton.texture = descButton:CreateTexture(nil, "ARTWORK")
             descButton.texture:SetAllPoints()
             descButton.texture:SetTexture("Interface\\Common\\help-i")
+            descButton:EnableMouse(true)
             descButton:SetScript("OnEnter", function()
                 GameTooltip:SetOwner(descButton, "ANCHOR_RIGHT")
                 GameTooltip:SetText("Play quest description voiceover (will add it to the list).")
                 GameTooltip:Show()
+                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
             end)
-            descButton:SetScript("OnLeave", GameTooltip_Hide)
+            descButton:SetScript("OnLeave", function()
+                GameTooltip_Hide()
+                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+            end)
             descButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
                 if quest then
@@ -168,6 +191,8 @@ function ReplayFrame:CreateDisplayFrame()
             local displayText = buttonFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             displayText:SetPoint("LEFT", descButton, "RIGHT", 10, 0)
             displayText:SetJustifyH("LEFT")
+            displayText:SetWordWrap(false)
+
             ReplayFrame.buttons[i] = {frame = buttonFrame, text = displayText}
         end
     else
@@ -177,7 +202,7 @@ end
 
 function ReplayFrame:UpdateDisplayFrame()
     if self.questQueue and #self.questQueue == 0 then
-        if(ReplayFrame.displayFrame) then
+        if ReplayFrame.displayFrame then
             ReplayFrame.displayFrame:Hide()
         end
         return
@@ -185,20 +210,47 @@ function ReplayFrame:UpdateDisplayFrame()
     local numQuests = #self.questQueue
     local frameHeight = math.min(250, 40 + numQuests * 40)
     ReplayFrame.displayFrame:SetHeight(frameHeight)
+
     for i, button in ipairs(ReplayFrame.buttons) do
         local quest = ReplayFrame.questQueue[i]
         if quest then
-            if ReplayFrame.currentPlayingQuest == quest.id .. quest.phase then
-                button.text:SetText("-> " .. quest.title) -- Highlight with arrow
-            else
-                button.text:SetText(quest.title:gsub("-> ", "")) -- Remove any existing arrow
+            local truncatedTitle = quest.title
+            if string.len(quest.title) > 40 then
+                truncatedTitle = string.sub(quest.title, 1, 37) .. "..."
             end
+            
+            if ReplayFrame.currentPlayingQuest == quest.id .. quest.phase then
+                button.text:SetText("-> " .. truncatedTitle)
+            else
+                button.text:SetText(truncatedTitle:gsub("-> ", ""))
+            end
+
             button.frame:Show()
+
+            -- Set up tooltip for full quest title
+            button.text:SetScript("OnEnter", function()
+                GameTooltip:SetOwner(button.frame, "ANCHOR_RIGHT")
+                GameTooltip:SetText(quest.title)
+                GameTooltip:Show()
+                ReplayFrame:FadeInFrame(ReplayFrame.displayFrame)
+            end)
+            button.text:SetScript("OnLeave", function()
+                GameTooltip_Hide()
+                ReplayFrame:FadeOutFrame(ReplayFrame.displayFrame)
+            end)
         else
             button.frame:Hide()
         end
     end
     ReplayFrame.displayFrame:Show()
+end
+
+function ReplayFrame:FadeInFrame(displayFrame)
+    UIFrameFadeIn(displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 1)
+end
+
+function ReplayFrame:FadeOutFrame(displayFrame)
+    UIFrameFadeOut(displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 0.3)
 end
 
 function ReplayFrame:ShowDisplayFrame()
