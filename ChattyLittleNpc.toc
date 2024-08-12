@@ -11,3 +11,4 @@ options.lua
 replay-frame.lua
 questlog-play-button.lua
 npc-dialog-tracker.lua
+voiceovers.lua

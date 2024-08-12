@@ -102,7 +102,7 @@ function ReplayFrame:CreateDisplayFrame()
         closeButton:SetPoint("TOPRIGHT", ReplayFrame.displayFrame, "TOPRIGHT", -5, -5)
         closeButton:SetScript("OnClick", function()
             ReplayFrame.questQueue = {}
-            ChattyLittleNpc:StopCurrentSound()
+            ChattyLittleNpc.Voiceovers:StopCurrentSound()
             ReplayFrame.displayFrame:Hide()
         end)
 
@@ -134,7 +134,7 @@ function ReplayFrame:CreateDisplayFrame()
             stopButton:SetScript("OnMouseDown", function()
                 local quest = self.questQueue[i]
                 if self.currentPlayingQuest == quest.id .. quest.phase then
-                    ChattyLittleNpc:StopCurrentSound()
+                    ChattyLittleNpc.Voiceovers:StopCurrentSound()
                 end
                 table.remove(ReplayFrame.questQueue, i)
                 ReplayFrame:UpdateDisplayFrame()
@@ -164,7 +164,7 @@ function ReplayFrame:CreateDisplayFrame()
                 local quest = ReplayFrame.questQueue[i]
                 if quest then
                     ReplayFrame.currentPlayingQuest = quest.title .. quest.phase
-                    ChattyLittleNpc:PlayQuestSound(quest.id, quest.phase, quest.npcGender)
+                    ChattyLittleNpc.Voiceovers:PlayQuestSound(quest.id, quest.phase, quest.npcGender)
                     ReplayFrame:UpdateDisplayFrame()
                 end
             end)
@@ -190,7 +190,7 @@ function ReplayFrame:CreateDisplayFrame()
                 local quest = ReplayFrame.questQueue[i]
                 if quest then
                     ReplayFrame.currentPlayingQuest = quest.title .. quest.phase
-                    ChattyLittleNpc:PlayQuestSound(quest.id, "Desc", quest.npcGender)
+                    ChattyLittleNpc.Voiceovers:PlayQuestSound(quest.id, "Desc", quest.npcGender)
                     ReplayFrame:UpdateDisplayFrame()
                 end
             end)

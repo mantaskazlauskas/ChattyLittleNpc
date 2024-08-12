@@ -15,8 +15,8 @@ function PlayButton:GetSelectedQuest()
         local selectedIndex = GetQuestLogSelection()
         if selectedIndex and selectedIndex > 0 then
             local quesTitle, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
-            ChattyLittleNpc.currentQuestId = questID
-            ChattyLittleNpc.currentPhase = "desc"
+            ChattyLittleNpc.Voiceovers.currentQuestId = questID
+            ChattyLittleNpc.Voiceovers.currentPhase = "desc"
             ChattyLittleNpc.currentQuestTitle = quesTitle
             ReplayFrame.ShowDisplayFrame(quesTitle .. " (description)")
             return questID
@@ -34,7 +34,7 @@ function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, 
     button:SetScript("OnClick", function()
         local questID = PlayButton:GetSelectedQuest()
         if questID then
-            ChattyLittleNpc:PlayQuestSound(questID, "Desc")
+            ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Desc")
         end
     end)
     button:Hide()

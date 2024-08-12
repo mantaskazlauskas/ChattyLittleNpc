@@ -4,6 +4,7 @@ ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
 ChattyLittleNpc.Options = ChattyLittleNpc.Options
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
+ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 
 local defaults = {
     profile = {
@@ -26,9 +27,6 @@ local defaults = {
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
 ChattyLittleNpc.useNamespaces = nil
-ChattyLittleNpc.lastSoundHandle = nil
-ChattyLittleNpc.currentQuestId = nil
-ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
@@ -130,16 +128,6 @@ function ChattyLittleNpc:GetUnitInfo(unit)
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
-function ChattyLittleNpc:StopCurrentSound()
-    if self.lastSoundHandle and type(self.lastSoundHandle) == "number" then
-        StopSound(self.lastSoundHandle)
-        self.lastSoundHandle = nil
-    end
-
-    self.ReplayFrame.currentPlayingQuest = nil
-    self.ReplayFrame:UpdateDisplayFrame()
-end
-
 function ChattyLittleNpc:GetTitleForQuestID(questID)
     if self.useNamespaces then
         return C_QuestLog.GetTitleForQuestID(questID)
@@ -156,82 +144,6 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
             table.insert(self.loadedVoiceoverPacks, expansion)
         end
     end
-end
-
-function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
-    self:StopCurrentSound()
-    self.currentQuestId = questId
-    self.currentPhase = phase
-
-    local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
-    local fileName = questId .. "_" .. phase .. ".mp3"
-    local success, newSoundHandle
-
-    local suffix = ""
-    if phase == "Desc" then
-        suffix = " (description"
-    elseif phase == "Prog" then
-        suffix = " (progression"
-    elseif phase == "Comp" then
-        suffix = " (completion"
-    end
-
-    success = false
-    for _, folder in ipairs(self.loadedVoiceoverPacks) do
-        local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
-        local soundPath = ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
-        local retryCount = 0
-        repeat
-            if success == nil then
-                if retryCount == 1 then
-                    soundPath = self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 2 then
-                    soundPath = self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 3 then
-                    soundPath = self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-                end
-                retryCount = retryCount + 1
-            end
-            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-        until success or retryCount > 3  -- Retry until success or tried all voiceover directories
-
-        if success then
-            self.lastSoundHandle = newSoundHandle
-            self.currentQuestTitle = self:GetTitleForQuestID(questId)
-            self.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ")", phase, npcGender)
-            self.ReplayFrame:ShowDisplayFrame()
-            break
-        end
-    end
-
-    if not success and self.db.profile.printMissingFiles then
-        self.currentQuestTitle = self:GetTitleForQuestID(questId)
-        self.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ", voiceover missing)", phase, npcGender)
-        print("Missing voiceover file: " .. fileName)
-    end
-
-    self.ReplayFrame.currentPlayingQuest = questId .. phase -- Track the currently playing quest
-    self.ReplayFrame:UpdateDisplayFrame()
-end
-
-function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
-    if npcGender and (strlower(npcGender) == "male" or strlower(npcGender) == "female") then
-        return corePathToVoiceovers .. strlower(npcGender) .. "\\".. fileName
-    else
-        return self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-    end
-end
-
-function ChattyLittleNpc:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
-    return corePathToVoiceovers .. "female" .. "\\".. fileName
-end
-
-function ChattyLittleNpc:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
-    return corePathToVoiceovers .. "male" .. "\\".. fileName
-end
-
-function ChattyLittleNpc:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-    return corePathToVoiceovers .. fileName -- try the old directory if user didnt update voiceovers
 end
 
 function ChattyLittleNpc:ADDON_LOADED()
@@ -293,14 +205,14 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     local gender = select(2, self:GetUnitInfo("npc"))
     if questId > 0 then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self:PlayQuestSound(questId, questPhase, gender)
+            self.Voiceovers:PlayQuestSound(questId, questPhase, gender)
         end)
     end
 end
 
 function ChattyLittleNpc:HandlePlaybackStop()
     if not self.db.profile.playVoiceoversOnClose then
-        self:StopCurrentSound()
+        self.Voiceovers:StopCurrentSound()
         if self.ReplayFrame then
             self.ReplayFrame.displayFrame:Hide()
         end
