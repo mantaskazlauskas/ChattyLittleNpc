@@ -19,4 +19,4 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 
 ## [Chatty Little NPC Discord](https://discord.gg/fSczNjQ6)
 
-## [PayPal](https://www.paypal.com/donate/?hosted_button_id=VM7HHURP2MYSY)
+## [Buy me a coffee: PayPal](https://www.paypal.com/donate/?hosted_button_id=VM7HHURP2MYSY)
