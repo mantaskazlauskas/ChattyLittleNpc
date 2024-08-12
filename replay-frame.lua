@@ -74,6 +74,7 @@ function ReplayFrame:CreateDisplayFrame()
             tile = true, tileSize = 16, edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
+        UIFrameFadeIn(ReplayFrame.displayFrame, 0.5, ReplayFrame.displayFrame:GetAlpha(), 0.3)
         ReplayFrame.displayFrame:SetBackdropColor(0, 0, 0, 0.3)
         ReplayFrame.displayFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
         ReplayFrame.displayFrame:SetMovable(true)
@@ -210,7 +211,7 @@ function ReplayFrame:CreateDisplayFrame()
 end
 
 function ReplayFrame:UpdateDisplayFrame()
-    if self.questQueue and #self.questQueue == 0 then
+    if not ChattyLittleNpc.db.profile.showReplayFrame or (self.questQueue and #self.questQueue == 0) then
         if ReplayFrame.displayFrame then
             ReplayFrame.displayFrame:Hide()
         end
@@ -253,11 +254,13 @@ function ReplayFrame:UpdateDisplayFrame()
 end
 
 function ReplayFrame:ShowDisplayFrame()
-    if self.questQueue and #self.questQueue == 0 then
-        ReplayFrame.displayFrame:Hide()
-        return
+    if (not ChattyLittleNpc.db.profile.showReplayFrame
+        or (self.questQueue and #self.questQueue == 0))
+        and ReplayFrame.displayFrame then
+            ReplayFrame.displayFrame:Hide()
+            return
     end
+
     ReplayFrame:CreateDisplayFrame()
     ReplayFrame:UpdateDisplayFrame()
 end
-

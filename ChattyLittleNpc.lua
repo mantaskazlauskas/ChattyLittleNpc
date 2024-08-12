@@ -7,13 +7,12 @@ ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 
 local defaults = {
     profile = {
-        useMaleVoice = true,
-        useFemaleVoice = false,
-        useBothVoices = false,
         playVoiceoversOnClose = true,
+        playVoiceoverAfterDelay = 0,
         printMissingFiles = false,
         logNpcTexts = false,
         printNpcTexts = false,
+        showReplayFrame = true,
         framePos = { -- Default position
             point = "CENTER",
             relativeTo = nil,
@@ -31,7 +30,6 @@ ChattyLittleNpc.lastSoundHandle = nil
 ChattyLittleNpc.currentQuestId = nil
 ChattyLittleNpc.currentPhase = nil
 ChattyLittleNpc.currentQuestTitle = nil
-ChattyLittleNpc.dialogState = GetCVar("Sound_DialogVolume")
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.currentItemInfo = {
@@ -83,7 +81,7 @@ function ChattyLittleNpc:OnEnable()
 
     local detailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if detailsFrame then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", detailsFrame, "TOPRIGHT", 0, 30, "ChattyNPCPlayButton")
+        self.PlayButton:AttachPlayButton("TOPRIGHT", detailsFrame, "TOPRIGHT", -20, -10, "ChattyNPCPlayButton")
     end
 
     if QuestLogFrame then
@@ -113,7 +111,7 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
-function ChattyLittleNpc:getUnitInfo(unit)
+function ChattyLittleNpc:GetUnitInfo(unit)
     local unitName = select(1, UnitName(unit)) or ""
     local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
     local sexStr = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
@@ -132,21 +130,7 @@ function ChattyLittleNpc:getUnitInfo(unit)
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
-function ChattyLittleNpc:LowerDialogVolume()
-    SetCVar("Sound_DialogVolume", 0.3)
-    C_Timer.After(3, function ()
-        self:ResetDialogToLastState()
-    end)
-end
-
-function ChattyLittleNpc:ResetDialogToLastState()
-    if self.dialogState then
-        SetCVar("Sound_EnableDialog", self.dialogState)
-    end
-end
-
 function ChattyLittleNpc:StopCurrentSound()
-    self:ResetDialogToLastState()
     if self.lastSoundHandle and type(self.lastSoundHandle) == "number" then
         StopSound(self.lastSoundHandle)
         self.lastSoundHandle = nil
@@ -175,7 +159,6 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
 end
 
 function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
-    local questTitle = self:GetTitleForQuestID(questId)
     self:StopCurrentSound()
     self.currentQuestId = questId
     self.currentPhase = phase
@@ -184,7 +167,6 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
     local fileName = questId .. "_" .. phase .. ".mp3"
     local success, newSoundHandle
 
-    self.currentQuestTitle = questTitle
     local suffix = ""
     if phase == "Desc" then
         suffix = " (description"
@@ -215,15 +197,16 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
 
         if success then
             self.lastSoundHandle = newSoundHandle
-
-            self.ReplayFrame:AddQuestToQueue(questId, questTitle .. suffix .. ")", phase, npcGender)
+            self.currentQuestTitle = self:GetTitleForQuestID(questId)
+            self.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ")", phase, npcGender)
             self.ReplayFrame:ShowDisplayFrame()
             break
         end
     end
 
     if not success and self.db.profile.printMissingFiles then
-        self.ReplayFrame:AddQuestToQueue(questId, questTitle .. suffix .. ", voiceover missing)", phase, npcGender)
+        self.currentQuestTitle = self:GetTitleForQuestID(questId)
+        self.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ", voiceover missing)", phase, npcGender)
         print("Missing voiceover file: " .. fileName)
     end
 
@@ -232,11 +215,7 @@ function ChattyLittleNpc:PlayQuestSound(questId, phase, npcGender)
 end
 
 function ChattyLittleNpc:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
-    if self.db.profile.useMaleVoice or not npcGender then
-        return self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
-    elseif self.db.profile.useFemaleVoice then
-        return self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
-    elseif (self.db.profile.useBothVoices and (strlower(npcGender) == "male" or strlower(npcGender) == "female")) then
+    if npcGender and (strlower(npcGender) == "male" or strlower(npcGender) == "female") then
         return corePathToVoiceovers .. strlower(npcGender) .. "\\".. fileName
     else
         return self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
@@ -310,14 +289,12 @@ function ChattyLittleNpc:ITEM_TEXT_READY()
 end
 
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
-    if (self.dialogState) then
-        self:LowerDialogVolume()
-    end
-
     local questId = GetQuestID()
-    local gender = select(2, self:getUnitInfo("npc"))
+    local gender = select(2, self:GetUnitInfo("npc"))
     if questId > 0 then
-        self:PlayQuestSound(questId, questPhase, gender)
+        C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
+            self:PlayQuestSound(questId, questPhase, gender)
+        end)
     end
 end
 

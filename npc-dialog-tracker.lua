@@ -162,7 +162,7 @@ function NpcDialogTracker:HandleQuestTexts(event)
     end
 
     -- QUESTS FROM NPCS
-    local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:getUnitInfo("npc")
+    local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:GetUnitInfo("npc")
     if unitGuid and unitType == "Creature" then -- QUESTS FROM NPCS
         self:storeNpcInfo(unitName, gender, race, unitId)
         self:storeQuestInfo(unitId, questID, event, text)
@@ -216,7 +216,7 @@ end
 
 function NpcDialogTracker:HandleGossipText()
     -- THIS IS FOR INTERACTING WITH NPCS
-    local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:getUnitInfo("npc")
+    local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:GetUnitInfo("npc")
     local gossipText = C_GossipInfo.GetText()
     if UnitExists("npc") then
         self:storeNpcInfo(unitName, gender, race, unitId)

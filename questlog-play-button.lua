@@ -27,9 +27,10 @@ end
 
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
     local button = CreateFrame("Button", buttonName, relativeTo, "UIPanelButtonTemplate")
-    button:SetSize(80, 25)
+    button:SetSize(120, 25)
     button:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
-    button:SetText("Play Audio")
+    button:SetText("Play Voiceover")
+    button:SetFrameStrata("TOOLTIP")
     button:SetScript("OnClick", function()
         local questID = PlayButton:GetSelectedQuest()
         if questID then
