@@ -18,3 +18,5 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 - (In Progress) In even further future, it would be nice to generate voiceovers for different races and body types ~~(learning how to train my own voices at the moment during my free time)~~ (edit: got some helping hands with model training so things are moving).
 
 ## [Chatty Little NPC Discord](https://discord.gg/fSczNjQ6)
+
+## [PayPal](https://www.paypal.com/donate/?hosted_button_id=VM7HHURP2MYSY)
