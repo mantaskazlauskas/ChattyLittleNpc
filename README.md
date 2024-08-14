@@ -14,8 +14,10 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 
 ## Future Plans
 
-- (DONE) ~~What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices.~~ 
-- (In Progress) In even further future, it would be nice to generate voiceovers for different races and body types ~~(learning how to train my own voices at the moment during my free time)~~ (edit: got some helping hands with model training so things are moving).
+- (DONE) What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices;
+- (DONE) Add the handling for all types of texts (gossip, quest description, quest progression, quest completion, quest greeting), so that npcs would really be chatty;
+- (DONE) Add mechanism to collect texts while playing the game and later generate (or regenerate) new or missing voiceovers;
+- (In Progress) Generate voiceovers for different races and body types so that different types of npcs would feel distinct.
 
 ## [Chatty Little NPC Discord](https://discord.gg/fSczNjQ6)
 
