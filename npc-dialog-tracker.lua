@@ -4,15 +4,6 @@ local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local NpcDialogTracker = {}
 ChattyLittleNpc.NpcDialogTracker = NpcDialogTracker
 
-function NpcDialogTracker:cleanText(text)
-    text = text:gsub("\n\n", " ")
-    text = text:gsub("\r\n", " ")
-    text = text:gsub(UnitName("player"), "Hero")
-    text = text:gsub(UnitClass("player"), "Hero")
-    text = text:gsub(UnitRace("player"), "Hero")
-    return text
-end
-
 function NpcDialogTracker:ensureNpcInfoInitialized(npcID)
     if not NpcInfoDB[npcID] then
         NpcInfoDB[npcID] = {}
@@ -60,7 +51,7 @@ function NpcDialogTracker:storeQuestInfo(npcID, questID, eventType, text)
         }
     end
 
-    text = self:cleanText(text)
+    text = ChattyLittleNpc:cleanText(text)
     if eventType == "QUEST_DETAIL" then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_detail = text
     elseif eventType == "QUEST_PROGRESS" then
@@ -79,12 +70,19 @@ end
 
 function NpcDialogTracker:storeGossipOptionsInfo(npcID, gossipText)
     self:ensureNpcInfoInitialized(npcID)
-    local text = self:cleanText(gossipText)
-    if not tContains(NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions, text) then
-        table.insert(NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions, text)
+
+    if not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions then
+        NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions = {}
+    end
+
+    local text = ChattyLittleNpc:cleanText(gossipText)
+    local hash = ChattyLittleNpc.MD5:md5(npcID .. text)
+    if not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] then
+        NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] = text
+
         if ChattyLittleNpc.db.profile.printNpcTexts then
             print("------------------------>")
-            print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text)
+            print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. hash)
         end
     end
 end
@@ -116,7 +114,7 @@ function NpcDialogTracker:storeUnitInfo(unitID, unitName, unitText, unitType, pa
     self:ensureUnitInfoInitialized(unitID)
     UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName = unitName
     UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType = unitType
-    UnitInfoDB[unitID][ChattyLittleNpc.locale].unitText = self:cleanText(unitText)
+    UnitInfoDB[unitID][ChattyLittleNpc.locale].unitText = ChattyLittleNpc:cleanText(unitText)
 
     if questId and questText then
         if not UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId] then
@@ -128,11 +126,11 @@ function NpcDialogTracker:storeUnitInfo(unitID, unitName, unitText, unitType, pa
         end
 
         if eventType == "QUEST_DETAIL" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail = self:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail = ChattyLittleNpc:cleanText(questText)
         elseif eventType == "QUEST_PROGRESS" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress = self:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress = ChattyLittleNpc:cleanText(questText)
         elseif eventType == "QUEST_COMPLETE" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete = self:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete = ChattyLittleNpc:cleanText(questText)
         end
     end
 

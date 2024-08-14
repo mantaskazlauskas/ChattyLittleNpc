@@ -5,6 +5,7 @@ ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
 ChattyLittleNpc.Options = ChattyLittleNpc.Options
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
+ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 
 local defaults = {
     profile = {
@@ -35,7 +36,6 @@ ChattyLittleNpc.currentItemInfo = {
     ItemName = nil,
     ItemText = nil
 }
-
 
 hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot, onSelf)
     ChattyLittleNpc.currentItemInfo.ItemID = nil
@@ -109,6 +109,15 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
+function ChattyLittleNpc:cleanText(text)
+    text = text:gsub("\n\n", " ")
+    text = text:gsub("\r\n", " ")
+    text = text:gsub(UnitName("player"), "Hero")
+    text = text:gsub(UnitClass("player"), "Hero")
+    text = text:gsub(UnitRace("player"), "Hero")
+    return text
+end
+
 function ChattyLittleNpc:GetUnitInfo(unit)
     local unitName = select(1, UnitName(unit)) or ""
     local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
@@ -151,6 +160,8 @@ function ChattyLittleNpc:ADDON_LOADED()
 end
 
 function ChattyLittleNpc:GOSSIP_SHOW()
+    self:HandleGossipPlaybackStart()
+
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleGossipText()
     end
@@ -206,6 +217,19 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     if questId > 0 then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayQuestSound(questId, questPhase, gender)
+        end)
+    end
+end
+
+
+function ChattyLittleNpc:HandleGossipPlaybackStart(hash)
+    local gossipText = C_GossipInfo.GetText()
+    local text =  self:cleanText(gossipText)
+    local _, gender, _, _, _, npcId = self:GetUnitInfo("npc")
+    local hash = ChattyLittleNpc.MD5:md5(npcId .. text)
+    if npcId and npcId> 0 then
+        C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
+            self.Voiceovers:PlayGossipSound(npcId, hash, gender)
         end)
     end
 end

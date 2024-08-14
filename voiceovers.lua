@@ -76,6 +76,43 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
     ChattyLittleNpc.ReplayFrame:UpdateDisplayFrame()
 end
 
+function Voiceovers:PlayGossipSound(npcId, hash, npcGender)
+    self:StopCurrentSound()
+
+    local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
+    local fileName = npcId .. "_Gossip_" .. hash .. ".mp3"
+    local success, newSoundHandle
+
+    success = false
+    for _, folder in ipairs(ChattyLittleNpc.loadedVoiceoverPacks) do
+        local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
+        local soundPath = self:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
+        local retryCount = 0
+        repeat
+            if success == nil then
+                if retryCount == 1 then
+                    soundPath = self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
+                elseif retryCount == 2 then
+                    soundPath = self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
+                elseif retryCount == 3 then
+                    soundPath = self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
+                end
+                retryCount = retryCount + 1
+            end
+            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+        until success or retryCount > 3  -- Retry until success or tried all voiceover directories
+
+        if success then
+            self.lastSoundHandle = newSoundHandle
+            break
+        end
+    end
+
+    if not success and ChattyLittleNpc.db.profile.printMissingFiles then
+        print("Missing voiceover file: " .. fileName)
+    end
+end
+
 function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
     if npcGender and (strlower(npcGender) == "male" or strlower(npcGender) == "female") then
         return corePathToVoiceovers .. strlower(npcGender) .. "\\".. fileName
