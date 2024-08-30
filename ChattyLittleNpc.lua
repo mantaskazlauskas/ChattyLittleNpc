@@ -221,7 +221,7 @@ end
 
 
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
-    if id and id > 0 then
+    if id and id > 0 and text then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             local text =  self:CleanText(text)
             local hash = ChattyLittleNpc.MD5:GenerateHash(id .. text)

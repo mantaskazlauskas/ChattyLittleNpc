@@ -21,6 +21,10 @@ function Voiceovers:StopCurrentSound()
 end
 
 function Voiceovers:PlayQuestSound(questId, phase, npcGender)
+    if not questId then
+        return -- fail fast if no quest ID
+    end
+
     self:StopCurrentSound()
     self.currentQuestId = questId
     self.currentPhase = phase
@@ -70,7 +74,9 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
 
     if not success and ChattyLittleNpc.db.profile.printMissingFiles then
         self.currentQuestTitle = ChattyLittleNpc:GetTitleForQuestID(questId)
-        ChattyLittleNpc.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ", voiceover missing)", phase, npcGender)
+        if self.currentQuestTitle then
+            ChattyLittleNpc.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ", voiceover missing)", phase, npcGender)
+        end
         print("Missing voiceover file: " .. fileName)
     end
 
@@ -79,6 +85,10 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
 end
 
 function Voiceovers:PlayNonQuestSound(npcId, soundType ,hash, npcGender)
+    if not npcId or not soundType or not hash then
+        return -- fail fast in case of missing argument values
+    end
+    
     self:StopCurrentSound()
 
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"

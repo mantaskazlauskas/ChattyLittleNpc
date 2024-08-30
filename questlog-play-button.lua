@@ -18,7 +18,9 @@ function PlayButton:GetSelectedQuest()
             ChattyLittleNpc.Voiceovers.currentQuestId = questID
             ChattyLittleNpc.Voiceovers.currentPhase = "desc"
             ChattyLittleNpc.currentQuestTitle = quesTitle
-            ReplayFrame.ShowDisplayFrame(quesTitle .. " (description)")
+            if ChattyLittleNpc.currentQuestTitle then
+                ReplayFrame.ShowDisplayFrame(ChattyLittleNpc.currentQuestTitle .. " (description)")
+            end
             return questID
         end
     end

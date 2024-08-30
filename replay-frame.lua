@@ -133,9 +133,11 @@ function ReplayFrame:CreateDisplayFrame()
             end)
             stopButton:SetScript("OnMouseDown", function()
                 local quest = self.questQueue[i]
-                if self.currentPlayingQuest == quest.id .. quest.phase then
+
+                if quest and quest.id and quest.pahse and self.currentPlayingQuest == quest.id .. quest.phase then
                     ChattyLittleNpc.Voiceovers:StopCurrentSound()
                 end
+                
                 table.remove(ReplayFrame.questQueue, i)
                 ReplayFrame:UpdateDisplayFrame()
                 if #self.questQueue == 0 then
@@ -162,7 +164,7 @@ function ReplayFrame:CreateDisplayFrame()
             end)
             replayButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
-                if quest then
+                if quest and quest.id and quest.title and quest.phase then
                     ReplayFrame.currentPlayingQuest = quest.title .. quest.phase
                     ChattyLittleNpc.Voiceovers:PlayQuestSound(quest.id, quest.phase, quest.npcGender)
                     ReplayFrame:UpdateDisplayFrame()
@@ -188,7 +190,7 @@ function ReplayFrame:CreateDisplayFrame()
             end)
             descButton:SetScript("OnMouseDown", function()
                 local quest = ReplayFrame.questQueue[i]
-                if quest then
+                if quest and quest.title and quest.phase then
                     ReplayFrame.currentPlayingQuest = quest.title .. quest.phase
                     ChattyLittleNpc.Voiceovers:PlayQuestSound(quest.id, "Desc", quest.npcGender)
                     ReplayFrame:UpdateDisplayFrame()
@@ -229,7 +231,7 @@ function ReplayFrame:UpdateDisplayFrame()
                 truncatedTitle = string.sub(quest.title, 1, 25) .. "..."
             end
 
-            if ReplayFrame.currentPlayingQuest == quest.id .. quest.phase then
+            if quest and quest.id and quest.phase and ReplayFrame.currentPlayingQuest == quest.id .. quest.phase then
                 button.text:SetText("-> " .. truncatedTitle) -- Highlight with arrow
             else
                 button.text:SetText(truncatedTitle:gsub("-> ", "")) -- Remove any existing arrow
