@@ -60,8 +60,10 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
         if success then
             self.lastSoundHandle = newSoundHandle
             self.currentQuestTitle = ChattyLittleNpc:GetTitleForQuestID(questId)
-            ChattyLittleNpc.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ")", phase, npcGender)
-            ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+            if self.currentQuestTitle then
+                ChattyLittleNpc.ReplayFrame:AddQuestToQueue(questId, self.currentQuestTitle .. suffix .. ")", phase, npcGender)
+                ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+            end
             break
         end
     end
