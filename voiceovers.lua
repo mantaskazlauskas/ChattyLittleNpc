@@ -76,11 +76,11 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
     ChattyLittleNpc.ReplayFrame:UpdateDisplayFrame()
 end
 
-function Voiceovers:PlayGossipSound(npcId, hash, npcGender)
+function Voiceovers:PlayNonQuestSound(npcId, soundType ,hash, npcGender)
     self:StopCurrentSound()
 
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
-    local fileName = npcId .. "_Gossip_" .. hash .. ".mp3"
+    local fileName = npcId .. "_".. soundType .."_" .. hash .. ".mp3"
     local success, newSoundHandle
 
     success = false

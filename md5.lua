@@ -38,7 +38,7 @@ function MD5:lrot(x, n)
 end
 
 -- Padding function
-function MD5:md5_padding(len)
+function MD5:Padding(len)
     local bits = len * 8
     local pad_len = 56 - (len + 1) % 64
     if pad_len < 0 then pad_len = pad_len + 64 end
@@ -52,7 +52,7 @@ function MD5:md5_padding(len)
 end
 
 -- Process the message in successive 512-bit chunks
-function MD5:md5_process_chunk(chunk, H0, H1, H2, H3)
+function MD5:ProcessChunk(chunk, H0, H1, H2, H3)
     local F, G, temp
     local a, b, c, d = H0, H1, H2, H3
 
@@ -98,17 +98,42 @@ function MD5:md5_process_chunk(chunk, H0, H1, H2, H3)
 end
 
 -- Main MD5 function
-function MD5:md5(message)
+function MD5:GenerateHash(message)
     -- Reset MD5 initialization constants
     local H0, H1, H2, H3 = 0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476
 
     -- Pre-process the message
-    message = message .. self:md5_padding(#message)
+    message = message .. self:Padding(#message)
 
     for i = 1, #message, 64 do
         local chunk = {byte(sub(message, i, i + 63), 1, 64)}
-        H0, H1, H2, H3 = self:md5_process_chunk(chunk, H0, H1, H2, H3)
+        H0, H1, H2, H3 = self:ProcessChunk(chunk, H0, H1, H2, H3)
     end
 
     return string.format("%08x%08x%08x%08x", H0, H1, H2, H3)
+end
+
+function ChattyLittleNpc:RunMD5TestCases()
+    local testCases = {
+        "Hello, World!",                      -- Basic test
+        "1234567890",                         -- Numbers only
+        "!@#$%^&*()_+-=[]{};':\",.<>/?",      -- Special characters
+        "The quick brown fox jumps over the lazy dog!", -- Sentence with spaces and punctuation
+        "🙂🚀✨",                             -- Unicode emojis (depends on Lua environment support)
+        "\n\t\r",                             -- Control characters (newline, tab, carriage return)
+        "A very, very long string with lots of characters! 1234567890!@#$%^&*()_+-=[]{};':\",.<>/?", -- Long string
+        "MixedCASE123!@#",                    -- Mixed case with numbers and special characters
+    }
+
+    for _, text in ipairs(testCases) do
+        print("Original Text: " .. text)
+        local hash = self.MD5:GenerateHash(text)
+        print("MD5 Hash: " .. hash)
+        print("--------------------------")
+    end
+end
+
+SLASH_MD5TEST1 = "/md5test"
+SlashCmdList["MD5TEST"] = function()
+    ChattyLittleNpc:RunMD5TestCases()
 end

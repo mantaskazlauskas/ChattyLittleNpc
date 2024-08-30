@@ -4,7 +4,7 @@ local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local NpcDialogTracker = {}
 ChattyLittleNpc.NpcDialogTracker = NpcDialogTracker
 
-function NpcDialogTracker:ensureNpcInfoInitialized(npcID)
+function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
     if not NpcInfoDB[npcID] then
         NpcInfoDB[npcID] = {}
     end
@@ -13,8 +13,11 @@ function NpcDialogTracker:ensureNpcInfoInitialized(npcID)
         NpcInfoDB[npcID][ChattyLittleNpc.locale] = {
             name = "",
             sex = "",
+            hasMultipleGenders = false,
             race = "",
             quest_greeting = "",
+            zone = "",
+            subZone = "",
             quests = {},
             gossipOptions = {}
         }
@@ -29,11 +32,16 @@ function NpcDialogTracker:ensureNpcInfoInitialized(npcID)
     end
 end
 
-function NpcDialogTracker:storeNpcInfo(unitName, gender, race, npcID)
-    self:ensureNpcInfoInitialized(npcID)
+function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID)
+    self:EnsureNpcInfoInitialized(npcID)
     NpcInfoDB[npcID][ChattyLittleNpc.locale].name = unitName
+    if NpcInfoDB[npcID][ChattyLittleNpc.locale].sex and NpcInfoDB[npcID][ChattyLittleNpc.locale].sex ~= gender then
+        NpcInfoDB[npcID][ChattyLittleNpc.locale].hasMultipleGenders = true
+    end
     NpcInfoDB[npcID][ChattyLittleNpc.locale].sex = gender
     NpcInfoDB[npcID][ChattyLittleNpc.locale].race = race
+    NpcInfoDB[npcID][ChattyLittleNpc.locale].zone = GetZoneText()
+    NpcInfoDB[npcID][ChattyLittleNpc.locale].subzone = GetSubZoneText()
 
     if ChattyLittleNpc.db.profile.printNpcTexts then
         print("------------------------>")
@@ -41,8 +49,8 @@ function NpcDialogTracker:storeNpcInfo(unitName, gender, race, npcID)
     end
 end
 
-function NpcDialogTracker:storeQuestInfo(npcID, questID, eventType, text)
-    self:ensureNpcInfoInitialized(npcID)
+function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
+    self:EnsureNpcInfoInitialized(npcID)
     if not NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID] then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID] = {
             quest_detail = "",
@@ -51,7 +59,7 @@ function NpcDialogTracker:storeQuestInfo(npcID, questID, eventType, text)
         }
     end
 
-    text = ChattyLittleNpc:cleanText(text)
+    text = ChattyLittleNpc:CleanText(text)
     if eventType == "QUEST_DETAIL" then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_detail = text
     elseif eventType == "QUEST_PROGRESS" then
@@ -68,15 +76,15 @@ function NpcDialogTracker:storeQuestInfo(npcID, questID, eventType, text)
     end
 end
 
-function NpcDialogTracker:storeGossipOptionsInfo(npcID, gossipText)
-    self:ensureNpcInfoInitialized(npcID)
+function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText)
+    self:EnsureNpcInfoInitialized(npcID)
 
     if not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions = {}
     end
 
-    local text = ChattyLittleNpc:cleanText(gossipText)
-    local hash = ChattyLittleNpc.MD5:md5(npcID .. text)
+    local text = ChattyLittleNpc:CleanText(gossipText)
+    local hash = ChattyLittleNpc.MD5:GenerateHash(npcID .. text)
     if not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] = text
 
@@ -87,7 +95,7 @@ function NpcDialogTracker:storeGossipOptionsInfo(npcID, gossipText)
     end
 end
 
-function NpcDialogTracker:ensureUnitInfoInitialized(unitID)
+function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
     if not UnitInfoDB[unitID] then
         UnitInfoDB[unitID] = {}
     end
@@ -96,25 +104,27 @@ function NpcDialogTracker:ensureUnitInfoInitialized(unitID)
         UnitInfoDB[unitID][ChattyLittleNpc.locale] = {
             unitType = "",
             unitName = "",
-            unitText = "",
+            unitTexts = {},
             quests = {}
-        }
+        } 
     end
 end
 
-function NpcDialogTracker:storeUnitInfo(unitID, unitName, unitText, unitType, params)
-    if not unitText then
-        unitText = ""
-    end
+function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, params)
     params = params or {}
     local questId = params.questId
     local questText = params.questText or ""
     local eventType = params.eventType or ""
 
-    self:ensureUnitInfoInitialized(unitID)
+    self:EnsureUnitInfoInitialized(unitID)
     UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName = unitName
     UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType = unitType
-    UnitInfoDB[unitID][ChattyLittleNpc.locale].unitText = ChattyLittleNpc:cleanText(unitText)
+    local textHash = nil
+    if unitID and unitText then
+        unitText = ChattyLittleNpc:CleanText(unitText)
+        textHash = ChattyLittleNpc.MD5:GenerateHash(unitID .. unitText)
+        UnitInfoDB[unitID][ChattyLittleNpc.locale].unitTexts[textHash] = unitText
+    end
 
     if questId and questText then
         if not UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId] then
@@ -124,26 +134,28 @@ function NpcDialogTracker:storeUnitInfo(unitID, unitName, unitText, unitType, pa
                 quest_complete = ""
             }
         end
+        questText = ChattyLittleNpc:CleanText(questText)
 
         if eventType == "QUEST_DETAIL" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail = ChattyLittleNpc:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail = questText
         elseif eventType == "QUEST_PROGRESS" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress = ChattyLittleNpc:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress = questText
         elseif eventType == "QUEST_COMPLETE" then
-            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete = ChattyLittleNpc:cleanText(questText)
+            UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete = questText
         end
     end
 
     if ChattyLittleNpc.db.profile.printNpcTexts then
         print("------------------------>")
-        print("|cff00ff00Unit info collected: \r\n- Unit ID: " .. unitID .."\r\n- Unit Name: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName .. "\r\n- Unit Type: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType .. "\r\n- Unit Text: \r\n" .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitText)
+        print("|cff00ff00Unit info collected: \r\n- Unit ID: " .. unitID .."\r\n- Unit Name: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName .. "\r\n- Unit Type: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType)
+        if textHash then
+            print("|cff00ff00Unit info collected: \r\n- Unit Text: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitTexts[textHash] .. "\r\n- Unit Text Hash: " .. textHash)
+        end
+
         if questId then
             print("|cff00ff00" .. unitType .. " Quests: \r\n- Quest ID: " .. questId .. "\r\n- Quest Detail: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail .. "\r\n- Quest Progress: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress .. "\r\n- Quest Completion: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete)
         end
     end
-    ChattyLittleNpc.currentItemInfo.ItemID = nil
-    ChattyLittleNpc.currentItemInfo.ItemName = nil
-    ChattyLittleNpc.currentItemInfo.ItemText = nil
 end
 
 function NpcDialogTracker:HandleQuestTexts(event)
@@ -162,53 +174,31 @@ function NpcDialogTracker:HandleQuestTexts(event)
     -- QUESTS FROM NPCS
     local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:GetUnitInfo("npc")
     if unitGuid and unitType == "Creature" then -- QUESTS FROM NPCS
-        self:storeNpcInfo(unitName, gender, race, unitId)
-        self:storeQuestInfo(unitId, questID, event, text)
+        self:StoreNpcInfo(unitName, gender, race, unitId)
+        self:StoreQuestInfo(unitId, questID, event, text)
     elseif unitType == "Player" then -- POPUP QUESTS
-        self:storeNpcInfo("Player", "", "", 0)
-        self:storeQuestInfo(0, questID, event, text)
+        self:StoreNpcInfo("Player", "", "", 0)
+        self:StoreQuestInfo(0, questID, event, text)
     elseif unitType == "GameObject" then -- Quests from GameObjects
-        self:storeUnitInfo(unitType, unitName, "", unitType, { questId = questID, questText = text, eventType = event } )
+        self:StoreUnitInfo(unitId, unitName, "", unitType, { questId = questID, questText = text, eventType = event } )
     else -- HANDLE QUESTS FROM INVENTORY ITEMS
         if ChattyLittleNpc.currentItemInfo.ItemID and ChattyLittleNpc.currentItemInfo.ItemName and (ChattyLittleNpc.currentItemInfo.ItemText or text) then
-            self:storeUnitInfo(ChattyLittleNpc.currentItemInfo.ItemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText , "Item", { questId = questID, questText = text, eventType = event } )
+            self:StoreUnitInfo(ChattyLittleNpc.currentItemInfo.ItemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText , "Item", { questId = questID, questText = text, eventType = event } )
         end
     end
 end
 
-function NpcDialogTracker:HandleItemTextReady()
-    if ChattyLittleNpc.useNamespaces then
-        C_Timer.After(0.5, function ()
-            ChattyLittleNpc.currentItemInfo.ItemName = ItemTextGetItem()
-            ChattyLittleNpc.currentItemInfo.ItemText = ItemTextGetText()
-            local unitGuid = UnitGUID('npc')
-            if ChattyLittleNpc.currentItemInfo.ItemName and ChattyLittleNpc.currentItemInfo.ItemText and unitGuid then
-                local unitType = select(1, string.split('-', unitGuid))
-                if unitType == "Item" then
-                    self:storeUnitInfo(ChattyLittleNpc.currentItemInfo.ItemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText, unitType)
-                else 
-                    local itemID = select(6, string.split("-", unitGuid));
-                    self:storeUnitInfo(itemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText, unitType)
-                    return
-                end
-            end
-        end)
-    else
-        self:ScheduleTimer(0.5, function ()
-            ChattyLittleNpc.currentItemInfo.ItemName = ItemTextGetItem()
-            ChattyLittleNpc.currentItemInfo.ItemText = ItemTextGetText()
-            local unitGuid = UnitGUID('npc')
-            if ChattyLittleNpc.currentItemInfo.ItemName and ChattyLittleNpc.currentItemInfo.ItemText and unitGuid then
-                local unitType = select(1, string.split('-', unitGuid))
-                if unitType == "Item" then
-                    self:storeUnitInfo(ChattyLittleNpc.currentItemInfo.ItemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText, unitType)
-                else 
-                    local itemID = select(6, string.split("-", unitGuid));
-                    self:storeUnitInfo(itemID, ChattyLittleNpc.currentItemInfo.ItemName, ChattyLittleNpc.currentItemInfo.ItemText, unitType)
-                    return
-                end
-            end
-        end)
+function NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
+    local unitGuid = UnitGUID('npc')
+    if itemName and itemText and unitGuid then
+        local unitType = select(1, string.split('-', unitGuid))
+        if unitType == "Item" then
+            self:StoreUnitInfo(itemId, itemName, itemText, unitType)
+        else 
+            local itemID = select(6, string.split("-", unitGuid));
+            self:StoreUnitInfo(itemID, itemName, itemText, unitType)
+            return
+        end
     end
 end
 
@@ -217,15 +207,15 @@ function NpcDialogTracker:HandleGossipText()
     local unitName, gender, race, unitGuid, unitType, unitId = ChattyLittleNpc:GetUnitInfo("npc")
     local gossipText = C_GossipInfo.GetText()
     if UnitExists("npc") then
-        self:storeNpcInfo(unitName, gender, race, unitId)
+        self:StoreNpcInfo(unitName, gender, race, unitId)
         if gossipText then
-            self:storeGossipOptionsInfo(unitId, gossipText)
+            self:StoreGossipOptionsInfo(unitId, gossipText)
         end
     end
     -- THIS IS FOR INTERACTING WITH GAME OBJECTS
     if unitGuid then
         if unitType == "GameObject" then
-            ChattyLittleNpc.NpcDialogTracker:storeUnitInfo(unitId, unitName, gossipText, unitType)
+            ChattyLittleNpc.NpcDialogTracker:StoreUnitInfo(unitId, unitName, gossipText, unitType)
         end
     end
 end

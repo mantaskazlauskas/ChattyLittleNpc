@@ -6,6 +6,7 @@ ChattyLittleNpc.Options = ChattyLittleNpc.Options
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
+ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 
 local defaults = {
     profile = {
@@ -36,22 +37,7 @@ ChattyLittleNpc.currentItemInfo = {
     ItemName = nil,
     ItemText = nil
 }
-
-hooksecurefunc(C_Container, "UseContainerItem", function(bag, slot, onSelf)
-    ChattyLittleNpc.currentItemInfo.ItemID = nil
-    ChattyLittleNpc.currentItemInfo.ItemName = nil
-    ChattyLittleNpc.currentItemInfo.ItemText = nil
-    local itemID = C_Container.GetContainerItemID(bag, slot)
-    if itemID then
-        local itemName = select(1 ,C_Item.GetItemInfo(itemID))
-        ChattyLittleNpc.currentItemInfo.ItemID = itemID
-        ChattyLittleNpc.currentItemInfo.ItemName = itemName
-        local itemText = ItemTextGetText()
-        if(itemText) then
-            ChattyLittleNpc.currentItemInfo.ItemText = itemText
-        end
-    end
-end)
+ChattyLittleNpc.usedContainerItems = {}
 
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
@@ -109,7 +95,7 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
-function ChattyLittleNpc:cleanText(text)
+function ChattyLittleNpc:CleanText(text)
     text = text:gsub("\n\n", " ")
     text = text:gsub("\r\n", " ")
     text = text:gsub(UnitName("player"), "Hero")
@@ -134,6 +120,7 @@ function ChattyLittleNpc:GetUnitInfo(unit)
             unitId = tonumber(idString)
         end
     end
+
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
@@ -160,7 +147,13 @@ function ChattyLittleNpc:ADDON_LOADED()
 end
 
 function ChattyLittleNpc:GOSSIP_SHOW()
-    self:HandleGossipPlaybackStart()
+    local gossipText = C_GossipInfo.GetText()
+    local _, gender, _, _, unitType, unitId = self:GetUnitInfo("npc")
+    local soundType = "Gossip"
+    if unitType == "GameObject" then
+        soundType = "GameObject"
+    end
+    self:HandleGossipPlaybackStart(gossipText, soundType, unitId, gender)
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleGossipText()
@@ -206,9 +199,14 @@ function ChattyLittleNpc:QUEST_FINISHED()
 end
 
 function ChattyLittleNpc:ITEM_TEXT_READY()
+    local itemName = ItemTextGetItem()
+    local itemText = ItemTextGetText()
+    local itemId = C_Item.GetItemInfoInstant(itemName)
+
     if self.db.profile.logNpcTexts then
-        self.NpcDialogTracker:HandleItemTextReady()
-    end
+        self.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
+    end 
+    self:HandleGossipPlaybackStart(itemText, "Item" ,itemId)
 end
 
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
@@ -222,14 +220,12 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
 end
 
 
-function ChattyLittleNpc:HandleGossipPlaybackStart(hash)
-    local gossipText = C_GossipInfo.GetText()
-    local text =  self:cleanText(gossipText)
-    local _, gender, _, _, _, npcId = self:GetUnitInfo("npc")
-    local hash = ChattyLittleNpc.MD5:md5(npcId .. text)
-    if npcId and npcId> 0 then
+function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
+    if id and id > 0 then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.Voiceovers:PlayGossipSound(npcId, hash, gender)
+            local text =  self:CleanText(text)
+            local hash = ChattyLittleNpc.MD5:GenerateHash(id .. text)
+            self.Voiceovers:PlayNonQuestSound(id, soundType, hash, gender)
         end)
     end
 end
