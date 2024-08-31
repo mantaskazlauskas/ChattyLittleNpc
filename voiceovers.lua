@@ -10,6 +10,7 @@ Voiceovers.currentlyPlaying = {
     questId = nil,
     soundHandle = nil,
     title = nil,
+    finishedPlaying = nil
 }
 
 ChattyLittleNpc.Voiceovers = Voiceovers
@@ -20,7 +21,7 @@ function Voiceovers:StartSoundMonitor()
             return -- Quest audio is still playing, do nothing
         end
 
-        self.currentlyPlaying = nil
+        self.currentlyPlaying.finishedPlaying = true
 
         if ChattyLittleNpc.questsQueue and #ChattyLittleNpc.questsQueue > 0 then
             local nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1)
@@ -39,7 +40,7 @@ function Voiceovers:ForceStopCurrentSound(clearQueue)
 
     if self.currentlyPlaying and self.currentlyPlaying.soundHandle then
         StopSound(self.currentlyPlaying.soundHandle)
-        self.currentlyPlaying = nil
+        self.currentlyPlaying.finishedPlaying = true
     end
 
     ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
@@ -66,7 +67,9 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
     local fileName = questId .. "_" .. phase .. ".mp3"
     local success, newSoundHandle
 
-    if self.currentlyPlaying and self.currentlyPlaying.soundHandle and self.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(self.currentlyPlaying.soundHandle) then
+    if self.currentlyPlaying 
+        and not self.currentlyPlaying.finishedPlaying
+        and self.currentlyPlaying.soundHandle and self.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(self.currentlyPlaying.soundHandle) then
 
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
             if queuedAudio.questId == questId and queuedAudio.phase == phase then
@@ -125,6 +128,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
             self.currentlyPlaying.questId = questId
             self.currentlyPlaying.title = ChattyLittleNpc:GetTitleForQuestID(questId)
             self.currentlyPlaying.cantBeInterrupted = true
+            self.currentlyPlaying.finishedPlaying = false
 
             if self.currentlyPlaying.title then
                 ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
@@ -140,13 +144,16 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
     ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
 end
 
+-- Play non quest related text like gossip or text from items.
 function Voiceovers:PlayNonQuestSound(npcId, soundType ,hash, npcGender)
     if not npcId or not soundType or not hash then
         return -- fail fast in case of missing argument values
     end
 
     if self.currentlyPlaying and self.currentlyPlaying.soundHandle then
-        print("STOP", self.currentlyPlaying.soundHandle)
+        if self.currentlyPlaying.cantBeInterrupted and not self.currentlyPlaying.finishedPlaying then
+            return -- skip if a quest audio is playing
+        end
         StopSound(self.currentlyPlaying.soundHandle)
     end
 
@@ -183,7 +190,6 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType ,hash, npcGender)
                 self.currentlyPlaying = {}
             end
             self.currentlyPlaying.soundHandle = newSoundHandle
-            print("START: ", self.currentlyPlaying.soundHandle)
             self.currentlyPlaying.gender = npcGender
             self.currentlyPlaying.cantBeInterrupted = false
             break

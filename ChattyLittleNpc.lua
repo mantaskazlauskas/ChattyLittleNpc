@@ -50,10 +50,12 @@ end
 function ChattyLittleNpc:OnEnable()
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("GOSSIP_SHOW")
+    self:RegisterEvent("GOSSIP_CLOSED")
     self:RegisterEvent("QUEST_GREETING")
     self:RegisterEvent("QUEST_DETAIL")
     self:RegisterEvent("QUEST_PROGRESS")
     self:RegisterEvent("QUEST_COMPLETE")
+    self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("ITEM_TEXT_READY")
 
     if self.ReplayFrame.displayFrame then
@@ -84,10 +86,12 @@ end
 function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ADDON_LOADED")
     self:UnregisterEvent("GOSSIP_SHOW")
+    self:UnregisterEvent("GOSSIP_CLOSED")
     self:UnregisterEvent("QUEST_GREETING")
     self:UnregisterEvent("QUEST_DETAIL")
     self:UnregisterEvent("QUEST_PROGRESS")
     self:UnregisterEvent("QUEST_COMPLETE")
+    self:UnregisterEvent("QUEST_FINISHED")
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
@@ -156,6 +160,12 @@ function ChattyLittleNpc:GOSSIP_SHOW()
     end
 end
 
+function ChattyLittleNpc:GOSSIP_CLOSED()
+    if not self.db.profile.playVoiceoversOnClose then
+        self.Voiceovers:ForceStopCurrentSound(true)
+    end
+end
+
 function ChattyLittleNpc:QUEST_GREETING()
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
@@ -183,6 +193,12 @@ function ChattyLittleNpc:QUEST_COMPLETE()
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
+    end
+end
+
+function ChattyLittleNpc:QUEST_FINISHED()
+    if not self.db.profile.playVoiceoversOnClose then
+        self.Voiceovers:ForceStopCurrentSound(true)
     end
 end
 

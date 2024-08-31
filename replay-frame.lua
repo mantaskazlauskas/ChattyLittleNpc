@@ -147,12 +147,10 @@ function ReplayFrame:CreateDisplayFrame()
     end
 end
 
-
 function ReplayFrame:UpdateDisplayFrame()
     local tempQueue = {}
 
-
-    if not ChattyLittleNpc.Voiceovers.currentlyPlaying then
+    if (not ChattyLittleNpc.Voiceovers.currentlyPlaying or ChattyLittleNpc.Voiceovers.currentlyPlaying.finishedPlaying) then
         if self.displayFrame then
             self.displayFrame:Hide()
         end
