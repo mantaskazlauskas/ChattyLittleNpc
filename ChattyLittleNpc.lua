@@ -29,15 +29,14 @@ local defaults = {
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
 ChattyLittleNpc.useNamespaces = nil
-ChattyLittleNpc.currentQuestTitle = nil
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
+ChattyLittleNpc.questsQueue = {}
 ChattyLittleNpc.currentItemInfo = {
     ItemID = nil,
     ItemName = nil,
     ItemText = nil
 }
-ChattyLittleNpc.usedContainerItems = {}
 
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
@@ -51,12 +50,10 @@ end
 function ChattyLittleNpc:OnEnable()
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("GOSSIP_SHOW")
-    self:RegisterEvent("GOSSIP_CLOSED")
     self:RegisterEvent("QUEST_GREETING")
     self:RegisterEvent("QUEST_DETAIL")
     self:RegisterEvent("QUEST_PROGRESS")
     self:RegisterEvent("QUEST_COMPLETE")
-    self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("ITEM_TEXT_READY")
 
     if self.ReplayFrame.displayFrame then
@@ -81,17 +78,16 @@ function ChattyLittleNpc:OnEnable()
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
+    self.Voiceovers:StartSoundMonitor()
 end
 
 function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ADDON_LOADED")
     self:UnregisterEvent("GOSSIP_SHOW")
-    self:UnregisterEvent("GOSSIP_CLOSED")
     self:UnregisterEvent("QUEST_GREETING")
     self:UnregisterEvent("QUEST_DETAIL")
     self:UnregisterEvent("QUEST_PROGRESS")
     self:UnregisterEvent("QUEST_COMPLETE")
-    self:UnregisterEvent("QUEST_FINISHED")
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
@@ -160,10 +156,6 @@ function ChattyLittleNpc:GOSSIP_SHOW()
     end
 end
 
-function ChattyLittleNpc:GOSSIP_CLOSED()
-    self:HandlePlaybackStop()
-end
-
 function ChattyLittleNpc:QUEST_GREETING()
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
@@ -194,10 +186,6 @@ function ChattyLittleNpc:QUEST_COMPLETE()
     end
 end
 
-function ChattyLittleNpc:QUEST_FINISHED()
-    self:HandlePlaybackStop()
-end
-
 function ChattyLittleNpc:ITEM_TEXT_READY()
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
@@ -219,7 +207,6 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     end
 end
 
-
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
     if id and id > 0 and text then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
@@ -227,14 +214,5 @@ function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
             local hash = ChattyLittleNpc.MD5:GenerateHash(id .. text)
             self.Voiceovers:PlayNonQuestSound(id, soundType, hash, gender)
         end)
-    end
-end
-
-function ChattyLittleNpc:HandlePlaybackStop()
-    if not self.db.profile.playVoiceoversOnClose then
-        self.Voiceovers:StopCurrentSound()
-        if self.ReplayFrame then
-            self.ReplayFrame.displayFrame:Hide()
-        end
     end
 end

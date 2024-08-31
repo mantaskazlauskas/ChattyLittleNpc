@@ -8,25 +8,6 @@ ChattyLittleNpc.PlayButton = PlayButton
 
 PlayButton.buttons = {}
 
-function PlayButton:GetSelectedQuest()
-    if ChattyLittleNpc.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest then
-        return C_QuestLog.GetSelectedQuest()
-    else
-        local selectedIndex = GetQuestLogSelection()
-        if selectedIndex and selectedIndex > 0 then
-            local quesTitle, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
-            ChattyLittleNpc.Voiceovers.currentQuestId = questID
-            ChattyLittleNpc.Voiceovers.currentPhase = "desc"
-            ChattyLittleNpc.currentQuestTitle = quesTitle
-            if ChattyLittleNpc.currentQuestTitle then
-                ReplayFrame.ShowDisplayFrame(ChattyLittleNpc.currentQuestTitle .. " (description)")
-            end
-            return questID
-        end
-    end
-    return nil
-end
-
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
     local button = CreateFrame("Button", buttonName, relativeTo, "UIPanelButtonTemplate")
     button:SetSize(120, 25)
@@ -34,7 +15,7 @@ function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, 
     button:SetText("Play Voiceover")
     button:SetFrameStrata("TOOLTIP")
     button:SetScript("OnClick", function()
-        local questID = PlayButton:GetSelectedQuest()
+        local questID = C_QuestLog.GetSelectedQuest()
         if questID then
             ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Desc")
         end
@@ -45,7 +26,7 @@ function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, 
 end
 
 function PlayButton:UpdatePlayButton()
-    local questID = PlayButton:GetSelectedQuest()
+    local questID = C_QuestLog.GetSelectedQuest()
     for buttonName, button in pairs(PlayButton.buttons) do
         if questID then
             button:Show()
