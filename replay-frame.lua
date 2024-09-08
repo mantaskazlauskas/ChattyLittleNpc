@@ -183,11 +183,12 @@ function ReplayFrame:UpdateDisplayFrame()
     for i, button in ipairs(ReplayFrame.buttons) do
         local quest = tempQueue[i]
         if quest then
-            local truncatedTitle = quest.title
+            local title = quest.title or ""
+            local truncatedTitle = title
 
             -- truncate quest title if its too long (show full title on hover over)
-            if string.len(quest.title) > 30 then
-                truncatedTitle = string.sub(quest.title, 1, 25) .. "..."
+            if string.len(title) > 30 then
+                truncatedTitle = string.sub(title, 1, 25) .. "..."
             end
 
             if quest.isPlaying then
@@ -201,7 +202,7 @@ function ReplayFrame:UpdateDisplayFrame()
             -- Tooltip for full quest title
             button.text:SetScript("OnEnter", function()
                 GameTooltip:SetOwner(button.frame, "ANCHOR_RIGHT")
-                GameTooltip:SetText(quest.title)
+                GameTooltip:SetText(title)
                 GameTooltip:Show()
             end)
             button.text:SetScript("OnLeave", function()
