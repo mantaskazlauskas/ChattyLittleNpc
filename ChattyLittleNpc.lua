@@ -10,19 +10,22 @@ ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 
 local defaults = {
     profile = {
-        playVoiceoversOnClose = true,
+        autoPlayVoiceovers = true,
         playVoiceoverAfterDelay = 0,
         printMissingFiles = false,
         logNpcTexts = false,
         printNpcTexts = false,
         showReplayFrame = true,
-        framePos = { -- Default position
+        framePos = { -- Default positiond
             point = "CENTER",
             relativeTo = nil,
             relativePoint = "CENTER",
             xOfs = 500,
             yOfs = 0
-        }
+        },
+        buttonPosX = -15,
+        buttonPosY = -30,
+        enableQuestPlaybackQueueing = true
     }
 }
 
@@ -75,12 +78,22 @@ function ChattyLittleNpc:OnEnable()
         self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogDetailFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
     end
 
+    if GossipFrame then
+        self.PlayButton:CreateGossipButton()
+    end
+
+    if QuestFrame then 
+        self.PlayButton:CreatePlayQuestVoiceoverButton()
+    end
+
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
     QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
-    self.Voiceovers:StartSoundMonitor()
+    if self.db.profile.enableQuestPlaybackQueueing then
+        self.Voiceovers:StartSoundMonitor()
+    end
 end
 
 function ChattyLittleNpc:OnDisable()
@@ -147,13 +160,15 @@ function ChattyLittleNpc:ADDON_LOADED()
 end
 
 function ChattyLittleNpc:GOSSIP_SHOW()
-    local gossipText = C_GossipInfo.GetText()
-    local _, gender, _, _, unitType, unitId = self:GetUnitInfo("npc")
-    local soundType = "Gossip"
-    if unitType == "GameObject" then
-        soundType = "GameObject"
+    if self.db.profile.autoPlayVoiceovers then
+        local gossipText = C_GossipInfo.GetText()
+        local _, gender, _, _, unitType, unitId = self:GetUnitInfo("npc")
+        local soundType = "Gossip"
+        if unitType == "GameObject" then
+            soundType = "GameObject"
+        end
+        self:HandleGossipPlaybackStart(gossipText, soundType, unitId, gender)
     end
-    self:HandleGossipPlaybackStart(gossipText, soundType, unitId, gender)
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleGossipText()
@@ -161,9 +176,7 @@ function ChattyLittleNpc:GOSSIP_SHOW()
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
-    if not self.db.profile.playVoiceoversOnClose then
-        self.Voiceovers:ForceStopCurrentSound(true)
-    end
+
 end
 
 function ChattyLittleNpc:QUEST_GREETING()
@@ -173,7 +186,9 @@ function ChattyLittleNpc:QUEST_GREETING()
 end
 
 function ChattyLittleNpc:QUEST_DETAIL()
-    self:HandlePlaybackStart("Desc")
+    if self.db.profile.autoPlayVoiceovers then
+        self:HandlePlaybackStart("Desc")
+    end
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_DETAIL")
@@ -181,7 +196,9 @@ function ChattyLittleNpc:QUEST_DETAIL()
 end
 
 function ChattyLittleNpc:QUEST_PROGRESS()
-    self:HandlePlaybackStart("Prog")
+    if self.db.profile.autoPlayVoiceovers then
+        self:HandlePlaybackStart("Prog")
+    end
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_PROGRESS")
@@ -189,7 +206,9 @@ function ChattyLittleNpc:QUEST_PROGRESS()
 end
 
 function ChattyLittleNpc:QUEST_COMPLETE()
-    self:HandlePlaybackStart("Comp")
+    if self.db.profile.autoPlayVoiceovers then
+        self:HandlePlaybackStart("Comp")
+    end
 
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
@@ -197,9 +216,7 @@ function ChattyLittleNpc:QUEST_COMPLETE()
 end
 
 function ChattyLittleNpc:QUEST_FINISHED()
-    if not self.db.profile.playVoiceoversOnClose then
-        self.Voiceovers:ForceStopCurrentSound(true)
-    end
+
 end
 
 function ChattyLittleNpc:ITEM_TEXT_READY()
@@ -226,9 +243,7 @@ end
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
     if id and id > 0 and text then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            local text =  self:CleanText(text)
-            local hash = ChattyLittleNpc.MD5:GenerateHash(id .. text)
-            self.Voiceovers:PlayNonQuestSound(id, soundType, hash, gender)
+            self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
         end)
     end
 end

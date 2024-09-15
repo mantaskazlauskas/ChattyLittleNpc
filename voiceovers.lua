@@ -25,6 +25,9 @@ function Voiceovers:StartSoundMonitor()
 
         if ChattyLittleNpc.questsQueue and #ChattyLittleNpc.questsQueue > 0 then
             local nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1)
+            if self.currentlyPlaying and nextAudioFileInfo.questId == self.currentlyPlaying.questId and nextAudioFileInfo.phase == self.currentlyPlaying.phase then
+                nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1) -- if next sound file is a duplicate of the last/current one then take the one after.
+            end
             self:PlayQuestSound(nextAudioFileInfo.questId, nextAudioFileInfo.phase, nextAudioFileInfo.gender)
         end
 
@@ -59,7 +62,10 @@ end
 
 -- Play quest audio or queue it if one is already playing.
 function Voiceovers:PlayQuestSound(questId, phase, npcGender)
-    if not questId then
+    if not questId or not phase then
+        print("Missing required arguments")
+        print("QuestId: ", questId)
+        print("QuestPhase: ", phase)
         return -- fail fast if no quest ID
     end
 
@@ -67,7 +73,8 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
     local fileName = questId .. "_" .. phase .. ".mp3"
     local success, newSoundHandle
 
-    if self.currentlyPlaying 
+    if self.currentlyPlaying
+        and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing
         and not self.currentlyPlaying.finishedPlaying
         and self.currentlyPlaying.soundHandle and self.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(self.currentlyPlaying.soundHandle) then
 
@@ -145,13 +152,25 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
 end
 
 -- Play non quest related text like gossip or text from items.
-function Voiceovers:PlayNonQuestSound(npcId, soundType ,hash, npcGender)
+function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
+    if not npcId or not soundType or not text then
+        print("Arguments missing to play non quest sound.")
+        print("NpcId: ", npcId)
+        print("SoundType: ", soundType)
+        print("Text: ", text)
+        print("NpcGender(optional): ", npcGender)
+        return
+    end
+
+    local depersonalisedText =  ChattyLittleNpc:CleanText(text)
+    local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
+
     if not npcId or not soundType or not hash then
         return -- fail fast in case of missing argument values
     end
 
     if self.currentlyPlaying and self.currentlyPlaying.soundHandle then
-        if self.currentlyPlaying.cantBeInterrupted and not self.currentlyPlaying.finishedPlaying then
+        if self.currentlyPlaying.cantBeInterrupted and not self.currentlyPlaying.finishedPlaying and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing then
             return -- skip if a quest audio is playing
         end
         StopSound(self.currentlyPlaying.soundHandle)

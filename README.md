@@ -11,6 +11,9 @@ Dive deeper into your game with the AI Voiceover Chatty Little NPC Addon. This a
 
 Ideal for gamers looking to enrich their narrative experience without complex modifications, the AI Voiceover Quest Dialog Addon brings your game’s stories to life with simplicity and style.
 
+## For addon to work you need to download the base addon and voiceover packs for expansions that you want.
+## [Chatty Little NPC addon and voiceover packs](https://www.curseforge.com/wow/search?page=1&pageSize=20&sortBy=relevancy&search=chatty+little+npc)
+
 
 ## Future Plans
 

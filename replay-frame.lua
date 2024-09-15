@@ -154,12 +154,22 @@ function ReplayFrame:UpdateDisplayFrame()
         if self.displayFrame then
             self.displayFrame:Hide()
         end
-
         return
     end
 
-    -- Add currently playing quest to the top if it exists
-    if ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.questId then
+    -- Check if the currently playing quest is already in the queue
+    local currentlyPlayingQuestId = ChattyLittleNpc.Voiceovers.currentlyPlaying.questId
+
+    local questAlreadyInQueue = false
+    for _, quest in ipairs(ChattyLittleNpc.questsQueue) do
+        if quest.questId == currentlyPlayingQuestId then
+            questAlreadyInQueue = true
+            break
+        end
+    end
+
+    -- Add currently playing quest to the top if it exists and is not already in the queue
+    if not questAlreadyInQueue and currentlyPlayingQuestId then
         table.insert(tempQueue, 1, {
             title = ChattyLittleNpc.Voiceovers.currentlyPlaying.title,
             questId = ChattyLittleNpc.Voiceovers.currentlyPlaying.questId,
@@ -182,10 +192,10 @@ function ReplayFrame:UpdateDisplayFrame()
     -- Update display buttons based on the temp queue
     for i, button in ipairs(ReplayFrame.buttons) do
         local quest = tempQueue[i]
-        if quest then
+        if quest and quest.title then
             local truncatedTitle = quest.title
 
-            -- truncate quest title if its too long (show full title on hover over)
+            -- Truncate quest title if it's too long (show full title on hover over)
             if string.len(quest.title) > 30 then
                 truncatedTitle = string.sub(quest.title, 1, 25) .. "..."
             end

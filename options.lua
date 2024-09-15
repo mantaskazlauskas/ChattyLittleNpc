@@ -67,12 +67,19 @@ local options = {
             name = 'Playback Options',
             inline = true,
             args = {
-                playVoiceoversOnClose = {
+                autoPlayVoiceovers = {
                     type = 'toggle',
-                    name = 'Play Voiceovers On Close',
-                    desc = 'Toggle to play voiceovers when closing the gossip or quest window.',
-                    get = function(info) return ChattyLittleNpc.db.profile.playVoiceoversOnClose end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.playVoiceoversOnClose = value end,
+                    name = 'Play Voiceovers when interacting with npc or game object',
+                    desc = 'Toggle to play voiceovers when opening the gossip or quest window.',
+                    get = function(info) return ChattyLittleNpc.db.profile.autoPlayVoiceovers end,
+                    set = function(info, value) ChattyLittleNpc.db.profile.autoPlayVoiceovers = value end,
+                },
+                enableQuestPlaybackQueueing = {
+                    type = 'toggle',
+                    name = 'Enable Quest Playback Queueing',
+                    desc = 'Toggle to enable or disable quest playback queueing.',
+                    get = function(info) return ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing end,
+                    set = function(info, value) ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing = value end,
                 },
                 playVoiceoverAfterDelay = {
                     type = 'range',
@@ -83,6 +90,49 @@ local options = {
                     step = 0.1,
                     get = function(info) return ChattyLittleNpc.db.profile.playVoiceoverAfterDelay end,
                     set = function(info, value) ChattyLittleNpc.db.profile.playVoiceoverAfterDelay = value end,
+                },
+            },
+        },
+        QuestFrameButtonOptions = {
+            type = 'group',
+            name = 'Quest And Gossip Frame Button Options',
+            inline = true,
+            args = {
+                buttonPosX = {
+                    type = 'range',
+                    name = 'Button X Position',
+                    desc = 'Set the X coordinate for the button position relative to the frame.',
+                    min = -200,
+                    max = 200,
+                    step = 1,
+                    get = function(info) return ChattyLittleNpc.db.profile.buttonPosX or 0 end,
+                    set = function(info, value)
+                        ChattyLittleNpc.db.profile.buttonPosX = value
+                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                    end,
+                },
+                buttonPosY = {
+                    type = 'range',
+                    name = 'Button Y Position',
+                    desc = 'Set the Y coordinate for the button position relative to the frame.',
+                    min = -200,
+                    max = 200,
+                    step = 1,
+                    get = function(info) return ChattyLittleNpc.db.profile.buttonPosY or 0 end,
+                    set = function(info, value)
+                        ChattyLittleNpc.db.profile.buttonPosY = value
+                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                    end,
+                },
+                resetButtonPosition = {
+                    type = 'execute',
+                    name = 'Reset Button Positions',
+                    desc = 'Reset the X and Y positions to their default values.',
+                    func = function()
+                        ChattyLittleNpc.db.profile.buttonPosX = -15  -- Default X position
+                        ChattyLittleNpc.db.profile.buttonPosY = -30  -- Default Y position
+                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                    end,
                 },
             },
         },
