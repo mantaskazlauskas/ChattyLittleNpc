@@ -25,8 +25,12 @@ function Voiceovers:StartSoundMonitor()
 
         if ChattyLittleNpc.questsQueue and #ChattyLittleNpc.questsQueue > 0 then
             local nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1)
-            if self.currentlyPlaying and nextAudioFileInfo.questId == self.currentlyPlaying.questId and nextAudioFileInfo.phase == self.currentlyPlaying.phase then
-                nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1) -- if next sound file is a duplicate of the last/current one then take the one after.
+            if self.currentlyPlaying
+                and nextAudioFileInfo.questId == self.currentlyPlaying.questId
+                and nextAudioFileInfo.phase == self.currentlyPlaying.phase
+                and #ChattyLittleNpc.questsQueue > 0
+            then
+                nextAudioFileInfo = table.remove(ChattyLittleNpc.questsQueue, 1) -- if next sound file is a duplicate of the last/current one then take the one after.    
             end
             self:PlayQuestSound(nextAudioFileInfo.questId, nextAudioFileInfo.phase, nextAudioFileInfo.gender)
         end
