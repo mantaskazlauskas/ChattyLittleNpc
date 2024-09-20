@@ -111,6 +111,14 @@ end
 function ChattyLittleNpc:CleanText(text)
     text = text:gsub("\n\n", " ")
     text = text:gsub("\r\n", " ")
+    text = text:gsub("<HTML>", "")
+    text = text:gsub("</HTML>", "")
+    text = text:gsub("<BODY>", "")
+    text = text:gsub("</BODY>", "")
+    text = text:gsub("<BR/>", "")
+    text = text:gsub("<p>", "")
+    text = text:gsub("</p>", "")
+    text = text:gsub("<p align=\"center\">", "")
     text = text:gsub(UnitName("player"), "Hero")
     text = text:gsub(UnitClass("player"), "Hero")
     text = text:gsub(UnitRace("player"), "Hero")
@@ -223,11 +231,19 @@ function ChattyLittleNpc:ITEM_TEXT_READY()
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
     local itemId = C_Item.GetItemInfoInstant(itemName)
-
+    local unitGuid = UnitGUID('npc')
+    local unitType = "Item"
+    if not itemId and itemName and itemText and unitGuid then
+        unitType = select(1, string.split('-', unitGuid))
+        if unitType == "GameObject" then
+            itemId = select(6, string.split("-", unitGuid));
+            print("Item ID: " .. itemId)
+        end
+    end
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
-    end 
-    self:HandleGossipPlaybackStart(itemText, "Item" ,itemId)
+    end
+    self:HandleGossipPlaybackStart(itemText, unitType ,itemId)
 end
 
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
@@ -241,7 +257,8 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
 end
 
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
-    if id and id > 0 and text then
+    local idAsNumber = tonumber(id)
+    if idAsNumber and idAsNumber > 0 and text then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
         end)
