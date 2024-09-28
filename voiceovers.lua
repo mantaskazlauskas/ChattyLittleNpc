@@ -73,6 +73,13 @@ function Voiceovers:PlayQuestSound(questId, phase, npcGender)
         return -- fail fast if no quest ID
     end
 
+
+    if self.currentlyPlaying and self.currentlyPlaying.questId == questId and self.currentlyPlaying.phase == phase then
+        if not self.currentlyPlaying.finishedPlaying then
+            return -- skip if the same quest audio is already playing
+        end
+    end
+
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
     local fileName = questId .. "_" .. phase .. ".mp3"
     local success, newSoundHandle
