@@ -85,8 +85,8 @@ function ReplayFrame:CreateDisplayFrame()
                 ReplayFrame.displayFrame:Hide()
             end)
 
-        -- Dynamically create up to 5 buttons but hide unused ones
-        for i = 1, 5 do
+        -- Dynamically create up to 10 buttons but hide unused ones
+        for i = 1, 10 do
             -- BUTTON FRAME
             local buttonFrame = CreateFrame("Frame", nil, ReplayFrame.displayFrame, "BackdropTemplate")
                 buttonFrame:SetSize(280, 35)
@@ -185,7 +185,7 @@ function ReplayFrame:UpdateDisplayFrame()
     end
 
     -- Calculate frame height based on the number of quests
-    local numQuests = math.min(#tempQueue, 5)
+    local numQuests = math.min(#tempQueue, 10)
     local frameHeight = 40 + numQuests * 40
     ReplayFrame.displayFrame:SetHeight(frameHeight)
 
