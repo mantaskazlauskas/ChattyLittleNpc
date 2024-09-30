@@ -173,7 +173,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         return
     end
 
-    local depersonalisedText =  ChattyLittleNpc:CleanText(text)
+    local depersonalisedText =  ChattyLittleNpc.Utils:CleanText(text)
     local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
 
     if not npcId or not soundType or not hash then

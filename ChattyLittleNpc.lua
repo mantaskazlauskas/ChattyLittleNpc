@@ -7,6 +7,19 @@ ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
+ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
+
+ChattyLittleNpc.locale = nil
+ChattyLittleNpc.gameVersion = nil
+ChattyLittleNpc.useNamespaces = nil
+ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+ChattyLittleNpc.loadedVoiceoverPacks = {}
+ChattyLittleNpc.questsQueue = {}
+ChattyLittleNpc.currentItemInfo = {
+    ItemID = nil,
+    ItemName = nil,
+    ItemText = nil
+}
 
 local defaults = {
     profile = {
@@ -27,18 +40,6 @@ local defaults = {
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true
     }
-}
-
-ChattyLittleNpc.locale = nil
-ChattyLittleNpc.gameVersion = nil
-ChattyLittleNpc.useNamespaces = nil
-ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
-ChattyLittleNpc.loadedVoiceoverPacks = {}
-ChattyLittleNpc.questsQueue = {}
-ChattyLittleNpc.currentItemInfo = {
-    ItemID = nil,
-    ItemName = nil,
-    ItemText = nil
 }
 
 function ChattyLittleNpc:OnInitialize()
@@ -108,23 +109,11 @@ function ChattyLittleNpc:OnDisable()
     self:UnregisterEvent("ITEM_TEXT_READY")
 end
 
-function ChattyLittleNpc:CleanText(text)
-    text = text:gsub("\n\n", " ")
-    text = text:gsub("\r\n", " ")
-    text = text:gsub("<HTML>", "")
-    text = text:gsub("</HTML>", "")
-    text = text:gsub("<BODY>", "")
-    text = text:gsub("</BODY>", "")
-    text = text:gsub("<BR/>", "")
-    text = text:gsub("<p>", "")
-    text = text:gsub("</p>", "")
-    text = text:gsub("<p align=\"center\">", "")
-    text = text:gsub(UnitName("player"), "Hero")
-    text = text:gsub(UnitClass("player"), "Hero")
-    text = text:gsub(UnitRace("player"), "Hero")
-    return text
-end
+--[[
+    Retrieves information about a specified unit.
 
+    @param unit (string) - The identifier of the unit to retrieve information for.
+]]
 function ChattyLittleNpc:GetUnitInfo(unit)
     local unitName = select(1, UnitName(unit)) or ""
     local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
@@ -145,6 +134,9 @@ function ChattyLittleNpc:GetUnitInfo(unit)
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
+-- Retrieves the title of a quest given its quest ID.
+-- @param questID number: The unique identifier for the quest.
+-- @return string: The title of the quest.
 function ChattyLittleNpc:GetTitleForQuestID(questID)
     if self.useNamespaces then
         return C_QuestLog.GetTitleForQuestID(questID)
@@ -153,6 +145,12 @@ function ChattyLittleNpc:GetTitleForQuestID(questID)
     end
 end
 
+
+--[[
+    Retrieves the list of loaded expansion voiceover packs for the ChattyLittleNpc addon.
+
+    @return table: A table containing the loaded expansion voiceover packs.
+]]
 function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
     for _, expansion in ipairs(self.expansions) do
         local voiceoverPackName = "ChattyLittleNpc_" .. expansion
@@ -246,6 +244,11 @@ function ChattyLittleNpc:ITEM_TEXT_READY()
     self:HandleGossipPlaybackStart(itemText, unitType ,itemId)
 end
 
+--[[
+    Handles the start of playback for a given quest phase.
+
+    @param questPhase (number) - The phase of the quest for which playback is starting.
+]]
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
     local gender = select(2, self:GetUnitInfo("npc"))
@@ -256,24 +259,20 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     end
 end
 
+
+--[[
+    Handles the start of gossip playback.
+
+    @param text string: The text of the gossip.
+    @param soundType number: The type of sound associated with the gossip.
+    @param id number: The ID of the gossip.
+    @param gender number: The gender associated with the gossip.
+]]
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
     local idAsNumber = tonumber(id)
     if idAsNumber and idAsNumber > 0 and text then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
         end)
-    end
-end
-
-function ChattyLittleNpc:PrintTable(t, indent)
-    if not indent then indent = 0 end
-    for k, v in pairs(t) do
-        local formatting = string.rep("  ", indent) .. k .. ": "
-        if type(v) == "table" then
-            print(formatting)
-            self.PrintTable(v, indent + 1)
-        else
-            print(formatting .. tostring(v))
-        end
     end
 end
