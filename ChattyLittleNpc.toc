@@ -8,8 +8,9 @@
 embeds.xml
 
 ## Addon Code
-ChattyLittleNpc.lua
+EventHandler.lua
 Options.lua
+ChattyLittleNpc.lua
 ReplayFrame.lua
 QuestLogPlayButton.lua
 NpcDialogTracker.lua

@@ -77,68 +77,67 @@ function ReplayFrame:CreateDisplayFrame()
 
         -- CLOSE BUTTON
         local closeButton = CreateFrame("Button", nil, ReplayFrame.displayFrame, "UIPanelCloseButton")
-            closeButton:SetSize(20, 20)  -- Standard close button size
-            closeButton:SetPoint("TOPRIGHT", ReplayFrame.displayFrame, "TOPRIGHT", -5, -5)
-            closeButton:SetScript("OnClick", function()
-                ChattyLittleNpc.questsQueue = {}
-                ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
-                ReplayFrame.displayFrame:Hide()
-            end)
+        closeButton:SetSize(20, 20)  -- Standard close button size
+        closeButton:SetPoint("TOPRIGHT", ReplayFrame.displayFrame, "TOPRIGHT", -5, -5)
+        closeButton:SetScript("OnClick", function()
+            ChattyLittleNpc.questsQueue = {}
+            ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+            ReplayFrame.displayFrame:Hide()
+        end)
 
-        -- Dynamically create up to 10 buttons but hide unused ones
-        for i = 1, 10 do
+        -- Dynamically create up to 11 buttons (1 for currently playing quest and 10 for queued quests)
+        for i = 1, 11 do
             -- BUTTON FRAME
             local buttonFrame = CreateFrame("Frame", nil, ReplayFrame.displayFrame, "BackdropTemplate")
-                buttonFrame:SetSize(280, 35)
-                buttonFrame:SetPoint("TOP", ReplayFrame.displayFrame, "TOP", 0, -((i - 1) * 40) - 40)
-                buttonFrame:EnableMouse(true)
-                buttonFrame:SetScript("OnEnter", fadeInFrame)
-                buttonFrame:SetScript("OnLeave", fadeOutFrame)
+            buttonFrame:SetSize(280, 35)
+            buttonFrame:SetPoint("TOP", ReplayFrame.displayFrame, "TOP", 0, -((i - 1) * 40) - 40)
+            buttonFrame:EnableMouse(true)
+            buttonFrame:SetScript("OnEnter", fadeInFrame)
+            buttonFrame:SetScript("OnLeave", fadeOutFrame)
 
             -- STOP BUTTON
             local stopButton = CreateFrame("Button", nil, buttonFrame)
-                stopButton:SetSize(12, 12)
-                stopButton:SetPoint("LEFT", 5, 0)
-                stopButton.texture = stopButton:CreateTexture(nil, "ARTWORK")
-                stopButton.texture:SetAllPoints()
-                stopButton.texture:SetTexture("Interface\\Buttons\\UI-StopButton")
-                stopButton:EnableMouse(true)
-                stopButton:SetScript("OnEnter", function()
-                    GameTooltip:SetOwner(stopButton, "ANCHOR_RIGHT")
-                    GameTooltip:SetText("Stop and remove quest voiceover from list.")
-                    GameTooltip:Show()
-                    fadeInFrame()
-                end)
-                stopButton:SetScript("OnLeave", function()
-                    GameTooltip_Hide()
-                    fadeOutFrame()
-                end)
+            stopButton:SetSize(12, 12)
+            stopButton:SetPoint("LEFT", 5, 0)
+            stopButton.texture = stopButton:CreateTexture(nil, "ARTWORK")
+            stopButton.texture:SetAllPoints()
+            stopButton.texture:SetTexture("Interface\\Buttons\\UI-StopButton")
+            stopButton:EnableMouse(true)
+            stopButton:SetScript("OnEnter", function()
+                GameTooltip:SetOwner(stopButton, "ANCHOR_RIGHT")
+                GameTooltip:SetText("Stop and remove quest voiceover from list.")
+                GameTooltip:Show()
+                fadeInFrame()
+            end)
+            stopButton:SetScript("OnLeave", function()
+                GameTooltip_Hide()
+                fadeOutFrame()
+            end)
 
-                stopButton:SetScript("OnMouseDown", function()
-                    local questIndex = i
+            stopButton:SetScript("OnMouseDown", function()
+                local questIndex = i
 
-                    -- Check if it's the currently playing quest
-                    if questIndex == 1 and ChattyLittleNpc.Voiceovers.currentlyPlaying then
-                        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(false) -- Use false to not clear the queue
-                    else
-                        questIndex = questIndex - 1
-                        table.remove(ChattyLittleNpc.questsQueue, questIndex)
-                    end
+                -- Check if it's the currently playing quest
+                if questIndex == 1 and ChattyLittleNpc.Voiceovers.currentlyPlaying then
+                    ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(false) -- Use false to not clear the queue
+                else
+                    table.remove(ChattyLittleNpc.questsQueue, questIndex - 1)
+                end
 
-                    ReplayFrame:UpdateDisplayFrame()
+                ReplayFrame:UpdateDisplayFrame()
 
-                    if #ChattyLittleNpc.questsQueue == 0 and not ChattyLittleNpc.Voiceovers.currentlyPlaying then
-                        ReplayFrame.displayFrame:Hide()
-                    end
-                end)
+                if #ChattyLittleNpc.questsQueue == 0 and not ChattyLittleNpc.Voiceovers.currentlyPlaying then
+                    ReplayFrame.displayFrame:Hide()
+                end
+            end)
 
             local displayText = buttonFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                displayText:SetPoint("LEFT", stopButton, "RIGHT", 10, 0)
-                displayText:SetJustifyH("LEFT")
-                displayText:SetWordWrap(false)
-                displayText:EnableMouse(true)
-                displayText:SetScript("OnEnter", fadeInFrame)
-                displayText:SetScript("OnLeave", fadeOutFrame)
+            displayText:SetPoint("LEFT", stopButton, "RIGHT", 10, 0)
+            displayText:SetJustifyH("LEFT")
+            displayText:SetWordWrap(false)
+            displayText:EnableMouse(true)
+            displayText:SetScript("OnEnter", fadeInFrame)
+            displayText:SetScript("OnLeave", fadeOutFrame)
 
             ReplayFrame.buttons[i] = {frame = buttonFrame, text = displayText}
         end
@@ -148,51 +147,50 @@ function ReplayFrame:CreateDisplayFrame()
 end
 
 function ReplayFrame:UpdateDisplayFrame()
-    local tempQueue = {}
-
-    if (not ChattyLittleNpc.Voiceovers.currentlyPlaying or ChattyLittleNpc.Voiceovers.currentlyPlaying.finishedPlaying) then
+    if (not ChattyLittleNpc.Voiceovers.currentlyPlaying or not ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) and (#ChattyLittleNpc.questsQueue == 0) then
         if self.displayFrame then
             self.displayFrame:Hide()
         end
         return
     end
 
-    -- Check if the currently playing quest is already in the queue
-    local currentlyPlayingQuestId = ChattyLittleNpc.Voiceovers.currentlyPlaying.questId
-
-    local questAlreadyInQueue = false
-    for _, quest in ipairs(ChattyLittleNpc.questsQueue) do
-        if quest.questId == currentlyPlayingQuestId then
-            questAlreadyInQueue = true
-            break
-        end
-    end
-
-    -- Add currently playing quest to the top if it exists and is not already in the queue
-    if not questAlreadyInQueue and currentlyPlayingQuestId then
-        table.insert(tempQueue, 1, {
-            title = ChattyLittleNpc.Voiceovers.currentlyPlaying.title,
-            questId = ChattyLittleNpc.Voiceovers.currentlyPlaying.questId,
-            phase = ChattyLittleNpc.Voiceovers.currentlyPlaying.phase,
-            npcGender = ChattyLittleNpc.Voiceovers.currentlyPlaying.gender,
-            isPlaying = true -- flag to identify the currently playing quest
-        })
-    end
-
-    -- Add the rest of the queued quests
-    for _, quest in ipairs(ChattyLittleNpc.questsQueue) do
-        table.insert(tempQueue, quest)
-    end
-
     -- Calculate frame height based on the number of quests
-    local numQuests = math.min(#tempQueue, 10)
-    local frameHeight = 40 + numQuests * 40
+    local numQuests = math.min(#ChattyLittleNpc.questsQueue, 10)
+    local frameHeight = 40 + (numQuests + 1) * 40 -- +1 for the currently playing quest
     ReplayFrame.displayFrame:SetHeight(frameHeight)
 
-    -- Update display buttons based on the temp queue
-    for i, button in ipairs(ReplayFrame.buttons) do
-        local quest = tempQueue[i]
-        if quest and quest.title then
+    -- Update display button for the currently playing quest
+    local currentlyPlayingQuest = ChattyLittleNpc.Voiceovers.currentlyPlaying
+    local firstButton = ReplayFrame.buttons[1]
+    if currentlyPlayingQuest and currentlyPlayingQuest.title then
+        local truncatedTitle = currentlyPlayingQuest.title
+
+        -- Truncate quest title if it's too long (show full title on hover over)
+        if string.len(currentlyPlayingQuest.title) > 30 then
+            truncatedTitle = string.sub(currentlyPlayingQuest.title, 1, 25) .. "..."
+        end
+
+        firstButton.text:SetText("-> " .. truncatedTitle) -- Highlight the currently playing quest
+        firstButton.frame:Show()
+
+        -- Tooltip for full quest title
+        firstButton.text:SetScript("OnEnter", function()
+            GameTooltip:SetOwner(firstButton.frame, "ANCHOR_RIGHT")
+            GameTooltip:SetText(currentlyPlayingQuest.title)
+            GameTooltip:Show()
+        end)
+        firstButton.text:SetScript("OnLeave", function()
+            GameTooltip_Hide()
+        end)
+    else
+        firstButton.frame:Hide()
+    end
+
+    -- Update display buttons for the queued quests
+    for i = 1, 10 do
+        local button = ReplayFrame.buttons[i + 1] -- Start from the second button
+        local quest = ChattyLittleNpc.questsQueue[i]
+        if button and quest and quest.title then
             local truncatedTitle = quest.title
 
             -- Truncate quest title if it's too long (show full title on hover over)
@@ -200,12 +198,7 @@ function ReplayFrame:UpdateDisplayFrame()
                 truncatedTitle = string.sub(quest.title, 1, 25) .. "..."
             end
 
-            if quest.isPlaying then
-                button.text:SetText("-> " .. truncatedTitle) -- Highlight the currently playing quest
-            else
-                button.text:SetText(truncatedTitle)
-            end
-
+            button.text:SetText(truncatedTitle)
             button.frame:Show()
 
             -- Tooltip for full quest title
@@ -218,7 +211,9 @@ function ReplayFrame:UpdateDisplayFrame()
                 GameTooltip_Hide()
             end)
         else
-            button.frame:Hide()
+            if button then
+                button.frame:Hide()
+            end
         end
     end
 
@@ -236,4 +231,37 @@ function ReplayFrame:ShowDisplayFrame()
 
     ReplayFrame:CreateDisplayFrame()
     ReplayFrame:UpdateDisplayFrame()
+end
+
+-- Create the main frame
+local npcModelFrame = CreateFrame("PlayerModel", "NPCModelFrame", UIParent)
+npcModelFrame:SetSize(100, 100)
+npcModelFrame:SetPoint("CENTER", UIParent, "CENTER", 100, 0) -- Move the model a bit to the right
+
+
+-- Function to update the model display based on NPC ID
+function ChattyLittleNpc:UpdateNpcModelDisplay(npcId)
+    local displayID = NpcDisplayIdDB[npcId]
+    if displayID then
+        npcModelFrame:ClearModel()
+        npcModelFrame:SetDisplayInfo(displayID)
+        npcModelFrame:SetPosition(0, 0, -0.2)
+        npcModelFrame:SetRotation(math.rad(30))
+        npcModelFrame:SetCamDistanceScale(0.5)
+        npcModelFrame:SetPortraitZoom(0.6)
+        npcModelFrame:Show()
+    else
+        npcModelFrame:ClearModel()
+        npcModelFrame:Hide()
+    end
+end
+
+-- Function to check and show the model if a voiceover is currently playing
+function ChattyLittleNpc:CheckAndShowModel()
+    local currentlyPlaying = self.Voiceovers.currentlyPlaying
+    if currentlyPlaying and currentlyPlaying.npcId and currentlyPlaying.isPlaying then
+        self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
+    else
+        npcModelFrame:Hide() -- Hide the model if no voiceover is playing
+    end
 end

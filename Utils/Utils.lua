@@ -31,6 +31,11 @@ end
     @param indent number: The indentation level for nested tables (optional).
 ]]
 function Utils:PrintTable(t, indent)
+    if not t then
+        print("Table is nil.")
+        return
+    end
+
     if not indent then indent = 0 end
     for k, v in pairs(t) do
         local formatting = string.rep("  ", indent) .. k .. ": "

@@ -1,8 +1,12 @@
----@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+---@class Options
+local Options = LibStub("AceAddon-3.0"):NewAddon("Options", "AceConsole-3.0")
 
-local Options = {}
-ChattyLittleNpc.Options = Options
+local ChattyLittleNpc
+
+-- Store a reference to ChattyLittleNpc
+function Options:SetChattyLittleNpcReference(reference)
+    ChattyLittleNpc = reference
+end
 
 local options = {
     name = "Chatty Little Npc",
@@ -145,3 +149,6 @@ function Options:SetupOptions()
         self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("ChattyLittleNpc", "Chatty Little Npc")
     end
 end
+
+-- Initialize the Options module
+Options:SetupOptions()

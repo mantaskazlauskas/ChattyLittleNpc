@@ -2,12 +2,19 @@
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
-ChattyLittleNpc.Options = ChattyLittleNpc.Options
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
+
+-- Load the EventHandler module
+local EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
+-- Load the Options module
+local Options = LibStub("AceAddon-3.0"):GetAddon("Options")
+
+EventHandler:SetChattyLittleNpcReference(ChattyLittleNpc)
+Options:SetChattyLittleNpcReference(ChattyLittleNpc)
 
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
@@ -44,7 +51,6 @@ local defaults = {
 
 function ChattyLittleNpc:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
-    self.Options:SetupOptions()
 
     self.locale = GetLocale()
     self.gameVersion = select(4, GetBuildInfo())
@@ -61,6 +67,7 @@ function ChattyLittleNpc:OnEnable()
     self:RegisterEvent("QUEST_COMPLETE")
     self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("ITEM_TEXT_READY")
+    self:RegisterMessage("VOICEOVER_STOP", "OnVoiceoverStop")
 
     if self.ReplayFrame.displayFrame then
         self.ReplayFrame:LoadFramePosition()
@@ -92,9 +99,6 @@ function ChattyLittleNpc:OnEnable()
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
-    if self.db.profile.enableQuestPlaybackQueueing then
-        self.Voiceovers:StartSoundMonitor()
-    end
 end
 
 function ChattyLittleNpc:OnDisable()
@@ -179,6 +183,12 @@ function ChattyLittleNpc:GOSSIP_SHOW()
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleGossipText()
     end
+
+    -- Update the NPC model display
+    local npcId = select(6, strsplit("-", UnitGUID("npc")))
+    if npcId then
+        self:UpdateNpcModelDisplay(tonumber(npcId))
+    end
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
@@ -225,6 +235,26 @@ function ChattyLittleNpc:QUEST_FINISHED()
 
 end
 
+function ChattyLittleNpc:OnVoiceoverStop(event, stoppedVoiceover)
+    for i, quest in ipairs(self.questsQueue) do
+        print("Stopped Quest ID: " .. stoppedVoiceover.questId .. " Phase: " .. stoppedVoiceover.phase)
+        print("Quest ID: " .. quest.questId .. " Phase: " .. quest.phase)
+        if quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase then
+            print("Removing quest from queue")
+            table.remove(self.questsQueue, i)
+            break
+        end
+    end
+
+    if #self.questsQueue > 0 then
+        local nextQuest = self.questsQueue[1]
+        self.Voiceovers:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.gender)
+    else
+        self.currentItemInfo = {}
+        self.ReplayFrame:UpdateDisplayFrame()
+    end
+end
+
 function ChattyLittleNpc:ITEM_TEXT_READY()
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
@@ -251,10 +281,11 @@ end
 ]]
 function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
+    local npcId = select(6, self:GetUnitInfo("npc"))
     local gender = select(2, self:GetUnitInfo("npc"))
     if questId > 0 then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.Voiceovers:PlayQuestSound(questId, questPhase, gender)
+            self.Voiceovers:PlayQuestSound(questId, questPhase, npcId, gender)
         end)
     end
 end
@@ -276,3 +307,5 @@ function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
         end)
     end
 end
+
+ChattyLittleNpc:OnInitialize()
