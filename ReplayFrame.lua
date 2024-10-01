@@ -43,7 +43,7 @@ end
 function ReplayFrame:CreateDisplayFrame()
     if not ReplayFrame.displayFrame then
         ReplayFrame.displayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent, "BackdropTemplate")
-        ReplayFrame.displayFrame:SetSize(310, 210)  -- Initial size
+        ReplayFrame.displayFrame:SetSize(310, 200)  -- Static size to fit 4 rows (each row 40px height)
         ReplayFrame:LoadFramePosition()
 
         ReplayFrame.displayFrame:SetBackdrop({
@@ -85,8 +85,8 @@ function ReplayFrame:CreateDisplayFrame()
             ReplayFrame.displayFrame:Hide()
         end)
 
-        -- Dynamically create up to 11 buttons (1 for currently playing quest and 10 for queued quests)
-        for i = 1, 11 do
+        -- Dynamically create up to 4 buttons (1 for currently playing quest and 3 for queued quests)
+        for i = 1, 4 do
             -- BUTTON FRAME
             local buttonFrame = CreateFrame("Frame", nil, ReplayFrame.displayFrame, "BackdropTemplate")
             buttonFrame:SetSize(280, 35)
@@ -154,11 +154,6 @@ function ReplayFrame:UpdateDisplayFrame()
         return
     end
 
-    -- Calculate frame height based on the number of quests
-    local numQuests = math.min(#ChattyLittleNpc.questsQueue, 10)
-    local frameHeight = 40 + (numQuests + 1) * 40 -- +1 for the currently playing quest
-    ReplayFrame.displayFrame:SetHeight(frameHeight)
-
     -- Update display button for the currently playing quest
     local currentlyPlayingQuest = ChattyLittleNpc.Voiceovers.currentlyPlaying
     local firstButton = ReplayFrame.buttons[1]
@@ -187,7 +182,7 @@ function ReplayFrame:UpdateDisplayFrame()
     end
 
     -- Update display buttons for the queued quests
-    for i = 1, 10 do
+    for i = 1, 3 do
         local button = ReplayFrame.buttons[i + 1] -- Start from the second button
         local quest = ChattyLittleNpc.questsQueue[i]
         if button and quest and quest.title then
