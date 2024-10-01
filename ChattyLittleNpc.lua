@@ -183,12 +183,6 @@ function ChattyLittleNpc:GOSSIP_SHOW()
     if self.db.profile.logNpcTexts then
         self.NpcDialogTracker:HandleGossipText()
     end
-
-    -- Update the NPC model display
-    local npcId = select(6, strsplit("-", UnitGUID("npc")))
-    if npcId then
-        self:UpdateNpcModelDisplay(tonumber(npcId))
-    end
 end
 
 function ChattyLittleNpc:GOSSIP_CLOSED()
