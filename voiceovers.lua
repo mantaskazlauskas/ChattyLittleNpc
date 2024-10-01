@@ -40,7 +40,6 @@ function Voiceovers:StopCurrentSound()
     ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
 end
 
--- Play quest audio or queue it if one is already playing.
 function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     if not questId or not phase then
         print("Missing required arguments")
@@ -56,7 +55,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     end
 
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
-    local fileName = questId .. "_" .. phase .. ".mp3"
+    local fileNameBase = questId .. "_" .. phase
     local success, newSoundHandle
 
     if self.currentlyPlaying
@@ -89,21 +88,12 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     success = false
     for _, folder in ipairs(ChattyLittleNpc.loadedVoiceoverPacks) do
         local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
-        local soundPath = self:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
         local retryCount = 0
         repeat
-            if success == nil then
-                if retryCount == 1 then
-                    soundPath = self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 2 then
-                    soundPath = self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 3 then
-                    soundPath = self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-                end
-                retryCount = retryCount + 1
-            end
+            local soundPath = self:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
             success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-        until success or retryCount > 3  -- Retry until success or tried all voiceover directories
+            retryCount = retryCount + 1
+        until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 
         if success then
             if not self.currentlyPlaying then
@@ -128,7 +118,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     if not success then
         if ChattyLittleNpc.db.profile.printMissingFiles then
-            print("Missing voiceover file: " .. fileName)
+            print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
         end
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
             if queuedAudio.questId == questId and queuedAudio.phase == phase then
@@ -142,7 +132,6 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
 end
 
--- Play non quest related text like gossip or text from items.
 function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     if not npcId or not soundType or not text then
         print("Arguments missing to play non quest sound.")
@@ -168,7 +157,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     end
 
     local basePath = "Interface\\AddOns\\ChattyLittleNpc_"
-    local fileName = npcId .. "_".. soundType .."_" .. hash .. ".mp3"
+    local fileNameBase = npcId .. "_".. soundType .."_" .. hash
     local success, newSoundHandle
 
     if self.currentlyPlaying and self.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(self.currentlyPlaying.soundHandle) then
@@ -178,22 +167,12 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     success = false
     for _, folder in ipairs(ChattyLittleNpc.loadedVoiceoverPacks) do
         local corePathToVoiceovers = basePath .. folder .. "\\" .. "voiceovers" .. "\\"
-        local soundPath = self:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
         local retryCount = 0
         repeat
-            -- skips on the first time by passing the first sound path to PlaySoundFile and if that fails tries all other gender folders.
-            if success == nil then
-                if retryCount == 1 then
-                    soundPath = self:GetMaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 2 then
-                    soundPath = self:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
-                elseif retryCount == 3 then
-                    soundPath = self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-                end
-                retryCount = retryCount + 1
-            end
+            local soundPath = self:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
             success, newSoundHandle = PlaySoundFile(soundPath, "Master")
-        until success or retryCount > 3  -- Retry until success or tried all voiceover directories
+            retryCount = retryCount + 1
+        until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 
         if success then
             if not self.currentlyPlaying then
@@ -211,18 +190,20 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
 
     if not success then
         if ChattyLittleNpc.db.profile.printMissingFiles then
-            print("Missing voiceover file: " .. fileName)
+            print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
         end
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 end
 
-function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileName, npcGender)
-    if npcGender and (strlower(npcGender) == "male" or strlower(npcGender) == "female") then
-        return corePathToVoiceovers .. strlower(npcGender) .. "\\".. fileName
-    else
-        return self:GetOldVoiceoversPath(corePathToVoiceovers, fileName)
-    end
+function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
+    local extensions = {".ogg", ".mp3"}
+    local genderFolders = {"", "male\\", "female\\", "old\\"}
+
+    local genderFolder = genderFolders[math.floor(retryCount / 2) + 1]
+    local extension = extensions[(retryCount % 2) + 1]
+
+    return corePathToVoiceovers .. genderFolder .. fileNameBase .. extension
 end
 
 function Voiceovers:GetFemaleVoiceoversPath(corePathToVoiceovers, fileName)
