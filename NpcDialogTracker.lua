@@ -44,8 +44,7 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID)
     NpcInfoDB[npcID][ChattyLittleNpc.locale].subzone = GetSubZoneText()
 
     if ChattyLittleNpc.db.profile.printNpcTexts then
-        print("------------------------>")
-        print("|cff00ff00Npc info collected: \r\n- Id: " .. npcID .. "\r\n- Name: " .. NpcInfoDB[npcID][ChattyLittleNpc.locale].name .. "\r\n- Gender: " ..  NpcInfoDB[npcID][ChattyLittleNpc.locale].sex)
+        ChattyLittleNpc:Print("|cff00ff00Npc info collected: \r\n- Id: " .. npcID .. "\r\n- Name: " .. NpcInfoDB[npcID][ChattyLittleNpc.locale].name .. "\r\n- Gender: " ..  NpcInfoDB[npcID][ChattyLittleNpc.locale].sex)
     end
 end
 
@@ -71,8 +70,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
     end
 
     if ChattyLittleNpc.db.profile.printNpcTexts then
-        print("------------------------>")
-        print("|cff00ff00Npc quest collected: \r\n- Npc ID: " .. npcID .. "\r\n- Quest ID: " .. questID .. "\r\n- Quest Detail: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_detail .. "\r\n- Quest Progress: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_progress .. "\r\n- Quest Completion: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_complete .. "\r\n- Quest Greeting: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quest_greeting)
+        ChattyLittleNpc:Print("|cff00ff00Npc quest collected: \r\n- Npc ID: " .. npcID .. "\r\n- Quest ID: " .. questID .. "\r\n- Quest Detail: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_detail .. "\r\n- Quest Progress: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_progress .. "\r\n- Quest Completion: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_complete .. "\r\n- Quest Greeting: ".. NpcInfoDB[npcID][ChattyLittleNpc.locale].quest_greeting)
     end
 end
 
@@ -89,8 +87,7 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText)
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] = text
 
         if ChattyLittleNpc.db.profile.printNpcTexts then
-            print("------------------------>")
-            print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. hash)
+            ChattyLittleNpc:Print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. hash)
         end
     end
 end
@@ -146,14 +143,13 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
     end
 
     if ChattyLittleNpc.db.profile.printNpcTexts then
-        print("------------------------>")
-        print("|cff00ff00Unit info collected: \r\n- Unit ID: " .. unitID .."\r\n- Unit Name: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName .. "\r\n- Unit Type: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType)
+        ChattyLittleNpc:Print("|cff00ff00Unit info collected: \r\n- Unit ID: " .. unitID .."\r\n- Unit Name: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitName .. "\r\n- Unit Type: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType)
         if textHash then
-            print("|cff00ff00Unit info collected: \r\n- Unit Text: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitTexts[textHash] .. "\r\n- Unit Text Hash: " .. textHash)
+            ChattyLittleNpc:Print("|cff00ff00Unit info collected: \r\n- Unit Text: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].unitTexts[textHash] .. "\r\n- Unit Text Hash: " .. textHash)
         end
 
         if questId then
-            print("|cff00ff00" .. unitType .. " Quests: \r\n- Quest ID: " .. questId .. "\r\n- Quest Detail: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail .. "\r\n- Quest Progress: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress .. "\r\n- Quest Completion: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete)
+            ChattyLittleNpc:Print("|cff00ff00" .. unitType .. " Quests: \r\n- Quest ID: " .. questId .. "\r\n- Quest Detail: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_detail .. "\r\n- Quest Progress: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_progress .. "\r\n- Quest Completion: " .. UnitInfoDB[unitID][ChattyLittleNpc.locale].quests[questId].quest_complete)
         end
     end
 end

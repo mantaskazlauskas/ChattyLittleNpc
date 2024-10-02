@@ -42,9 +42,9 @@ end
 
 function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     if not questId or not phase then
-        print("Missing required arguments")
-        print("QuestId: ", questId)
-        print("QuestPhase: ", phase)
+        ChattyLittleNpc:Print("Missing required arguments")
+        ChattyLittleNpc:Print("QuestId: ", questId)
+        ChattyLittleNpc:Print("QuestPhase: ", phase)
         return -- fail fast if no quest ID
     end
 
@@ -77,7 +77,11 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
             audioFileInfo.title = ChattyLittleNpc:GetTitleForQuestID(questId)
             audioFileInfo.cantBeInterrupted = true
             audioFileInfo.npcId = npcId
-        print("Queued quest: ", audioFileInfo.title)
+
+        if (ChattyLittleNpc.db.profile.debugMode) then
+            ChattyLittleNpc:Print("Queued quest: ", audioFileInfo.title)
+        end
+
         table.insert(ChattyLittleNpc.questsQueue, audioFileInfo)
         ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
         return
@@ -118,7 +122,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     if not success then
         if ChattyLittleNpc.db.profile.printMissingFiles then
-            print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
+            ChattyLittleNpc:Print("Missing voiceover file (.ogg or .mp3): ", fileNameBase)
         end
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
             if queuedAudio.questId == questId and queuedAudio.phase == phase then
@@ -134,11 +138,11 @@ end
 
 function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     if not npcId or not soundType or not text then
-        print("Arguments missing to play non quest sound.")
-        print("NpcId: ", npcId)
-        print("SoundType: ", soundType)
-        print("Text: ", text)
-        print("NpcGender(optional): ", npcGender)
+        ChattyLittleNpc:Print("Arguments missing to play non quest sound.")
+        ChattyLittleNpc:Print("NpcId: ", npcId)
+        ChattyLittleNpc:Print("SoundType: ", soundType)
+        ChattyLittleNpc:Print("Text: ", text)
+        ChattyLittleNpc:Print("NpcGender(optional): ", npcGender)
         return
     end
 
@@ -190,10 +194,12 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
 
     if not success then
         if ChattyLittleNpc.db.profile.printMissingFiles then
-            print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
+            ChattyLittleNpc:Print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
         end
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
+
+    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
 end
 
 function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)

@@ -44,6 +44,13 @@ local options = {
                     get = function(info) return ChattyLittleNpc.db.profile.printNpcTexts end,
                     set = function(info, value) ChattyLittleNpc.db.profile.printNpcTexts = value end,
                 },
+                debugMode = {
+                    type = 'toggle',
+                    name = 'Print Debug Messages',
+                    desc = 'Toggle to print debug messages.',
+                    get = function(info) return ChattyLittleNpc.db.profile.debugMode end,
+                    set = function(info, value) ChattyLittleNpc.db.profile.debugMode = value end,
+                },
             },
         },
         replayFrame = {

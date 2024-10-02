@@ -126,10 +126,9 @@ function ChattyLittleNpc:RunMD5TestCases()
     }
 
     for _, text in ipairs(testCases) do
-        print("Original Text: " .. text)
+        ChattyLittleNpc:Print("Original Text: ", text)
         local hash = self.MD5:GenerateHash(text)
-        print("MD5 Hash: " .. hash)
-        print("--------------------------")
+        ChattyLittleNpc:Print("MD5 Hash: ", hash)
     end
 end
 

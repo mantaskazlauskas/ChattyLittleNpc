@@ -1,4 +1,4 @@
-## Interface: 40300
+## Interface: 40400
 ## Title: Chatty Little NPC
 ## Notes: A simple addon that plays pre-recorded voice files for quest Description, Progression, and Completion stages.
 ## Author: Tuubby

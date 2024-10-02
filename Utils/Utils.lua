@@ -32,7 +32,7 @@ end
 ]]
 function Utils:PrintTable(t, indent)
     if not t then
-        print("Table is nil.")
+        ChattyLittleNpc:Print("Table is nil.")
         return
     end
 
@@ -40,10 +40,10 @@ function Utils:PrintTable(t, indent)
     for k, v in pairs(t) do
         local formatting = string.rep("  ", indent) .. k .. ": "
         if type(v) == "table" then
-            print(formatting)
+            ChattyLittleNpc:Print(formatting)
             self.PrintTable(v, indent + 1)
         else
-            print(formatting .. tostring(v))
+            ChattyLittleNpc:Print(formatting, tostring(v))
         end
     end
 end

@@ -82,13 +82,12 @@ function ChattyLittleNpc:RunBase64TestCases()
     }
 
     for _, text in ipairs(testCases) do
-        print("Original Text: " .. text)
+        ChattyLittleNpc:Print("Original Text: ", text)
         local encoded = self.Base64:Encode(text)
-        print("Encoded: " .. encoded)
+        ChattyLittleNpc:Print("Encoded: ", encoded)
         local decoded = self.Base64:Decode(encoded)
-        print("Decoded: " .. decoded)
-        print("Match: " .. tostring(text == decoded))
-        print("--------------------------")
+        ChattyLittleNpc:Print("Decoded: ", decoded)
+        ChattyLittleNpc:Print("Match: ", tostring(text == decoded))
     end
 end
 
