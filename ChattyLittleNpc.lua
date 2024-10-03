@@ -21,7 +21,7 @@ ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
 ChattyLittleNpc.useNamespaces = nil
-ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Classic", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.questsQueue = {}
 ChattyLittleNpc.currentItemInfo = {
@@ -154,6 +154,9 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
         local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
         if isLoaded then
             table.insert(self.loadedVoiceoverPacks, expansion)
+            if(self.db.profile.debugMode) then
+                self:Print("Loaded voiceover pack:", expansion)
+            end
         end
     end
 end
