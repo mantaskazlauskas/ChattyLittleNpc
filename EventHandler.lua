@@ -165,11 +165,15 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 end
 
 function EventHandler:QUEST_FINISHED()
-
+    if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
+        ChattyLittleNpc.Voiceovers.StopCurrentSound()
+    end
 end
 
 function EventHandler:GOSSIP_CLOSED()
-
+    if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
+        ChattyLittleNpc.Voiceovers.StopCurrentSound()
+    end
 end
 
 -- Initialize the EventHandler module

@@ -48,6 +48,7 @@ local defaults = {
         buttonPosX = -15,
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true,
+        stopVoiceoverAfterDialogWindowClose = false,
         debugMode = false
     }
 }
