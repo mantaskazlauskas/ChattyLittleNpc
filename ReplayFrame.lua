@@ -58,6 +58,15 @@ function ReplayFrame:CreateDisplayFrame()
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
 
+        -- Add right-click handler to close the frame
+        ReplayFrame.displayFrame:SetScript("OnMouseUp", function(frame, button)
+            if button == "RightButton" then
+                ChattyLittleNpc.questsQueue = {}
+                ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+                ReplayFrame.displayFrame:Hide()
+            end
+        end)
+
         ReplayFrame.displayFrame:SetBackdropColor(0, 0, 0, 0.2)
         ReplayFrame.displayFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
         ReplayFrame.displayFrame:SetMovable(true)
@@ -155,20 +164,27 @@ function ReplayFrame:UpdateDisplayFrame()
         return
     end
 
-    local currentlyPlayingQuest = ChattyLittleNpc.Voiceovers.currentlyPlaying
     local firstButton = ReplayFrame.buttons[1]
-    if currentlyPlayingQuest and currentlyPlayingQuest.title then
-        local truncatedTitle = currentlyPlayingQuest.title
+    if not ChattyLittleNpc.Voiceovers.currentlyPlaying.title then
+        ChattyLittleNpc.Voiceovers.currentlyPlaying.title = ChattyLittleNpc:GetTitleForQuestID(ChattyLittleNpc.Voiceovers.currentlyPlaying.questId)
 
-        if string.len(currentlyPlayingQuest.title) > 30 then
-            truncatedTitle = string.sub(currentlyPlayingQuest.title, 1, 25) .. "..."
+        if ChattyLittleNpc.db.profile.debugMode then
+            ChattyLittleNpc:Print("Getting missing title for quest id:", ChattyLittleNpc.Voiceovers.currentlyPlaying.questId, ", title found is:", ChattyLittleNpc.Voiceovers.currentlyPlaying.title)
+        end
+    end
+
+    if ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.title then
+        local truncatedTitle = ChattyLittleNpc.Voiceovers.currentlyPlaying.title
+
+        if string.len(ChattyLittleNpc.Voiceovers.currentlyPlaying.title) > 30 then
+            truncatedTitle = string.sub(ChattyLittleNpc.Voiceovers.currentlyPlaying.title, 1, 25) .. "..."
         end
 
         firstButton.text:SetText("-> " .. truncatedTitle)
         firstButton.frame:Show()
         firstButton.text:SetScript("OnEnter", function()
             GameTooltip:SetOwner(firstButton.frame, "ANCHOR_RIGHT")
-            GameTooltip:SetText(currentlyPlayingQuest.title)
+            GameTooltip:SetText(ChattyLittleNpc.Voiceovers.currentlyPlaying.title)
             GameTooltip:Show()
         end)
         firstButton.text:SetScript("OnLeave", function()
