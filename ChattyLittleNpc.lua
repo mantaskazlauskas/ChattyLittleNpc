@@ -84,11 +84,11 @@ function ChattyLittleNpc:OnEnable()
     end
 
     if (_G["QuestLogFrame"]) then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogFrame"], "TOPRIGHT", -140, -40, "ChattyNPCQuestLogFramePlayButton")
+        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogFrame"], "TOPRIGHT", 40, 40, "ChattyNPCQuestLogFramePlayButton")
     end
 
     if (_G["QuestLogDetailFrame"]) then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogDetailFrame"], "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
+        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogDetailFrame"], "TOPRIGHT", 40, 40, "ChattyNPCQuestLogDetailFramePlayButton")
     end
 
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)

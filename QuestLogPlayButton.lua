@@ -31,7 +31,7 @@ end
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, relativeTo)
-        button:SetSize(60, 60)
+        button:SetSize(64, 64)
         button:SetFrameStrata("TOOLTIP")
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
@@ -107,7 +107,7 @@ end
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, parentFrame)
-        button:SetSize(60, 60)
+        button:SetSize(64, 64)
         button:SetFrameStrata("TOOLTIP")
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
