@@ -5,10 +5,31 @@ local ReplayFrame = ChattyLittleNpc.ReplayFrame
 
 local PlayButton = {}
 ChattyLittleNpc.PlayButton = PlayButton
+PlayButton.GossipButton = "ChattyLittleGossipButton"
+PlayButton.QuestButton = "ChattyLittleQuestButton"
+PlayButton.ItemTextButton = "ChattyLittleItemTextButton"
 
 PlayButton.buttons = {}
 
+function PlayButton:ClearButtons()
+    if _G[PlayButton.GossipButton] then
+        _G[PlayButton.GossipButton]:Hide()
+        _G[PlayButton.GossipButton] = nil
+    end
+
+    if _G[PlayButton.QuestButton] then
+        _G[PlayButton.QuestButton]:Hide()
+        _G[PlayButton.QuestButton] = nil
+    end
+
+    if _G[PlayButton.ItemTextButton] then
+        _G[PlayButton.ItemTextButton]:Hide()
+        _G[PlayButton.ItemTextButton] = nil
+    end
+end
+
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
+    PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, relativeTo)
         button:SetSize(30, 30)
         button:SetFrameStrata("TOOLTIP")
@@ -80,16 +101,7 @@ function PlayButton:GetSelectedQuest()
 end
 
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
-    if (_G[buttonName]) then
-        _G[buttonName]:Hide()
-        _G[buttonName] = nil
-    end
-
-    if _G["ChattyLittlePlayGossipButton"] then
-        _G["ChattyLittlePlayGossipButton"]:Hide()
-        _G["ChattyLittlePlayGossipButton"] = nil
-    end
-
+    PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, parentFrame)
         button:SetSize(30, 30)
         button:SetFrameStrata("TOOLTIP")
