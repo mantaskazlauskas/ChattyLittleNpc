@@ -74,21 +74,21 @@ end
 function ChattyLittleNpc:OnEnable()
     EventHandler:RegisterEvents()
 
-    if self.ReplayFrame.DisplayFrame then
+    if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
     end
 
     local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
-    if DetailsFrame then
+    if (DetailsFrame) then
         self.PlayButton:AttachPlayButton("TOPRIGHT", DetailsFrame, "TOPRIGHT", 0, 0, "ChattyNPCPlayButton")
     end
 
-    if QuestLogFrame then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogFramePlayButton")
+    if (_G["QuestLogFrame"]) then
+        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogFrame"], "TOPRIGHT", -140, -40, "ChattyNPCQuestLogFramePlayButton")
     end
 
-    if QuestLogDetailFrame then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogDetailFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
+    if (_G["QuestLogDetailFrame"]) then
+        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogDetailFrame"], "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
     end
 
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
@@ -121,9 +121,10 @@ function ChattyLittleNpc:GetUnitInfo(unit)
     local unitGuid = UnitGUID(unit)
     local unitType = nil
     local unitId = nil
-    if unitGuid then
+
+    if (unitGuid) then
         unitType = select(1, strsplit("-", unitGuid))
-        if unitType == "Creature" or unitType == "Vehicle" or unitType == "GameObject" then
+        if (unitType == "Creature" or unitType == "Vehicle" or unitType == "GameObject") then
             local idString = select(6, strsplit("-", unitGuid))
             unitId = tonumber(idString)
         end
@@ -136,9 +137,9 @@ end
 -- @param questID number: The unique identifier for the quest.
 -- @return string: The title of the quest.
 function ChattyLittleNpc:GetTitleForQuestID(questID)
-    if self.useNamespaces then
+    if (self.useNamespaces) then
         return C_QuestLog.GetTitleForQuestID(questID)
-    elseif QuestUtils_GetQuestName then
+    elseif (QuestUtils_GetQuestName) then
         return QuestUtils_GetQuestName(questID)
     end
 end
@@ -152,9 +153,9 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
     for _, expansion in ipairs(self.expansions) do
         local voiceoverPackName = "ChattyLittleNpc_" .. expansion
         local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
-        if isLoaded then
+        if (isLoaded) then
             table.insert(self.loadedVoiceoverPacks, expansion)
-            if(self.db.profile.debugMode) then
+            if (self.db.profile.debugMode) then
                 self:Print("Loaded voiceover pack:", expansion)
             end
         end
@@ -170,7 +171,8 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
     local npcId = select(6, self:GetUnitInfo("npc"))
     local gender = select(2, self:GetUnitInfo("npc"))
-    if questId > 0 then
+    
+    if (questId > 0) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayQuestSound(questId, questPhase, npcId, gender)
         end)
@@ -188,7 +190,7 @@ end
 ]]
 function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
     local idAsNumber = tonumber(id)
-    if idAsNumber and idAsNumber > 0 and text then
+    if (idAsNumber and idAsNumber > 0 and text) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
         end)

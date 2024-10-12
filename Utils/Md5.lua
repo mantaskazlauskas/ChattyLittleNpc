@@ -41,7 +41,9 @@ end
 function MD5:Padding(len)
     local bits = len * 8
     local pad_len = 56 - (len + 1) % 64
-    if pad_len < 0 then pad_len = pad_len + 64 end
+    if (pad_len < 0) then
+        pad_len = pad_len + 64   
+    end
     local padding = "\128" .. string.rep("\0", pad_len) .. char(bits % 256)
     bits = floor(bits / 256)
     for i = 1, 7 do
@@ -57,13 +59,13 @@ function MD5:ProcessChunk(chunk, H0, H1, H2, H3)
     local a, b, c, d = H0, H1, H2, H3
 
     for i = 0, 63 do
-        if i < 16 then
+        if (i < 16) then
             F = (b and c) or (b and d)
             G = i
-        elseif i < 32 then
+        elseif (i < 32) then
             F = (d and b) or (c and b)
             G = (5 * i + 1) % 16
-        elseif i < 48 then
+        elseif (i < 48) then
             F = bxor(b, c, d)
             G = (3 * i + 5) % 16
         else
@@ -72,11 +74,11 @@ function MD5:ProcessChunk(chunk, H0, H1, H2, H3)
         end
 
         local shift_amount
-        if i % 4 == 0 then
+        if (i % 4 == 0) then
             shift_amount = 7
-        elseif i % 4 == 1 then
+        elseif (i % 4 == 1) then
             shift_amount = 12
-        elseif i % 4 == 2 then
+        elseif (i % 4 == 2) then
             shift_amount = 17
         else
             shift_amount = 22

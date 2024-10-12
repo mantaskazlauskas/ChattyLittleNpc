@@ -31,15 +31,18 @@ end
     @param indent number: The indentation level for nested tables (optional).
 ]]
 function Utils:PrintTable(t, indent)
-    if not t then
+    if (not t) then
         ChattyLittleNpc:Print("Table is nil.")
         return
     end
 
-    if not indent then indent = 0 end
+    if (not indent) then
+        indent = 0
+    end
+
     for k, v in pairs(t) do
         local formatting = string.rep("  ", indent) .. k .. ": "
-        if type(v) == "table" then
+        if (type(v) == "table") then
             ChattyLittleNpc:Print(formatting)
             self.PrintTable(v, indent + 1)
         else

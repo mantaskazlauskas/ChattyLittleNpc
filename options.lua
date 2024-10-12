@@ -32,7 +32,7 @@ local options = {
                     get = function(info) return ChattyLittleNpc.db.profile.logNpcTexts end,
                     set = function(info, value)
                         ChattyLittleNpc.db.profile.logNpcTexts = value
-                        if not value then
+                        if (not value) then
                             ChattyLittleNpc.db.profile.printNpcTexts = false
                         end
                     end,
@@ -92,7 +92,7 @@ local options = {
                     get = function(info) return ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose end,
                     set = function(info, value)
                         ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose = value
-                        if value then
+                        if (value) then
                             ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing = false
                         end
                     end
@@ -104,7 +104,7 @@ local options = {
                     get = function(info) return ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing end,
                     set = function(info, value)
                         ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing = value
-                        if value then
+                        if (value) then
                             ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose = false
                         end
                     end
@@ -182,7 +182,7 @@ local options = {
 }
 
 function Options:SetupOptions()
-    if not self.optionsFrame then
+    if (not self.optionsFrame) then
         LibStub("AceConfig-3.0"):RegisterOptionsTable("ChattyLittleNpc", options)
         self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("ChattyLittleNpc", "Chatty Little Npc")
     end

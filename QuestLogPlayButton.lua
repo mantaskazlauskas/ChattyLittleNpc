@@ -12,17 +12,17 @@ PlayButton.ItemTextButton = "ChattyLittleItemTextButton"
 PlayButton.buttons = {}
 
 function PlayButton:ClearButtons()
-    if _G[PlayButton.GossipButton] then
+    if (_G[PlayButton.GossipButton]) then
         _G[PlayButton.GossipButton]:Hide()
         _G[PlayButton.GossipButton] = nil
     end
 
-    if _G[PlayButton.QuestButton] then
+    if (_G[PlayButton.QuestButton]) then
         _G[PlayButton.QuestButton]:Hide()
         _G[PlayButton.QuestButton] = nil
     end
 
-    if _G[PlayButton.ItemTextButton] then
+    if (_G[PlayButton.ItemTextButton]) then
         _G[PlayButton.ItemTextButton]:Hide()
         _G[PlayButton.ItemTextButton] = nil
     end
@@ -55,7 +55,8 @@ function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, 
     button:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
     button:SetScript("OnMouseUp", function()
         local questID = PlayButton:GetSelectedQuest()
-        if questID then
+
+        if (questID) then
             ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Desc")
         end
     end)
@@ -67,7 +68,8 @@ end
 function PlayButton:UpdatePlayButton()
     local questID = PlayButton:GetSelectedQuest()
     for buttonName, button in pairs(PlayButton.buttons) do
-        if questID then
+
+        if (questID) then
             button:Show()
         else
             button:Hide()
@@ -82,16 +84,18 @@ function PlayButton:HidePlayButton()
 end
 
 function PlayButton:GetSelectedQuest()
-    if ChattyLittleNpc.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest then
+    if (ChattyLittleNpc.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest) then
         return C_QuestLog.GetSelectedQuest()
     else
         local selectedIndex = GetQuestLogSelection()
-        if selectedIndex and selectedIndex > 0 then
+
+        if (selectedIndex and selectedIndex > 0) then
             local quesTitle, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
             ChattyLittleNpc.Voiceovers.currentQuestId = questID
             ChattyLittleNpc.Voiceovers.currentPhase = "desc"
             ChattyLittleNpc.currentQuestTitle = quesTitle
-            if ChattyLittleNpc.currentQuestTitle then
+
+            if (ChattyLittleNpc.currentQuestTitle) then
                 ChattyLittleNpc.ReplayFrame.ShowDisplayFrame()
             end
             return questID
@@ -140,11 +144,11 @@ function PlayButton:UpdateButtonPositions()
     local buttonsToUpdate = {"GossipFramePlayButton", "QuestFramePlayButton"}
     for _, buttonName in pairs(buttonsToUpdate) do
         local button = _G[buttonName] -- Fetch the button by name
-        if button then
+        if (button) then
             button:ClearAllPoints()
-            if buttonName == "GossipFramePlayButton" then
+            if (buttonName == "GossipFramePlayButton") then
                 button:SetPoint("TOPRIGHT", GossipFrame, "TOPRIGHT", x, y)
-            elseif buttonName == "QuestFramePlayButton" then
+            elseif (buttonName == "QuestFramePlayButton") then
                 button:SetPoint("TOPRIGHT", QuestFrame, "TOPRIGHT", x, y)
             end
         end

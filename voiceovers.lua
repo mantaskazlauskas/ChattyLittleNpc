@@ -12,16 +12,17 @@ Voiceovers.currentlyPlaying = {
     questId = nil,
     soundHandle = nil,
     title = nil,
-    isPlaying = nil
+    isPlaying = nil,
+    stopped = nil
 }
 
 -- Clear the queue from quests and stop current audio.
 function Voiceovers:ForceStopCurrentSound(clearQueue)
-    if clearQueue then
+    if (clearQueue) then
         ChattyLittleNpc.questsQueue = {}
     end
 
-    if Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle then
+    if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle) then
         StopSound(Voiceovers.currentlyPlaying.soundHandle)
         Voiceovers.currentlyPlaying.isPlaying = false
     end
@@ -31,7 +32,7 @@ end
 
 -- Stop current audio.
 function Voiceovers:StopCurrentSound()
-    if Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle) then
+    if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle)) then
         StopSound(Voiceovers.currentlyPlaying.soundHandle)
     end
 
@@ -39,15 +40,15 @@ function Voiceovers:StopCurrentSound()
 end
 
 function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
-    if not questId or not phase then
+    if (not questId or not phase) then
         ChattyLittleNpc:Print("Missing required arguments")
         ChattyLittleNpc:Print("QuestId: ", questId)
         ChattyLittleNpc:Print("QuestPhase: ", phase)
         return -- fail fast if no quest ID
     end
 
-    if Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.questId == questId and Voiceovers.currentlyPlaying.phase == phase then
-        if Voiceovers.currentlyPlaying.isPlaying then
+    if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.questId == questId and Voiceovers.currentlyPlaying.phase == phase) then
+        if (Voiceovers.currentlyPlaying.isPlaying) then
             return -- skip if the same quest audio is already playing
         end
     end
@@ -56,13 +57,13 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     local fileNameBase = questId .. "_" .. phase
     local success, newSoundHandle
 
-    if Voiceovers.currentlyPlaying
+    if (Voiceovers.currentlyPlaying
         and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing
         and Voiceovers.currentlyPlaying.isPlaying
-        and Voiceovers.currentlyPlaying.soundHandle and Voiceovers.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle) then
+        and Voiceovers.currentlyPlaying.soundHandle and Voiceovers.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle)) then
 
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
-            if queuedAudio.questId == questId and queuedAudio.phase == phase then
+            if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
                 return -- Stop checking further since we found a match in the queued quests
             end
         end
@@ -81,7 +82,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
         end
 
         table.insert(ChattyLittleNpc.questsQueue, audioFileInfo)
-        ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+        ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(not (npcId and npcGender))
         return
     end
 
@@ -97,8 +98,8 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
             retryCount = retryCount + 1
         until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 
-        if success then
-            if not Voiceovers.currentlyPlaying then
+        if (success) then
+            if (not Voiceovers.currentlyPlaying) then
                 Voiceovers.currentlyPlaying = {}
             end
             Voiceovers.currentlyPlaying.soundHandle = newSoundHandle
@@ -110,7 +111,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
             Voiceovers.currentlyPlaying.cantBeInterrupted = true
             Voiceovers.currentlyPlaying.isPlaying = true
 
-            if Voiceovers.currentlyPlaying.title then
+            if (Voiceovers.currentlyPlaying.title) then
                 table.remove(ChattyLittleNpc.questsQueue, 1) 
                 ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
             end
@@ -118,12 +119,12 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
         end
     end
 
-    if not success then
-        if ChattyLittleNpc.db.profile.printMissingFiles then
+    if (not success) then
+        if (ChattyLittleNpc.db.profile.printMissingFiles) then
             ChattyLittleNpc:Print("Missing voiceover file (.ogg or .mp3): ", fileNameBase)
         end
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
-            if queuedAudio.questId == questId and queuedAudio.phase == phase then
+            if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
                 table.remove(ChattyLittleNpc.questsQueue, 1)
                 break
             end
@@ -131,11 +132,11 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(not (npcId and npcGender))
 end
 
 function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
-    if not npcId or not soundType or not text then
+    if (not npcId or not soundType or not text) then
         ChattyLittleNpc:Print("Arguments missing to play non quest sound.")
         ChattyLittleNpc:Print("NpcId: ", npcId)
         ChattyLittleNpc:Print("SoundType: ", soundType)
@@ -147,12 +148,12 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     local depersonalisedText =  ChattyLittleNpc.Utils:CleanText(text)
     local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
 
-    if not npcId or not soundType or not hash then
+    if (not npcId or not soundType or not hash) then
         return -- fail fast in case of missing argument values
     end
 
-    if Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle then
-        if Voiceovers.currentlyPlaying.cantBeInterrupted and Voiceovers.currentlyPlaying.isPlaying and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing then
+    if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle) then
+        if (Voiceovers.currentlyPlaying.cantBeInterrupted and Voiceovers.currentlyPlaying.isPlaying and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing) then
             return -- skip if a quest audio is playing
         end
         StopSound(Voiceovers.currentlyPlaying.soundHandle, 0.5)
@@ -162,7 +163,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
     local fileNameBase = npcId .. "_".. soundType .."_" .. hash
     local success, newSoundHandle
 
-    if Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle) then
+    if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle)) then
         return
     end
 
@@ -176,7 +177,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
             retryCount = retryCount + 1
         until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 
-        if success then
+        if (success) then
             if not Voiceovers.currentlyPlaying then
                 Voiceovers.currentlyPlaying = {}
             end
@@ -190,8 +191,8 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         end
     end
 
-    if not success then
-        if ChattyLittleNpc.db.profile.printMissingFiles then
+    if (not success) then
+        if (ChattyLittleNpc.db.profile.printMissingFiles) then
             ChattyLittleNpc:Print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
         end
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false

@@ -45,13 +45,13 @@ end
 function EventHandler:StartWatcher()
     self:ScheduleRepeatingTimer(function()
         local currentlyPlaying = ChattyLittleNpc.Voiceovers.currentlyPlaying
-        if currentlyPlaying and not currentlyPlaying.isPlaying then
+        if (currentlyPlaying and not currentlyPlaying.isPlaying) then
             self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
             return
         end
 
-        if currentlyPlaying and currentlyPlaying.soundHandle and currentlyPlaying.isPlaying then
-            if not C_Sound.IsPlaying(currentlyPlaying.soundHandle) then
+        if (currentlyPlaying and currentlyPlaying.soundHandle and currentlyPlaying.isPlaying) then
+            if (not C_Sound.IsPlaying(currentlyPlaying.soundHandle)) then
                 currentlyPlaying.isPlaying = false
                 self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
                 return
@@ -62,10 +62,18 @@ end
 
 -- EVENT HANDLERS
 function EventHandler:ADDON_LOADED()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("ADDON_LOADED")
+    end
+
     ChattyLittleNpc.NpcDialogTracker:InitializeTables()
 end
 
 function EventHandler:GOSSIP_SHOW()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("GOSSIP_SHOW")
+    end
+
     local parentFrame = _G["DUIQuestFrame"] or GossipFrame
     ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.GossipButton ,function()
         local _, npcGender, _, _, _, unitId = ChattyLittleNpc:GetUnitInfo("npc")
@@ -73,30 +81,39 @@ function EventHandler:GOSSIP_SHOW()
         ChattyLittleNpc.Voiceovers:PlayNonQuestSound(unitId, "Gossip", gossipText, npcGender)
     end)
 
-    if ChattyLittleNpc.db.profile.autoPlayVoiceovers then
+    if (ChattyLittleNpc.db.profile.autoPlayVoiceovers) then
         local gossipText = C_GossipInfo.GetText()
         local _, gender, _, _, unitType, unitId = ChattyLittleNpc:GetUnitInfo("npc")
         local soundType = "Gossip"
-        if unitType == "GameObject" then
+   
+        if (unitType == "GameObject") then
             soundType = "GameObject"
         end
         ChattyLittleNpc:HandleGossipPlaybackStart(gossipText, soundType, unitId, gender)
     end
 
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleGossipText()
     end
 end
 
 function EventHandler:QUEST_GREETING()
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("QUEST_GREETING")
+    end
+
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
     end
 end
 
 function EventHandler:QUEST_DETAIL()
-    if QuestFrame then
-        local parentFrame = _G["DUIQuestFrame"] or QuestFrame
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("QUEST_DETAIL")
+    end
+
+    if (_G["QuestFrame"]) then
+        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
@@ -104,18 +121,22 @@ function EventHandler:QUEST_DETAIL()
         end)
     end
 
-    if ChattyLittleNpc.db.profile.autoPlayVoiceovers then
+    if (ChattyLittleNpc.db.profile.autoPlayVoiceovers) then
         ChattyLittleNpc:HandlePlaybackStart("Desc")
     end
 
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_DETAIL")
     end
 end
 
 function EventHandler:QUEST_PROGRESS()
-    if QuestFrame then
-        local parentFrame = _G["DUIQuestFrame"] or QuestFrame
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("QUEST_PROGRESS")
+    end
+
+    if (_G["QuestFrame"]) then
+        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, "ChattyLittlePlayQuestVoiceoverButton", function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
@@ -123,18 +144,22 @@ function EventHandler:QUEST_PROGRESS()
         end)
     end
 
-    if ChattyLittleNpc.db.profile.autoPlayVoiceovers then
+    if (ChattyLittleNpc.db.profile.autoPlayVoiceovers) then
         ChattyLittleNpc:HandlePlaybackStart("Prog")
     end
 
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_PROGRESS")
     end
 end
 
 function EventHandler:QUEST_COMPLETE()
-    if QuestFrame then
-        local parentFrame = _G["DUIQuestFrame"] or QuestFrame
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("QUEST_COMPLETE")
+    end
+
+    if (_G["QuestFrame"]) then
+        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, "ChattyLittlePlayQuestVoiceoverButton", function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
@@ -142,16 +167,20 @@ function EventHandler:QUEST_COMPLETE()
         end)
     end
 
-    if ChattyLittleNpc.db.profile.autoPlayVoiceovers then
+    if (ChattyLittleNpc.db.profile.autoPlayVoiceovers) then
         ChattyLittleNpc:HandlePlaybackStart("Comp")
     end
 
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
     end
 end
 
 function EventHandler:ITEM_TEXT_READY()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("ITEM_TEXT_READY")
+    end
+
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
     local itemId = C_Item.GetItemInfoInstant(itemName)
@@ -165,20 +194,20 @@ function EventHandler:ITEM_TEXT_READY()
         ChattyLittleNpc:Print("Unit GUID:", unitGuid)
     end
 
-    if ItemTextFrame then
-        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(ItemTextFrame, ChattyLittleNpc.PlayButton.ItemTextButton, function()
+    if (_G["ItemTextFrame"]) then
+        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(_G["ItemTextFrame"], ChattyLittleNpc.PlayButton.ItemTextButton, function()
             ChattyLittleNpc.Voiceovers:PlayNonQuestSound(itemId, unitType, itemText)
         end)
     end
 
-    if not itemId and itemName and itemText and unitGuid then
+    if (not itemId and itemName and itemText and unitGuid) then
         unitType = select(1, string.split('-', unitGuid))
-        if unitType == "GameObject" then
+        if (unitType == "GameObject") then
             itemId = select(6, string.split("-", unitGuid));
         end
     end
 
-    if ChattyLittleNpc.db.profile.logNpcTexts then
+    if (ChattyLittleNpc.db.profile.logNpcTexts) then
         ChattyLittleNpc.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
     end
 
@@ -187,7 +216,8 @@ end
 
 function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     for i, quest in ipairs(ChattyLittleNpc.questsQueue) do
-        if quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase then
+        if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
+
             if (ChattyLittleNpc.db.profile.debugMode) then
                 ChattyLittleNpc:Print("Removing quest from queue:", quest.questId)
             end
@@ -197,7 +227,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         end
     end
 
-    if #ChattyLittleNpc.questsQueue > 0 then
+    if (#ChattyLittleNpc.questsQueue > 0) then
         local nextQuest = ChattyLittleNpc.questsQueue[1]
         ChattyLittleNpc.Voiceovers:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.gender)
     else
@@ -210,9 +240,7 @@ function EventHandler:QUEST_FINISHED()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("QUEST_FINISHED")
     end
-
-    ChattyLittleNpc:Print(ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose)
-    if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
+    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying) then
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 end
@@ -221,8 +249,7 @@ function EventHandler:GOSSIP_CLOSED()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("GOSSIP_CLOSED")
     end
-    ChattyLittleNpc:Print(ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose)
-    if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
+    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying) then
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 end

@@ -35,10 +35,10 @@ function Base64:Decode(data)
     local padding = 0
 
     -- Remove padding characters if any
-    if string.sub(data, -2) == '==' then
+    if (string.sub(data, -2) == '==') then
         padding = 2
         data = string.sub(data, 1, -3)
-    elseif string.sub(data, -1) == '=' then
+    elseif (string.sub(data, -1) == '=') then
         padding = 1
         data = string.sub(data, 1, -2)
     end
@@ -54,7 +54,7 @@ function Base64:Decode(data)
     end))
 
     -- Remove the extra padding in binary
-    if padding > 0 then
+    if (padding > 0) then
         binaryData = binaryData:sub(1, -(padding * 2 + 1))
     end
 
