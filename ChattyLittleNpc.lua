@@ -80,7 +80,7 @@ function ChattyLittleNpc:OnEnable()
 
     local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if DetailsFrame then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", DetailsFrame, "TOPRIGHT", -20, -10, "ChattyNPCPlayButton")
+        self.PlayButton:AttachPlayButton("TOPRIGHT", DetailsFrame, "TOPRIGHT", 0, 0, "ChattyNPCPlayButton")
     end
 
     if QuestLogFrame then

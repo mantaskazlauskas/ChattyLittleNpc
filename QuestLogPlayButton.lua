@@ -31,17 +31,17 @@ end
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, relativeTo)
-        button:SetSize(30, 30)
+        button:SetSize(60, 60)
         button:SetFrameStrata("TOOLTIP")
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
         texture:SetAllPoints()
-        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc2.png")
+        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
 
     -- Create a glow texture
     local glowTexture = button:CreateTexture(nil, "OVERLAY")
         glowTexture:SetAllPoints()
-        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc2_Glow.png")
+        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
         glowTexture:Hide()
 
     button:SetScript("OnEnter", function()
@@ -103,17 +103,17 @@ end
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
     local button = CreateFrame("Frame", buttonName, parentFrame)
-        button:SetSize(30, 30)
+        button:SetSize(60, 60)
         button:SetFrameStrata("TOOLTIP")
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
         texture:SetAllPoints()
-        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc2.png")
+        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
 
     -- Create a glow texture
     local glowTexture = button:CreateTexture(nil, "OVERLAY")
         glowTexture:SetAllPoints()
-        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc2_Glow.png")
+        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
         glowTexture:Hide()
 
     button:SetScript("OnEnter", function()
