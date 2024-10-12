@@ -91,14 +91,6 @@ function ChattyLittleNpc:OnEnable()
         self.PlayButton:AttachPlayButton("TOPRIGHT", QuestLogDetailFrame, "TOPRIGHT", -140, -40, "ChattyNPCQuestLogDetailFramePlayButton")
     end
 
-    if GossipFrame then
-        self.PlayButton:CreateGossipButton()
-    end
-
-    if QuestFrame then
-        self.PlayButton:CreatePlayQuestVoiceoverButton()
-    end
-
     hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
     QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
