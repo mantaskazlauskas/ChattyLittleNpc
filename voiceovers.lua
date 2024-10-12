@@ -197,7 +197,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(soundType == "Item" or soundType == "GameObject")
 end
 
 function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)

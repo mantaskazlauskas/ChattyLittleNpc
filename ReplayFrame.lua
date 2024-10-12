@@ -40,7 +40,7 @@ function ReplayFrame:ResetFramePosition()
     end
 end
 
-function ReplayFrame:CreateDisplayFrame()
+function ReplayFrame:CreateDisplayFrame(useUiParent)
     if not ReplayFrame.DisplayFrame then
         ReplayFrame.normalWidth = 310
         ReplayFrame.npcModelFrameWidth = 140
@@ -49,9 +49,12 @@ function ReplayFrame:CreateDisplayFrame()
 
         -- Check if DialogueUI addon is loaded
         local parentFrame = UIParent
-        if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded) then
+        if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded and not useUiParent) then
             if ChattyLittleNpc.isDUIAddonLoaded then
                 parentFrame = _G["DUIQuestFrame"] or UIParent
+                if _G["DUIQuestFrame"] then
+                    ChattyLittleNpc:Print("DUIQuestFrame found")
+                end
             end
         end
 
@@ -138,7 +141,7 @@ function ReplayFrame:CreateDisplayFrame()
                     table.remove(ChattyLittleNpc.questsQueue, questIndex - 1)
                 end
 
-                ReplayFrame:UpdateDisplayFrame()
+                ReplayFrame:UpdateDisplayFrame(useUiParent)
 
                 if #ChattyLittleNpc.questsQueue == 0 and not ChattyLittleNpc.Voiceovers.currentlyPlaying then
                     ReplayFrame.DisplayFrame:Hide()
@@ -169,7 +172,7 @@ function ReplayFrame:CreateDisplayFrame()
     end
 end
 
-function ReplayFrame:UpdateDisplayFrame()
+function ReplayFrame:UpdateDisplayFrame(useUiParent)
     if (not ChattyLittleNpc.Voiceovers.currentlyPlaying or not ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) and (#ChattyLittleNpc.questsQueue == 0) then
         if ReplayFrame.DisplayFrame then
             ReplayFrame.DisplayFrame:Hide()
@@ -234,14 +237,14 @@ function ReplayFrame:UpdateDisplayFrame()
         end
     end
 
-    ReplayFrame:UpdateParent()
+    ReplayFrame:UpdateParent(useUiParent)
     ReplayFrame.DisplayFrame:Show()
     ReplayFrame:CheckAndShowModel()
 end
 
 
-function ReplayFrame:UpdateParent()
-    if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded) then
+function ReplayFrame:UpdateParent(useUiParent)
+    if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded and not useUiParent) then
         if (ChattyLittleNpc.isDUIAddonLoaded) then
             ReplayFrame.DisplayFrame:SetParent(_G["DUIQuestFrame"] or UIParent)
         else
@@ -252,7 +255,7 @@ function ReplayFrame:UpdateParent()
     end
 end
 
-function ReplayFrame:ShowDisplayFrame()
+function ReplayFrame:ShowDisplayFrame(useUiParent)
     if (not ChattyLittleNpc.db.profile.showReplayFrame or
         ((ChattyLittleNpc.questsQueue and #ChattyLittleNpc.questsQueue == 0) and not ChattyLittleNpc.Voiceovers.currentlyPlaying))
         and ReplayFrame.DisplayFrame then
@@ -260,8 +263,8 @@ function ReplayFrame:ShowDisplayFrame()
             return
     end
 
-    ReplayFrame:CreateDisplayFrame()
-    ReplayFrame:UpdateDisplayFrame()
+    ReplayFrame:CreateDisplayFrame(useUiParent)
+    ReplayFrame:UpdateDisplayFrame(useUiParent)
 end
 
 function ReplayFrame:UpdateNpcModelDisplay(npcId)

@@ -207,15 +207,22 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 end
 
 function EventHandler:QUEST_FINISHED()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("QUEST_FINISHED")
+    end
+
+    ChattyLittleNpc:Print(ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose)
     if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
-        ChattyLittleNpc.Voiceovers.StopCurrentSound()
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 end
 
 function EventHandler:GOSSIP_CLOSED()
-    if ChattyLittleNpc.db.profile.w and ChattyLittleNpc.Voiceovers.currentlyPlaying then
-        ChattyLittleNpc.Voiceovers.StopCurrentSound()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("GOSSIP_CLOSED")
+    end
+    ChattyLittleNpc:Print(ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose)
+    if ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying then
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 end
