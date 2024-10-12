@@ -24,6 +24,7 @@ ChattyLittleNpc.useNamespaces = nil
 ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
 ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.questsQueue = {}
+ChattyLittleNpc.isDUIAddonLoaded = false
 ChattyLittleNpc.currentItemInfo = {
     ItemID = nil,
     ItemName = nil,
@@ -49,7 +50,8 @@ local defaults = {
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true,
         stopVoiceoverAfterDialogWindowClose = false,
-        debugMode = false
+        debugMode = false,
+        ShowReplayFrameIfDialogueUIAddonIsLoaded = false
     }
 }
 
@@ -72,13 +74,13 @@ end
 function ChattyLittleNpc:OnEnable()
     EventHandler:RegisterEvents()
 
-    if self.ReplayFrame.displayFrame then
+    if self.ReplayFrame.DisplayFrame then
         self.ReplayFrame:LoadFramePosition()
     end
 
-    local detailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
-    if detailsFrame then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", detailsFrame, "TOPRIGHT", -20, -10, "ChattyNPCPlayButton")
+    local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
+    if DetailsFrame then
+        self.PlayButton:AttachPlayButton("TOPRIGHT", DetailsFrame, "TOPRIGHT", -20, -10, "ChattyNPCPlayButton")
     end
 
     if QuestLogFrame then
@@ -102,6 +104,11 @@ function ChattyLittleNpc:OnEnable()
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
+
+    self.isDUIAddonLoaded = C_AddOns.IsAddOnLoaded("DialogueUI")
+    if (self.db.profile.debugMode) then
+        self:Print("DUI Addon Loaded:", self.isDUIAddonLoaded)
+    end
 end
 
 function ChattyLittleNpc:OnDisable()

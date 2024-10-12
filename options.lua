@@ -13,7 +13,7 @@ local options = {
     handler = ChattyLittleNpc,
     type = 'group',
     args = {
-        debuggingImprovements = {
+        DebuggingImprovements = {
             type = 'group',
             name = 'Debugging and Improvements',
             inline = true,
@@ -53,7 +53,7 @@ local options = {
                 },
             },
         },
-        replayFrame = {
+        ReplayFrame = {
             type = 'group',
             name = 'Replay Frame',
             inline = true,
@@ -73,7 +73,7 @@ local options = {
                 },
             },
         },
-        playbackOptions = {
+        PlaybackOptions = {
             type = 'group',
             name = 'Playback Options',
             inline = true,
@@ -164,6 +164,20 @@ local options = {
                 },
             },
         },
+        Integrations = {
+            type = 'group',
+            name = 'Integrations',
+            inline = true,
+            args = {
+                ShowReplayFrameIfDialogueUIAddonIsLoaded = {
+                    type = 'toggle',
+                    name = 'Show Floating head frame with DialogueUI frame',
+                    desc = 'When using DialogueUI addon, toggle if you want to see the floating head frame at the same time as DialogueUI frame.',
+                    get = function(info) return ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded end,
+                    set = function(info, value) ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded = value end,
+                },
+            }
+        }
     },
 }
 
