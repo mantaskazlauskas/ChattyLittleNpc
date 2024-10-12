@@ -5,6 +5,11 @@ local NpcDialogTracker = {}
 ChattyLittleNpc.NpcDialogTracker = NpcDialogTracker
 
 function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
+    if (not NpcInfoDB) then
+        ChattyLittleNpc:Print("Initializing NpcInfoDB")
+        NpcInfoDB = {}
+    end
+
     if (not NpcInfoDB[npcID]) then
         NpcInfoDB[npcID] = {}
     end
@@ -95,6 +100,10 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText)
 end
 
 function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
+    if (not UnitInfoDB) then
+        ChattyLittleNpc:Print("Initializing UnitInfoDB")
+        UnitInfoDB = {}
+    end
     if (not UnitInfoDB[unitID]) then
         UnitInfoDB[unitID] = {}
     end
