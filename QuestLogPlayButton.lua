@@ -30,27 +30,48 @@ end
 
 function PlayButton:AttachPlayButton(point, relativeTo, relativePoint, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
-    local button = CreateFrame("Frame", buttonName, relativeTo)
-        button:SetSize(64, 64)
-        button:SetFrameStrata("TOOLTIP")
 
-    local texture = button:CreateTexture(nil, "BACKGROUND")
-        texture:SetAllPoints()
-        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
+    local button
+    if (ChattyLittleNpc.isElvuiAddonLoaded) then
+        button = CreateFrame("Button", buttonName, relativeTo, "UIPanelButtonTemplate")
+            button:SetSize(32, 32) -- Adjusted to fit ElvUI's style better
+            button:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
 
-    -- Create a glow texture
-    local glowTexture = button:CreateTexture(nil, "OVERLAY")
-        glowTexture:SetAllPoints()
-        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
-        glowTexture:Hide()
+        local ElvUI = PlayButton:GetElvUI()
+        local ElvUISkins = ElvUI:GetModule('Skins')
+        ElvUISkins:HandleButton(button)
+        button:SetText("Play Voiceover")
 
-    button:SetScript("OnEnter", function()
-        glowTexture:Show()
-    end)
+        button:SetScript("OnEnter", function()
+            button:SetBackdropBorderColor(1, 1, 0) -- Highlight border on hover
+        end)
 
-    button:SetScript("OnLeave", function()
-        glowTexture:Hide()
-    end)
+        button:SetScript("OnLeave", function()
+            button:SetBackdropBorderColor(ElvUI.media.bordercolor) -- Reset border on leave
+        end)
+    else
+        button = CreateFrame("Frame", buttonName, relativeTo)
+            button:SetSize(64, 64)
+            button:SetFrameStrata("TOOLTIP")
+
+        local texture = button:CreateTexture(nil, "BACKGROUND")
+            texture:SetAllPoints()
+            texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
+
+        -- Create a glow texture
+        local glowTexture = button:CreateTexture(nil, "OVERLAY")
+            glowTexture:SetAllPoints()
+            glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
+            glowTexture:Hide()
+
+        button:SetScript("OnEnter", function()
+            glowTexture:Show()
+        end)
+
+        button:SetScript("OnLeave", function()
+            glowTexture:Hide()
+        end)
+    end
 
     button:SetPoint(point, relativeTo, relativePoint, offsetX, offsetY)
     button:SetScript("OnMouseUp", function()
@@ -106,35 +127,62 @@ end
 
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
-    local button = CreateFrame("Frame", buttonName, parentFrame)
+
+    if (ChattyLittleNpc.isElvuiAddonLoaded) then
+        local button = CreateFrame("Button", buttonName, parentFrame, "UIPanelButtonTemplate")
+            button:SetSize(32, 32) -- Adjusted to fit ElvUI's style better
+
+        local ElvUI = PlayButton:GetElvUI()
+        local ElvUISkins = ElvUI:GetModule('Skins')
+        ElvUISkins:HandleButton(button)
+        button:SetText("Play Voiceover")
+
+        button:SetScript("OnEnter", function()
+            button:SetBackdropBorderColor(1, 1, 0) -- Highlight border on hover
+        end)
+
+        button:SetScript("OnLeave", function()
+            button:SetBackdropBorderColor(ElvUI.media.bordercolor) -- Reset border on leave
+        end)
+
+        local posX = ChattyLittleNpc.db.profile.buttonPosX
+        local posY = ChattyLittleNpc.db.profile.buttonPosY
+        button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", posX, posY)
+
+        button:SetScript("OnMouseUp", onMouseUpFunction)
+
+        return button
+    else
+        local button = CreateFrame("Frame", buttonName, parentFrame)
         button:SetSize(64, 64)
         button:SetFrameStrata("TOOLTIP")
 
-    local texture = button:CreateTexture(nil, "BACKGROUND")
-        texture:SetAllPoints()
-        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
+        local texture = button:CreateTexture(nil, "BACKGROUND")
+            texture:SetAllPoints()
+            texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
 
-    -- Create a glow texture
-    local glowTexture = button:CreateTexture(nil, "OVERLAY")
-        glowTexture:SetAllPoints()
-        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
-        glowTexture:Hide()
+        -- Create a glow texture
+        local glowTexture = button:CreateTexture(nil, "OVERLAY")
+            glowTexture:SetAllPoints()
+            glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
+            glowTexture:Hide()
 
-    button:SetScript("OnEnter", function()
-        glowTexture:Show()
-    end)
+        button:SetScript("OnEnter", function()
+            glowTexture:Show()
+        end)
 
-    button:SetScript("OnLeave", function()
-        glowTexture:Hide()
-    end)
+        button:SetScript("OnLeave", function()
+            glowTexture:Hide()
+        end)
 
-    local posX = ChattyLittleNpc.db.profile.buttonPosX
-    local posY = ChattyLittleNpc.db.profile.buttonPosY
-    button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", posX, posY)
+        local posX = ChattyLittleNpc.db.profile.buttonPosX
+        local posY = ChattyLittleNpc.db.profile.buttonPosY
+        button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", posX, posY)
 
-    button:SetScript("OnMouseUp", onMouseUpFunction)
+        button:SetScript("OnMouseUp", onMouseUpFunction)
 
-    return button
+        return button
+    end
 end
 
 function PlayButton:UpdateButtonPositions()
@@ -153,4 +201,9 @@ function PlayButton:UpdateButtonPositions()
             end
         end
     end
+end
+
+function PlayButton:GetElvUI()
+    local ElvUI = LibStub("AceAddon-3.0"):GetAddon("ElvUI")
+    return ElvUI
 end
