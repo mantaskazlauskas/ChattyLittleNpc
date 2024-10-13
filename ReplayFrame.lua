@@ -128,13 +128,13 @@ function ReplayFrame:CreateDisplayFrame(useUiParent)
 
         for i = 1, 3 do
             -- BUTTON FRAME
-            local buttonFrame = CreateFrame("Frame", "ButtonFrame", ReplayFrame.ContentFrame, "BackdropTemplate")
+            local buttonFrame = CreateFrame("Frame", "ButtonFrame"..i, ReplayFrame.ContentFrame, "BackdropTemplate")
                 buttonFrame:SetSize(ReplayFrame.normalWidth - 20, 35)
                 buttonFrame:SetPoint("TOPLEFT", ReplayFrame.ContentFrame, "TOPLEFT", 10, -((i - 1) * 40) - 40)
                 buttonFrame:EnableMouse(true)
 
             -- STOP BUTTON
-            local stopButton = CreateFrame("Button", "StopButton", buttonFrame)
+            local stopButton = CreateFrame("Button", "StopButton"..i, buttonFrame)
                 stopButton:SetSize(16, 16)
                 stopButton:SetPoint("RIGHT", buttonFrame, "RIGHT", -5, 0)
                 stopButton.texture = stopButton:CreateTexture(nil, "ARTWORK")
@@ -160,12 +160,11 @@ function ReplayFrame:CreateDisplayFrame(useUiParent)
                 end)
 
             -- DISPLAY TEXT
-            local displayText = buttonFrame:CreateFontString("VoiceoverText", "OVERLAY", "GameFontNormal")
+            local displayText = buttonFrame:CreateFontString("VoiceoverText"..i, "OVERLAY", "GameFontNormal")
                 displayText:SetPoint("LEFT", buttonFrame, "LEFT", 5, 0)
                 displayText:SetPoint("RIGHT", stopButton, "LEFT", -5, 0)
                 displayText:SetJustifyH("LEFT")
                 displayText:SetFont("Fonts\\FRIZQT__.TTF", 15)
-                displayText:SetWordWrap(false)
                 displayText:SetWordWrap(false)
                 displayText:EnableMouse(true)
 
@@ -190,7 +189,6 @@ function ReplayFrame:UpdateDisplayFrame(useUiParent)
         if (ReplayFrame.DisplayFrame) then
             ChattyLittleNpc:Print("Disabling DisplayFrame")
             ReplayFrame.DisplayFrame:Hide()
-            ReplayFrame.DisplayFrame = nil
         end
         return
     end
@@ -200,14 +198,12 @@ function ReplayFrame:UpdateDisplayFrame(useUiParent)
         if (ReplayFrame.DisplayFrame) then
             ChattyLittleNpc:Print("Disabling DisplayFrame due no active voiceovers")
             ReplayFrame.DisplayFrame:Hide()
-            ReplayFrame.DisplayFrame = nil
         end
         return
     end
 
     if (ReplayFrame:IsDisplayFrameHideNeeded()) then
         ReplayFrame.DisplayFrame:Hide()
-        ReplayFrame.DisplayFrame = nil
         if (ChattyLittleNpc.db.profile.debugMode) then
             ChattyLittleNpc:Print("Hiding DisplayFrame because there is no more quests to play in queue")
         end
