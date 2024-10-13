@@ -137,7 +137,7 @@ function EventHandler:QUEST_PROGRESS()
 
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
-        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, "ChattyLittlePlayQuestVoiceoverButton", function()
+        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
             ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Prog", npcId, npcGender)
@@ -160,7 +160,7 @@ function EventHandler:QUEST_COMPLETE()
 
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
-        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, "ChattyLittlePlayQuestVoiceoverButton", function()
+        ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
             ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Comp", npcId, npcGender)
@@ -231,8 +231,8 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         local nextQuest = ChattyLittleNpc.questsQueue[1]
         ChattyLittleNpc.Voiceovers:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.gender)
     else
-        ChattyLittleNpc.currentItemInfo = {}
-        ChattyLittleNpc.ReplayFrame:UpdateDisplayFrame()
+        ChattyLittleNpc.Voiceovers.currentlyPlaying = nil
+        ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
     end
 end
 

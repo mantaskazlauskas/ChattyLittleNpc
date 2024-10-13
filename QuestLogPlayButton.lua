@@ -96,7 +96,7 @@ function PlayButton:GetSelectedQuest()
             ChattyLittleNpc.currentQuestTitle = quesTitle
 
             if (ChattyLittleNpc.currentQuestTitle) then
-                ChattyLittleNpc.ReplayFrame.ShowDisplayFrame()
+                ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
             end
             return questID
         end

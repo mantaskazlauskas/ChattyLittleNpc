@@ -27,7 +27,7 @@ function Voiceovers:ForceStopCurrentSound(clearQueue)
         Voiceovers.currentlyPlaying.isPlaying = false
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
 end
 
 -- Stop current audio.
@@ -36,7 +36,7 @@ function Voiceovers:StopCurrentSound()
         StopSound(Voiceovers.currentlyPlaying.soundHandle)
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
 end
 
 function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
@@ -82,7 +82,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
         end
 
         table.insert(ChattyLittleNpc.questsQueue, audioFileInfo)
-        ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(not (npcId and npcGender))
+        ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(not (npcId and npcGender))
         return
     end
 
@@ -112,8 +112,8 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
             Voiceovers.currentlyPlaying.isPlaying = true
 
             if (Voiceovers.currentlyPlaying.title) then
-                table.remove(ChattyLittleNpc.questsQueue, 1) 
-                ChattyLittleNpc.ReplayFrame:ShowDisplayFrame()
+                table.remove(ChattyLittleNpc.questsQueue, 1)
+                ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
             end
             break
         end
@@ -132,7 +132,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(not (npcId and npcGender))
+    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(not (npcId and npcGender))
 end
 
 function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
@@ -198,7 +198,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
     end
 
-    ChattyLittleNpc.ReplayFrame:ShowDisplayFrame(soundType == "Item" or soundType == "GameObject")
+    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(soundType == "Item" or soundType == "GameObject")
 end
 
 function Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
