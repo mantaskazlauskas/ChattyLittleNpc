@@ -49,7 +49,10 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.questId == questId and Voiceovers.currentlyPlaying.phase == phase) then
         if (Voiceovers.currentlyPlaying.isPlaying) then
-            return -- skip if the same quest audio is already playing
+            if (ChattyLittleNpc.db.profile.debugMode) then
+                ChattyLittleNpc:Print("Quest audio is already playing: ", questId)
+            end
+            return
         end
     end
 
@@ -60,11 +63,16 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
     if (Voiceovers.currentlyPlaying
         and ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing
         and Voiceovers.currentlyPlaying.isPlaying
-        and Voiceovers.currentlyPlaying.soundHandle and Voiceovers.currentlyPlaying.cantBeInterrupted and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle)) then
+        and Voiceovers.currentlyPlaying.soundHandle
+        and Voiceovers.currentlyPlaying.cantBeInterrupted
+        and C_Sound.IsPlaying(Voiceovers.currentlyPlaying.soundHandle)) then
 
         for _, queuedAudio in ipairs(ChattyLittleNpc.questsQueue) do
             if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
-                return -- Stop checking further since we found a match in the queued quests
+                if (ChattyLittleNpc.db.profile.debugMode) then
+                    ChattyLittleNpc:Print("Found a quest match in queue: ", queuedAudio.questId, "Quest Title: ", queuedAudio.title)
+                end
+                return
             end
         end
 
@@ -78,11 +86,11 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
             audioFileInfo.npcId = npcId
 
         if (ChattyLittleNpc.db.profile.debugMode) then
-            ChattyLittleNpc:Print("Queued quest: ", audioFileInfo.title)
+            ChattyLittleNpc:Print("Queued quest: ", audioFileInfo.questId, "Quest Title: ", audioFileInfo.title)
         end
 
         table.insert(ChattyLittleNpc.questsQueue, audioFileInfo)
-        ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(not (npcId and npcGender))
+        ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
         return
     end
 
@@ -132,7 +140,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
 
     end
 
-    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(not (npcId and npcGender))
+    ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
 end
 
 function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
@@ -195,7 +203,9 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         if (ChattyLittleNpc.db.profile.printMissingFiles) then
             ChattyLittleNpc:Print("Missing voiceover file: " .. fileNameBase .. ".ogg or .mp3")
         end
-        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        if (ChattyLittleNpc.Voiceovers.currentlyPlaying) then
+            ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        end
     end
 
     ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState(soundType == "Item" or soundType == "GameObject")
