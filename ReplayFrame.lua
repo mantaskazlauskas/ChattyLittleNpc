@@ -182,7 +182,6 @@ function ReplayFrame:GetDisplayFrame()
 end
 
 function ReplayFrame:UpdateDisplayFrame()
-    ChattyLittleNpc.Utils:PrintTable(ChattyLittleNpc.Voiceovers.currentlyPlaying)
     if (not ReplayFrame:IsShowReplayFrameToggleIsEnabled() or not ChattyLittleNpc.Voiceovers.currentlyPlaying) then
         if (ReplayFrame.DisplayFrame) then
             if (ChattyLittleNpc.db.profile.debugMode) then
