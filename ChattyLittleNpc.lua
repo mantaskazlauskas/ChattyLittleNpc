@@ -25,6 +25,7 @@ ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dr
 ChattyLittleNpc.loadedVoiceoverPacks = {}
 ChattyLittleNpc.questsQueue = {}
 ChattyLittleNpc.isDUIAddonLoaded = false
+ChattyLittleNpc.isElvuiAddonLoaded = false
 ChattyLittleNpc.currentItemInfo = {
     ItemID = nil,
     ItemName = nil,
@@ -96,11 +97,7 @@ function ChattyLittleNpc:OnEnable()
     QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
-
-    self.isDUIAddonLoaded = C_AddOns.IsAddOnLoaded("DialogueUI")
-    if (self.db.profile.debugMode) then
-        self:Print("DUI Addon Loaded:", self.isDUIAddonLoaded)
-    end
+    self:GetLoadedAddonsForIntegrations()
 end
 
 function ChattyLittleNpc:OnDisable()
@@ -194,6 +191,18 @@ function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
         end)
+    end
+end
+
+function ChattyLittleNpc:GetLoadedAddonsForIntegrations()
+    self.isDUIAddonLoaded = C_AddOns.IsAddOnLoaded("DialogueUI")
+    if (self.db.profile.debugMode) then
+        self:Print("DUI Addon Loaded:", self.isDUIAddonLoaded)
+    end
+
+    self.isElvuiAddonLoaded = C_AddOns.IsAddOnLoaded("ElvUI")
+    if (self.db.profile.debugMode) then
+        self:Print("ElvUI Addon Loaded:", self.isElvuiAddonLoaded)
     end
 end
 
