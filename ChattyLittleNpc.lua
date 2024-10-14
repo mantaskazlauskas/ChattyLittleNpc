@@ -81,9 +81,14 @@ function ChattyLittleNpc:OnEnable()
 
     self.PlayButton:AttachQuestLogAndDetailsButtons()
 
-    hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
-    QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
-    QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+    if type(QuestMapFrame_UpdateAll) == "function" then
+        hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
+    end
+
+    if (QuestMapFrame) then
+        QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
+        QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+    end
 
     self:GetLoadedExpansionVoiceoverPacks()
     self:GetLoadedAddonsForIntegrations()
