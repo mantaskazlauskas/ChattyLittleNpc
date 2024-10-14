@@ -79,22 +79,16 @@ function ChattyLittleNpc:OnEnable()
         self.ReplayFrame:LoadFramePosition()
     end
 
-    local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
-    if (DetailsFrame) then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", DetailsFrame, "TOPRIGHT", 0, 0, "ChattyNPCPlayButton")
+    self.PlayButton:AttachQuestLogAndDetailsButtons()
+
+    if type(QuestMapFrame_UpdateAll) == "function" then
+        hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
     end
 
-    if (_G["QuestLogFrame"]) then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogFrame"], "TOPRIGHT", 40, 40, "ChattyNPCQuestLogFramePlayButton")
+    if (QuestMapFrame) then
+        QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
+        QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
     end
-
-    if (_G["QuestLogDetailFrame"]) then
-        self.PlayButton:AttachPlayButton("TOPRIGHT", _G["QuestLogDetailFrame"], "TOPRIGHT", 40, 40, "ChattyNPCQuestLogDetailFramePlayButton")
-    end
-
-    hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
-    QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
-    QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
 
     self:GetLoadedExpansionVoiceoverPacks()
     self:GetLoadedAddonsForIntegrations()
@@ -203,6 +197,10 @@ function ChattyLittleNpc:GetLoadedAddonsForIntegrations()
     self.isElvuiAddonLoaded = C_AddOns.IsAddOnLoaded("ElvUI")
     if (self.db.profile.debugMode) then
         self:Print("ElvUI Addon Loaded:", self.isElvuiAddonLoaded)
+    end
+
+    if (self.isElvuiAddonLoaded) then
+        self.PlayButton:AttachQuestLogAndDetailsButtons()
     end
 end
 

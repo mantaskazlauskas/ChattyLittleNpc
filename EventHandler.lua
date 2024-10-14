@@ -1,6 +1,7 @@
 ---@class EventHandler
 local EventHandler = LibStub("AceAddon-3.0"):NewAddon("EventHandler", "AceEvent-3.0", "AceTimer-3.0")
 
+---@class ChattyLittleNpc
 local ChattyLittleNpc
 
 -- Set the reference to ChattyLittleNpc
