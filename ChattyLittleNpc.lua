@@ -192,6 +192,9 @@ function ChattyLittleNpc:GetLoadedAddonsForIntegrations()
     self.isElvuiAddonLoaded = C_AddOns.IsAddOnLoaded("ElvUI")
     if (self.db.profile.debugMode) then
         self:Print("ElvUI Addon Loaded:", self.isElvuiAddonLoaded)
+    end
+
+    if (self.isElvuiAddonLoaded) then
         self.PlayButton:AttachQuestLogAndDetailsButtons()
     end
 end
