@@ -92,6 +92,10 @@ function ChattyLittleNpc:OnEnable()
 
     self:GetLoadedExpansionVoiceoverPacks()
     self:GetLoadedAddonsForIntegrations()
+
+    if (self.db.profile.logNpcTexts) then
+        self.NpcDialogTracker:GatherTooltipInfo()
+    end
 end
 
 function ChattyLittleNpc:OnDisable()

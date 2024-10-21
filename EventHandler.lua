@@ -25,6 +25,8 @@ function EventHandler:RegisterEvents()
     self:RegisterEvent("QUEST_COMPLETE")
     self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("ITEM_TEXT_READY")
+    self:RegisterEvent("CINEMATIC_START")
+    self:RegisterEvent("PLAY_MOVIE")
     self:RegisterMessage("VOICEOVER_STOP", "OnVoiceoverStop")
 end
 
@@ -52,6 +54,16 @@ function EventHandler:StartWatcher()
         end
 
         if (currentlyPlaying and currentlyPlaying.soundHandle and currentlyPlaying.isPlaying) then
+            if(IsInCinematicScene() or InCinematic()) then
+
+                if (ChattyLittleNpc.db.profile.debugMode) then
+                    ChattyLittleNpc:Print("Cinematic is playing, stopping voiceover", IsInCinematicScene(),InCinematic())
+                end
+                currentlyPlaying.isPlaying = false
+                self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
+                return
+            end
+
             if (not C_Sound.IsPlaying(currentlyPlaying.soundHandle)) then
                 currentlyPlaying.isPlaying = false
                 self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
@@ -252,6 +264,26 @@ function EventHandler:GOSSIP_CLOSED()
         ChattyLittleNpc:Print("GOSSIP_CLOSED")
     end
     if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying) then
+        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    end
+end
+
+function EventHandler:CINEMATIC_START()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("CINEMATIC_START")
+    end
+    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
+        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    end
+end
+
+function EventHandler:PLAY_MOVIE()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("PLAY_MOVIE")
+    end
+    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
         ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
         ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
     end
