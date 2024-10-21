@@ -27,6 +27,8 @@ function EventHandler:RegisterEvents()
     self:RegisterEvent("ITEM_TEXT_READY")
     self:RegisterEvent("CINEMATIC_START")
     self:RegisterEvent("PLAY_MOVIE")
+    -- self:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+    -- self:RegisterEvent("CHAT_MSG_MONSTER_YELL")
     self:RegisterMessage("VOICEOVER_STOP", "OnVoiceoverStop")
 end
 
@@ -41,6 +43,8 @@ function EventHandler:UnregisterEvents()
     self:UnregisterEvent("QUEST_COMPLETE")
     self:UnregisterEvent("QUEST_FINISHED")
     self:UnregisterEvent("ITEM_TEXT_READY")
+    self:UnregisterEvent("CINEMATIC_START")
+    self:UnregisterEvent("PLAY_MOVIE")
     self:UnregisterMessage("VOICEOVER_STOP")
 end
 
@@ -278,6 +282,14 @@ function EventHandler:PLAY_MOVIE()
         ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
     end
 end
+
+-- function EventHandler:CHAT_MSG_MONSTER_SAY(self, event, msg)
+--     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_SAY",event, msg)
+-- end
+
+-- function EventHandler:CHAT_MSG_MONSTER_YELL(self, event, msg)
+--     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_YELL", event, msg)
+-- end
 
 -- Initialize the EventHandler module
 EventHandler:OnInitialize()
