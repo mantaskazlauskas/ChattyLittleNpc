@@ -54,16 +54,6 @@ function EventHandler:StartWatcher()
         end
 
         if (currentlyPlaying and currentlyPlaying.soundHandle and currentlyPlaying.isPlaying) then
-            if(IsInCinematicScene() or InCinematic()) then
-
-                if (ChattyLittleNpc.db.profile.debugMode) then
-                    ChattyLittleNpc:Print("Cinematic is playing, stopping voiceover", IsInCinematicScene(),InCinematic())
-                end
-                currentlyPlaying.isPlaying = false
-                self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
-                return
-            end
-
             if (not C_Sound.IsPlaying(currentlyPlaying.soundHandle)) then
                 currentlyPlaying.isPlaying = false
                 self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
