@@ -23,6 +23,9 @@ function Voiceovers:ForceStopCurrentSound(clearQueue)
     end
 
     if (Voiceovers.currentlyPlaying and Voiceovers.currentlyPlaying.soundHandle) then
+        if (ChattyLittleNpc.db.profile.debugMode) then
+            ChattyLittleNpc:Print("Force stopping current sound handle", Voiceovers.currentlyPlaying.soundHandle)
+        end
         StopSound(Voiceovers.currentlyPlaying.soundHandle)
         Voiceovers.currentlyPlaying.isPlaying = false
     end
