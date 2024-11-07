@@ -167,14 +167,14 @@ function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offse
     button:SetFrameStrata("TOOLTIP")
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
-        texture:SetAllPoints()
-        texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
+    texture:SetAllPoints()
+    texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
 
     -- Create a glow texture
     local glowTexture = button:CreateTexture(nil, "OVERLAY")
-        glowTexture:SetAllPoints()
-        glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
-        glowTexture:Hide()
+    glowTexture:SetAllPoints()
+    glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
+    glowTexture:Hide()
 
     button:SetScript("OnEnter", function()
         glowTexture:Show()
@@ -183,10 +183,54 @@ function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offse
     button:SetScript("OnLeave", function()
         glowTexture:Hide()
     end)
- 
+
     button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", offsetX, offsetY)
 
     button:SetScript("OnMouseUp", onMouseUpFunction)
+
+    -- Make the button draggable
+    button:SetMovable(true)
+    button:EnableMouse(true)
+    button:RegisterForDrag("LeftButton")
+
+    button:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+        self:SetScript("OnUpdate", function()
+            local right, top = self:GetRight(), self:GetTop()
+            local parentRight, parentTop = parentFrame:GetRight(), parentFrame:GetTop()
+            local newX = parentRight - right
+            local newY = parentTop - top
+    
+            -- Constrain the movement within -100 to 100 units in both x and y axes
+            if newX < -100 then newX = -100 end
+            if newY < -100 then newY = -100 end
+            if newX > 100 then newX = 100 end
+            if newY > 100 then newY = 100 end
+    
+            self:ClearAllPoints()
+            self:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -newX, -newY)
+        end)
+    end)
+    
+    button:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetScript("OnUpdate", nil)
+
+        -- Save the new position
+        local right, top = self:GetRight(), self:GetTop()
+        local parentRight, parentTop = parentFrame:GetRight(), parentFrame:GetTop()
+        local newX = parentRight - right
+        local newY = parentTop - top
+
+        -- Constrain the movement within -100 to 100 units in both x and y axes
+        if newX < -100 then newX = -100 end
+        if newY < -100 then newY = -100 end
+        if newX > 100 then newX = 100 end
+        if newY > 100 then newY = 100 end
+
+        ChattyLittleNpc.db.profile.buttonPosX = -newX
+        ChattyLittleNpc.db.profile.buttonPosY = -newY
+    end)
 
     return button
 end
@@ -217,6 +261,50 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", offsetX, offsetY)
 
     button:SetScript("OnMouseUp", onMouseUpFunction)
+
+    -- Make the button draggable
+    button:SetMovable(true)
+    button:EnableMouse(true)
+    button:RegisterForDrag("LeftButton")
+
+    button:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+        self:SetScript("OnUpdate", function()
+            local right, top = self:GetRight(), self:GetTop()
+            local parentRight, parentTop = parentFrame:GetRight(), parentFrame:GetTop()
+            local newX = parentRight - right
+            local newY = parentTop - top
+
+            -- Constrain the movement within -100 to 100 units in both x and y axes
+            if newX < -100 then newX = -100 end
+            if newY < -100 then newY = -100 end
+            if newX > 100 then newX = 100 end
+            if newY > 100 then newY = 100 end
+    
+            self:ClearAllPoints()
+            self:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", -newX, -newY)
+        end)
+    end)
+    
+    button:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        self:SetScript("OnUpdate", nil)
+
+        -- Save the new position
+        local right, top = self:GetRight(), self:GetTop()
+        local parentRight, parentTop = parentFrame:GetRight(), parentFrame:GetTop()
+        local newX = parentRight - right
+        local newY = parentTop - top
+
+        -- Constrain the movement within -100 to 100 units in both x and y axes
+        if newX < -100 then newX = -100 end
+        if newY < -100 then newY = -100 end
+        if newX > 100 then newX = 100 end
+        if newY > 100 then newY = 100 end
+
+        ChattyLittleNpc.db.profile.buttonPosX = -newX
+        ChattyLittleNpc.db.profile.buttonPosY = -newY
+    end)
 
     return button
 end

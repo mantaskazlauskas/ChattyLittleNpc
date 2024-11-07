@@ -25,6 +25,10 @@ function EventHandler:RegisterEvents()
     self:RegisterEvent("QUEST_COMPLETE")
     self:RegisterEvent("QUEST_FINISHED")
     self:RegisterEvent("ITEM_TEXT_READY")
+    self:RegisterEvent("CINEMATIC_START")
+    self:RegisterEvent("PLAY_MOVIE")
+    -- self:RegisterEvent("CHAT_MSG_MONSTER_SAY")
+    -- self:RegisterEvent("CHAT_MSG_MONSTER_YELL")
     self:RegisterMessage("VOICEOVER_STOP", "OnVoiceoverStop")
 end
 
@@ -39,6 +43,8 @@ function EventHandler:UnregisterEvents()
     self:UnregisterEvent("QUEST_COMPLETE")
     self:UnregisterEvent("QUEST_FINISHED")
     self:UnregisterEvent("ITEM_TEXT_READY")
+    self:UnregisterEvent("CINEMATIC_START")
+    self:UnregisterEvent("PLAY_MOVIE")
     self:UnregisterMessage("VOICEOVER_STOP")
 end
 
@@ -256,6 +262,34 @@ function EventHandler:GOSSIP_CLOSED()
         ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
     end
 end
+
+function EventHandler:CINEMATIC_START()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("CINEMATIC_START")
+    end
+    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
+        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    end
+end
+
+function EventHandler:PLAY_MOVIE()
+    if (ChattyLittleNpc.db.profile.debugMode) then
+        ChattyLittleNpc:Print("PLAY_MOVIE")
+    end
+    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
+        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    end
+end
+
+-- function EventHandler:CHAT_MSG_MONSTER_SAY(self, event, msg)
+--     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_SAY",event, msg)
+-- end
+
+-- function EventHandler:CHAT_MSG_MONSTER_YELL(self, event, msg)
+--     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_YELL", event, msg)
+-- end
 
 -- Initialize the EventHandler module
 EventHandler:OnInitialize()

@@ -227,6 +227,17 @@ function NpcDialogTracker:HandleGossipText()
     end
 end
 
+function NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
+    if (not NpcInfoDB[npcTooltipInfo.Id]) then
+        return
+    end
+
+    local npcInfo = NpcInfoDB[npcTooltipInfo.Id][ChattyLittleNpc.locale]
+    if (not npcInfo.TooltipInfo) then
+        npcInfo.TooltipInfo = npcTooltipInfo.TooltipInfo
+    end
+end
+
 function NpcDialogTracker:InitializeTables()
     if (not NpcInfoDB) then
         NpcInfoDB = {}
@@ -234,4 +245,41 @@ function NpcDialogTracker:InitializeTables()
     if (not UnitInfoDB) then
         UnitInfoDB = {}
     end
+end
+
+function NpcDialogTracker:GatherTooltipInfo()
+    local f = CreateFrame("Frame")
+    f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
+    f:SetScript("OnEvent", function()
+        if not UnitIsPlayer("mouseover") then
+            local unitGuid = UnitGUID("mouseover")
+            if (unitGuid) then
+                local unitID = select(6, strsplit("-", unitGuid))
+                local unitIdAsNumber = tonumber(unitID)
+                local npcTooltipInfo = {
+                    Id = unitIdAsNumber,
+                    TooltipInfo = {}
+                }
+
+                local lineIndex = 1
+                while true do
+                    local line = _G["GameTooltipTextLeft" .. lineIndex]
+                    if not line then
+                        break
+                    end
+                    local text = line:GetText()
+                    if text then
+                        -- Remove color codes from the text
+                        text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                        table.insert(npcTooltipInfo.TooltipInfo, text)
+                    end
+                    lineIndex = lineIndex + 1
+                end
+
+                if (ChattyLittleNpc.db.profile.logNpcTexts) then
+                    NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
+                end
+            end
+        end
+    end)
 end
