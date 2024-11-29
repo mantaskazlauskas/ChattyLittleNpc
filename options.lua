@@ -1,6 +1,7 @@
 ---@class Options
 local Options = LibStub("AceAddon-3.0"):NewAddon("Options", "AceConsole-3.0")
 
+---@class ChattyLittleNpc
 local ChattyLittleNpc
 
 -- Store a reference to ChattyLittleNpc
@@ -50,6 +51,19 @@ local options = {
                     desc = 'Toggle to print debug messages.',
                     get = function(info) return ChattyLittleNpc.db.profile.debugMode end,
                     set = function(info, value) ChattyLittleNpc.db.profile.debugMode = value end,
+                },
+                showGossipEditor = {
+                    type = 'toggle',
+                    name = 'Show Gossip Editor',
+                    desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
+                    get = function(info) return ChattyLittleNpc.Editor.Frame:IsShown() end,
+                    set = function(info, value)
+                        if value then
+                            ChattyLittleNpc.Editor.Frame:Show()
+                        else
+                            ChattyLittleNpc.Editor.Frame:Hide()
+                        end
+                    end,
                 },
             },
         },

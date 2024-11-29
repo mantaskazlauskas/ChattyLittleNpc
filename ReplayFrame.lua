@@ -1,6 +1,7 @@
 ---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
+---@class ReplayFrame
 local ReplayFrame = {}
 
 ChattyLittleNpc.ReplayFrame = ReplayFrame

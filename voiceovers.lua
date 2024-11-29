@@ -1,6 +1,7 @@
 ---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
+---@class Voiceovers
 local Voiceovers = {}
 ChattyLittleNpc.Voiceovers = Voiceovers
 

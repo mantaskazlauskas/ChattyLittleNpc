@@ -1,6 +1,7 @@
 ---@class ChattyLittleNpc
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
+---@class NpcDialogTracker
 local NpcDialogTracker = {}
 ChattyLittleNpc.NpcDialogTracker = NpcDialogTracker
 
@@ -81,7 +82,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
     end
 end
 
-function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText)
+function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, oldHash)
     self:EnsureNpcInfoInitialized(npcID)
 
     if (not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions) then
@@ -90,9 +91,13 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText)
 
     local text = ChattyLittleNpc.Utils:CleanText(gossipText)
     local hash = ChattyLittleNpc.MD5:GenerateHash(npcID .. text)
-    if (not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash]) then
+    local hashRemainedTheSame = oldHash == hash
+    if (not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] or overwrite) then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] = text
-
+        if (not hashRemainedTheSame) then
+            NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[oldHash] = nil
+        end
+   
         if (ChattyLittleNpc.db.profile.printNpcTexts) then
             ChattyLittleNpc:Print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. hash)
         end

@@ -17,6 +17,7 @@ ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
+ChattyLittleNpc.Editor = Editor
 
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
@@ -39,6 +40,7 @@ local defaults = {
         printMissingFiles = false,
         logNpcTexts = false,
         printNpcTexts = false,
+        showGossipEditor = false,
         showReplayFrame = true,
         framePos = { -- Default positiond
             point = "CENTER",

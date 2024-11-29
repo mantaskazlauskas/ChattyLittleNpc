@@ -8,6 +8,15 @@ ChattyLittleNpc.Utils = Utils
 --- Cleans the provided text by removing unwanted characters or formatting.
 -- @param text The string to be cleaned.
 function Utils:CleanText(text)
+    text = text:gsub(UnitName("player"), "Hero")
+    text = text:gsub(UnitClass("player"), "Hero")
+    text = text:gsub(UnitRace("player"), "Hero")
+    text = text:gsub(UnitName("player"):lower(), "Hero")
+    text = text:gsub(UnitClass("player"):lower(), "Hero")
+    text = text:gsub(UnitRace("player"):lower(), "Hero")
+    text = text:gsub(UnitName("player"):upper(), "Hero")
+    text = text:gsub(UnitClass("player"):upper(), "Hero")
+    text = text:gsub(UnitRace("player"):upper(), "Hero")
     text = text:gsub("\n\n", " ")
     text = text:gsub("\r\n", " ")
     text = text:gsub("<HTML>", "")
@@ -18,9 +27,6 @@ function Utils:CleanText(text)
     text = text:gsub("<p>", "")
     text = text:gsub("</p>", "")
     text = text:gsub("<p align=\"center\">", "")
-    text = text:gsub(UnitName("player"), "Hero")
-    text = text:gsub(UnitClass("player"), "Hero")
-    text = text:gsub(UnitRace("player"), "Hero")
     return text
 end
 
