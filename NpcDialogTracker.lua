@@ -94,10 +94,10 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
     local hashRemainedTheSame = oldHash == hash
     if (not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] or overwrite) then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] = text
-        if (not hashRemainedTheSame) then
+        if (oldHash and not hashRemainedTheSame and NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[oldHash]) then
             NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[oldHash] = nil
         end
-   
+
         if (ChattyLittleNpc.db.profile.printNpcTexts) then
             ChattyLittleNpc:Print("|cff00ff00Npc gossip option collected: \r\n-Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. hash)
         end
