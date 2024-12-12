@@ -26,32 +26,22 @@ if (-not $source.EndsWith('\')) {
 # Create a list of items to include in the zip
 $itemsToInclude = Get-ChildItem -Path $source -Recurse | Where-Object {
     # Exclude .git and .vscode related files and folders
-    ($_.FullName -notmatch "\\\.git") -and
-    ($_.FullName -notmatch "\\\.vscode") -and
-    # Exclude files with specified extensions
-    ($excludeExtensions -notcontains $_.Extension)
+    -not ($excludeExtensions -contains $_.Extension) -and
+    -not ($excludeFolders -contains $_.PSIsContainer -and $excludeFolders -contains $_.Name)
 }
 
-# Copy the items to the root folder inside the temporary directory, preserving the directory structure
+# Copy the items to the temporary directory
 foreach ($item in $itemsToInclude) {
-    # Calculate the relative path
-    $relativePath = $item.FullName.Substring($source.Length)
-    $relativePath = $relativePath.TrimStart('\', '/')
-    
-    # Build the destination path
-    $destinationPath = Join-Path $rootFolder.FullName -ChildPath $relativePath
-
+    $destinationPath = $item.FullName.Replace($source, "$rootFolder\")
     if ($item.PSIsContainer) {
-        New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null
+        New-Item -ItemType Directory -Path $destinationPath -Force
     } else {
         Copy-Item -Path $item.FullName -Destination $destinationPath -Force
     }
 }
 
-# Compress the root folder, including the directory structure using .NET ZipFile class
-[System.IO.Compression.ZipFile]::CreateFromDirectory($rootFolder.FullName, $destination)
+# Create the zip file
+[System.IO.Compression.ZipFile]::CreateFromDirectory($tempDir.FullName, $destination)
 
-# Remove the temporary directory
+# Clean up the temporary directory
 Remove-Item -Path $tempDir.FullName -Recurse -Force
-
-Write-Output "Zipping completed. The zip file is located at $destination"
