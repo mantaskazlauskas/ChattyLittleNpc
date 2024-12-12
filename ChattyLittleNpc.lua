@@ -53,6 +53,7 @@ local defaults = {
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true,
         stopVoiceoverAfterDialogWindowClose = false,
+        audioChannel = "MASTER",
         debugMode = false,
         ShowReplayFrameIfDialogueUIAddonIsLoaded = false
     }

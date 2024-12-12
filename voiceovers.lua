@@ -106,7 +106,7 @@ function Voiceovers:PlayQuestSound(questId, phase, npcId, npcGender)
         local retryCount = 0
         repeat
             local soundPath = Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
-            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+            success, newSoundHandle = PlaySoundFile(soundPath, ChattyLittleNpc.db.profile.audioChannel)
             retryCount = retryCount + 1
         until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 
@@ -185,7 +185,7 @@ function Voiceovers:PlayNonQuestSound(npcId, soundType, text, npcGender)
         local retryCount = 0
         repeat
             local soundPath = Voiceovers:GetVoiceoversPath(corePathToVoiceovers, fileNameBase, npcGender, retryCount)
-            success, newSoundHandle = PlaySoundFile(soundPath, "Master")
+            success, newSoundHandle = PlaySoundFile(soundPath, ChattyLittleNpc.db.profile.audioChannel)
             retryCount = retryCount + 1
         until success or retryCount > 6  -- Retry until success or tried all voiceover directories and extensions
 

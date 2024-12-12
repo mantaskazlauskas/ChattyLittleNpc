@@ -133,6 +133,20 @@ local options = {
                     get = function(info) return ChattyLittleNpc.db.profile.playVoiceoverAfterDelay end,
                     set = function(info, value) ChattyLittleNpc.db.profile.playVoiceoverAfterDelay = value end,
                 },
+                audioChannel = {
+                    type = 'select',
+                    name = 'Audio Channels',
+                    desc = 'Select the audio channel for voiceover playback.',
+                    values = {
+                        MASTER = 'MASTER',
+                        DIALOG = 'DIALOG',
+                        AMBIENT = 'AMBIENT',
+                        MUSIC = 'MUSIC',
+                        SFX = 'SFX',
+                    },
+                    get = function(info) return ChattyLittleNpc.db.profile.audioChannel end,
+                    set = function(info, value) ChattyLittleNpc.db.profile.audioChannel = value end,
+                },
             },
         },
         QuestFrameButtonOptions = {
