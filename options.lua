@@ -140,7 +140,7 @@ local options = {
                     values = {
                         MASTER = 'MASTER',
                         DIALOG = 'DIALOG',
-                        AMBIENT = 'AMBIENT',
+                        AMBIENCE = 'AMBIENCE',
                         MUSIC = 'MUSIC',
                         SFX = 'SFX',
                     },
