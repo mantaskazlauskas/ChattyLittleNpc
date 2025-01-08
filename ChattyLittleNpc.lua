@@ -17,7 +17,8 @@ ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
-ChattyLittleNpc.Editor = Editor
+ChattyLittleNpc.Editor = ChattyLittleNpc.Editor
+ChattyLittleNpc.VoiceoverPacks = {}
 
 ChattyLittleNpc.locale = nil
 ChattyLittleNpc.gameVersion = nil
@@ -155,6 +156,23 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
             table.insert(self.loadedVoiceoverPacks, expansion)
             if (self.db.profile.debugMode) then
                 self:Print("Loaded voiceover pack:", expansion)
+            end
+
+            local addon = LibStub("AceAddon-3.0"):GetAddon(voiceoverPackName, true)
+            if addon then
+                self.VoiceoverPacks[voiceoverPackName] = addon
+            end
+        end      
+    end
+
+    if(self.db.profile.debugMode) then
+        for packName, packData in pairs(self.VoiceoverPacks) do
+            if packData.Metadata then
+                self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
+                self.Utils:PrintTable(packData.Metadata)
+            end
+            if packData.Voiceovers then
+                self:Print("Voiceover count for", "|cffffd700" .. packName .. "|r", ":", #packData.Voiceovers)
             end
         end
     end
