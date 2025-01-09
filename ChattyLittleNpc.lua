@@ -165,15 +165,19 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
         end      
     end
 
-    if(self.db.profile.debugMode) then
-        for packName, packData in pairs(self.VoiceoverPacks) do
-            if packData.Metadata then
-                self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
-                self.Utils:PrintTable(packData.Metadata)
-            end
-            if packData.Voiceovers then
-                self:Print("Voiceover count for", "|cffffd700" .. packName .. "|r", ":", #packData.Voiceovers)
-            end
+    if (self.db.profile.debugMode) then
+        self:PrintLoadedVoiceoverPacks()
+    end
+end
+
+function ChattyLittleNpc:PrintLoadedVoiceoverPacks()
+    for packName, packData in pairs(self.VoiceoverPacks) do
+        if packData.Metadata then
+            self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
+            self.Utils:PrintTable(packData.Metadata)
+        end
+        if packData.Voiceovers then
+            self:Print("VO count ", "|cffffd700" .. packName .. "|r", ":", #packData.Voiceovers)
         end
     end
 end

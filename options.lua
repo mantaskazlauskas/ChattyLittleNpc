@@ -65,6 +65,12 @@ local options = {
                         end
                     end,
                 },
+                printLoadedVoiceoverPackMetadata = {
+                    type = 'execute',
+                    name = 'Print VO Pack metadata',
+                    desc = 'Print what VO packs were loaded, what kind of voiceovers they support and how many voiceovers they have.',
+                    func = function() ChattyLittleNpc:PrintLoadedVoiceoverPacks() end,
+                },
             },
         },
         ReplayFrame = {
