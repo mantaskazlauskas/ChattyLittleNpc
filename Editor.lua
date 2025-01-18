@@ -234,7 +234,9 @@ Editor.Frame.generateIdButton:SetPoint("BOTTOMRIGHT", -10, 10)
 Editor.Frame.generateIdButton:SetText("Generate id")
 Editor.Frame.generateIdButton:SetScript("OnClick", function()
     local generatedID = ChattyLittleNpc.MD5:GenerateHash(Editor.NpcId .. Editor.GossipText)
-    ChattyLittleNpc:Print("Generated ID: " .. generatedID)
+    local ngramSizes = {2, 3}
+    local simhash = ChattyLittleNpc.SimHash64:GenerateHash(Editor.GossipText, ngramSizes, true)
+    ChattyLittleNpc:Print("Generated ID: " .. generatedID .. " Simhash: " .. simhash)
     Editor.Frame.generatedIDLabel:SetText("Generated ID: " .. generatedID)
 end)
 
