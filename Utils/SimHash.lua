@@ -57,39 +57,12 @@ function SimHash64:CleanText(text)
     text = text:lower()
     -- Replace any character not in [a-z0-9] with a space or empty
     -- If you want to keep spaces to preserve word boundaries, replace with space
-    text = text:gsub("[^a-z0-9]+", " ")
+    text = text:gsub("[^a-z0-9]+", "")
     return text
 end
 
 ------------------------------------------------------------
--- 4) [Optional] Filler words to remove
---    Only relevant if you want to remove certain words entirely
---    before generating character n-grams from the remainder.
-------------------------------------------------------------
-local FILLER_WORDS = {
-    ["the"]   = true, ["of"]    = true, ["and"]   = true, ["a"]     = true,
-    ["an"]    = true, ["in"]    = true, ["to"]    = true, ["is"]    = true,
-    ["it"]    = true, ["that"]  = true, ["on"]    = true, ["for"]   = true,
-    ["with"]  = true, ["as"]    = true, ["this"]  = true, ["at"]    = true,
-    ["be"]    = true, ["by"]    = true, ["but"]   = true, ["from"]  = true,
-    ["or"]    = true, ["are"]   = true,
-}
-
--- Helper to remove filler words from a string by rewriting them to ""
-local function removeFillerWordsFromString(str)
-    -- split by spaces, remove filler tokens, re-concat
-    local tokens = {}
-    for token in gmatch(str, "%S+") do
-        if not FILLER_WORDS[token] then
-            table.insert(tokens, token)
-        end
-    end
-    -- Rejoin with no space or single space
-    return table.concat(tokens, " ")
-end
-
-------------------------------------------------------------
--- 5) Build n-grams from entire text *as characters*
+-- 4) Build n-grams from entire text *as characters*
 ------------------------------------------------------------
 local function buildCharNgrams(fullText, n)
     local ngrams = {}
@@ -103,7 +76,7 @@ local function buildCharNgrams(fullText, n)
 end
 
 ------------------------------------------------------------
--- 6) GenerateHash: character-based n-grams by default
+-- 5) GenerateHash: character-based n-grams by default
 --    e.g. ngramSize=3 or 4 helps with minor typos
 --    Returns a hex string "HHHHHHHHLLLLLLLL"
 ------------------------------------------------------------
@@ -164,7 +137,7 @@ function SimHash64:GenerateHash(text, ngramSize, removeFillers)
 end
 
 ------------------------------------------------------------
--- 7) Check if a particular bit is set in our 64-bit (hi, lo)
+-- 6) Check if a particular bit is set in our 64-bit (hi, lo)
 ------------------------------------------------------------
 function SimHash64:IsBitSet64(hi, lo, bitIndex)
     if bitIndex < 32 then
@@ -177,7 +150,7 @@ function SimHash64:IsBitSet64(hi, lo, bitIndex)
 end
 
 ------------------------------------------------------------
--- 8) Compare two 64-bit SimHash hex strings (Hamming distance)
+-- 7) Compare two 64-bit SimHash hex strings (Hamming distance)
 ------------------------------------------------------------
 function SimHash64:CountSetBits32(x)
     local count = 0
@@ -206,7 +179,7 @@ function SimHash64:AreSimilar(hashA, hashB, threshold)
 end
 
 ------------------------------------------------------------
--- 9) (Optional) Dynamic threshold or "closest match" logic
+-- 8) (Optional) Dynamic threshold or "closest match" logic
 --    remains the same if you want to keep it.
 ------------------------------------------------------------
 function SimHash64:FindClosestHash(hashTable, text, ngramSize, removeFillers, threshold)
@@ -232,7 +205,7 @@ function SimHash64:FindClosestHash(hashTable, text, ngramSize, removeFillers, th
 end
 
 ------------------------------------------------------------
--- 10) Example test usage
+-- 9) Example test usage
 ------------------------------------------------------------
 function ChattyLittleNpc:RunSimHash64TestCases()
     local texts = {
