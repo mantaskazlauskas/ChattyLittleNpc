@@ -84,12 +84,6 @@ function SimHash64:GenerateHash(text, ngramSize, removeFillers)
     -- 1) Clean text
     text = self:CleanText(text)
 
-    -- 2) [Optional] remove filler words from the text (turn them into "")
-    -- then re-concatenate, so we can do character-level n-grams on the result
-    if removeFillers then
-        text = removeFillerWordsFromString(text)
-    end
-
     -- If no ngramSize provided, default to 3 (common for minor-typo tolerance)
     if not ngramSize then
         ngramSize = 3
