@@ -132,9 +132,12 @@ function ChattyLittleNpc:GetUnitInfo(unit)
     return unitName, sexStr, race, unitGuid, unitType, unitId
 end
 
--- Retrieves the title of a quest given its quest ID.
--- @param questID number: The unique identifier for the quest.
--- @return string: The title of the quest.
+--[[
+    Retrieves the title of a quest given its quest ID.
+    
+    @param questID number: The unique identifier for the quest.
+    @return string: The title of the quest.
+]]
 function ChattyLittleNpc:GetTitleForQuestID(questID)
     if (self.useNamespaces) then
         return C_QuestLog.GetTitleForQuestID(questID)
