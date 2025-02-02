@@ -1,11 +1,9 @@
 <div style="display: flex; justify-content: space-between;">
     <span><h1>Chatty Little NPC </h1></span>
-    <span>
-        <form action="https://www.paypal.com/donate" method="post" target="_top">
-            <input type="hidden" name="hosted_button_id" value="LPALFV9N29TJS" />
-            <input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button" />
-            <img alt="" border="0" src="https://www.paypal.com/en_LT/i/scr/pixel.gif" width="1" height="1" />
-        </form>
+    <span style="display: inline-block;">
+        <a href="https://www.paypal.com/donate/?hosted_button_id=CZGQYKYFRURMW" target="_blank">
+            <img src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" alt="Donate with PayPal">
+        </a>
     </span>
 </div>
 
