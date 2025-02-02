@@ -21,6 +21,8 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 
 ## For addon to work you need to download the base addon and voiceover packs for expansions that you want.
 
+## Discord : [ChattyLittleNpc](https://discord.gg/xb9kSWqxuH)
+
 ## Future Plans
 
 - (DONE) What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices;
