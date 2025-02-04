@@ -15,6 +15,7 @@ ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
 ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
+ChattyLittleNpc.SimHash = ChattyLittleNpc.SimHash
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
 ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
 ChattyLittleNpc.Editor = ChattyLittleNpc.Editor

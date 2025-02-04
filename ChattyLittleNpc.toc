@@ -19,5 +19,6 @@ Editor.lua
 utils/Utils.lua
 utils/Base64.lua
 utils/Md5.lua
+utils/SimHash.lua
 
 db/NpcDisplayIdDB.lua
