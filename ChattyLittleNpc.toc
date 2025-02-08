@@ -13,7 +13,7 @@ ChattyLittleNpc.lua
 ReplayFrame.lua
 QuestLogPlayButton.lua
 NpcDialogTracker.lua
-Voiceovers.lua
+VoiceoverPlayer.lua
 Editor.lua
 
 utils/Utils.lua

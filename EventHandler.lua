@@ -51,7 +51,7 @@ end
 -- Register a job that triggers events
 function EventHandler:StartWatcher()
     self:ScheduleRepeatingTimer(function()
-        local currentlyPlaying = ChattyLittleNpc.Voiceovers.currentlyPlaying
+        local currentlyPlaying = ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying
         if (currentlyPlaying and not currentlyPlaying.isPlaying) then
             self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
             return
@@ -85,7 +85,7 @@ function EventHandler:GOSSIP_SHOW()
     ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.GossipButton ,function()
         local _, npcGender, _, _, _, unitId = ChattyLittleNpc:GetUnitInfo("npc")
         local gossipText = C_GossipInfo.GetText()
-        ChattyLittleNpc.Voiceovers:PlayNonQuestSound(unitId, "Gossip", gossipText, npcGender)
+        ChattyLittleNpc.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", gossipText, npcGender)
     end)
 
     if (ChattyLittleNpc.db.profile.autoPlayVoiceovers) then
@@ -124,7 +124,7 @@ function EventHandler:QUEST_DETAIL()
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
-            ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Desc", npcId, npcGender)
+            ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc", npcId, npcGender)
         end)
     end
 
@@ -147,7 +147,7 @@ function EventHandler:QUEST_PROGRESS()
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
-            ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Prog", npcId, npcGender)
+            ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Prog", npcId, npcGender)
         end)
     end
 
@@ -170,7 +170,7 @@ function EventHandler:QUEST_COMPLETE()
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(parentFrame, ChattyLittleNpc.PlayButton.QuestButton, function()
             local _, npcGender, _, _, _, npcId = ChattyLittleNpc:GetUnitInfo("npc")
             local questID = GetQuestID()
-            ChattyLittleNpc.Voiceovers:PlayQuestSound(questID, "Comp", npcId, npcGender)
+            ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Comp", npcId, npcGender)
         end)
     end
 
@@ -203,7 +203,7 @@ function EventHandler:ITEM_TEXT_READY()
 
     if (_G["ItemTextFrame"]) then
         ChattyLittleNpc.PlayButton:CreatePlayVoiceoverButton(_G["ItemTextFrame"], ChattyLittleNpc.PlayButton.ItemTextButton, function()
-            ChattyLittleNpc.Voiceovers:PlayNonQuestSound(itemId, unitType, itemText)
+            ChattyLittleNpc.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText)
         end)
     end
 
@@ -236,9 +236,9 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 
     if (#ChattyLittleNpc.questsQueue > 0) then
         local nextQuest = ChattyLittleNpc.questsQueue[1]
-        ChattyLittleNpc.Voiceovers:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.gender)
+        ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.gender)
     else
-        ChattyLittleNpc.Voiceovers.currentlyPlaying = nil
+        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil
         ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
     end
 end
@@ -247,9 +247,9 @@ function EventHandler:QUEST_FINISHED()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("QUEST_FINISHED")
     end
-    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying) then
-        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
-        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying) then
+        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
@@ -257,9 +257,9 @@ function EventHandler:GOSSIP_CLOSED()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("GOSSIP_CLOSED")
     end
-    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.Voiceovers.currentlyPlaying) then
-        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
-        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    if (ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying) then
+        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
@@ -267,9 +267,9 @@ function EventHandler:CINEMATIC_START()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("CINEMATIC_START")
     end
-    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
-        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
-        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    if (ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying) then
+        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
@@ -277,9 +277,9 @@ function EventHandler:PLAY_MOVIE()
     if (ChattyLittleNpc.db.profile.debugMode) then
         ChattyLittleNpc:Print("PLAY_MOVIE")
     end
-    if (ChattyLittleNpc.Voiceovers.currentlyPlaying and ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying) then
-        ChattyLittleNpc.Voiceovers.currentlyPlaying.isPlaying = false
-        ChattyLittleNpc.Voiceovers:ForceStopCurrentSound(true)
+    if (ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying) then
+        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+        ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 

@@ -13,7 +13,7 @@ Options:SetChattyLittleNpcReference(ChattyLittleNpc)
 ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
 ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
-ChattyLittleNpc.Voiceovers = ChattyLittleNpc.Voiceovers
+ChattyLittleNpc.VoiceoverPlayer = ChattyLittleNpc.VoiceoverPlayer
 ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
 ChattyLittleNpc.SimHash = ChattyLittleNpc.SimHash
 ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
@@ -198,7 +198,7 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     
     if (questId > 0) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.Voiceovers:PlayQuestSound(questId, questPhase, npcId, gender)
+            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, gender)
         end)
     end
 end
@@ -216,7 +216,7 @@ function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
     local idAsNumber = tonumber(id)
     if (idAsNumber and idAsNumber > 0 and text) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.Voiceovers:PlayNonQuestSound(id, soundType, text, gender)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text, gender)
         end)
     end
 end

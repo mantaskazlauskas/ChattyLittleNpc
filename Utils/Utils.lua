@@ -30,6 +30,29 @@ function Utils:CleanText(text)
     return text
 end
 
+--- Cleans the provided text by removing unwanted characters or formatting.
+-- @param text The string to be cleaned.
+function Utils:CleanTextV2(text)
+    text = text:gsub(UnitName("player"), "{name|" .. UnitName("player") .. "}")
+    text = text:gsub(UnitClass("player"), "{class|" .. UnitClass("player") .. "}")
+    text = text:gsub(UnitRace("player"), "{race|" .. UnitRace("player") .. "}")
+    text = text:gsub(UnitName("player"):lower(), "{name|" .. UnitName("player"):lower() .. "}")
+    text = text:gsub(UnitClass("player"):lower(), "{class|" .. UnitClass("player"):lower() .. "}")
+    text = text:gsub(UnitRace("player"):lower(), "{race|" .. UnitRace("player"):lower() .. "}")
+    text = text:gsub(UnitName("player"):upper(), "{name|" .. UnitName("player"):upper() .. "}")
+    text = text:gsub(UnitClass("player"):upper(),"{class|" .. UnitClass("player"):upper() .. "}")
+    text = text:gsub(UnitRace("player"):upper(), "{race|" .. UnitRace("player"):upper() .. "}")
+    text = text:gsub("<HTML>", "")
+    text = text:gsub("</HTML>", "")
+    text = text:gsub("<BODY>", "")
+    text = text:gsub("</BODY>", "")
+    text = text:gsub("<BR/>", "")
+    text = text:gsub("<p>", "")
+    text = text:gsub("</p>", "")
+    text = text:gsub("<p align=\"center\">", "")
+    return text
+end
+
 --[[
     Prints the contents of a table in a readable format.
     
@@ -55,4 +78,13 @@ function Utils:PrintTable(t, indent)
             ChattyLittleNpc:Print(formatting, tostring(v))
         end
     end
+end
+
+function Utils:ContainsString(table, searchString)
+    for _, value in ipairs(table) do
+        if value == searchString then
+            return true
+        end
+    end
+    return false
 end

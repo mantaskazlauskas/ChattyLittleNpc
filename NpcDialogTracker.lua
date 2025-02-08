@@ -66,7 +66,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
         }
     end
 
-    text = ChattyLittleNpc.Utils:CleanText(text)
+    text = ChattyLittleNpc.Utils:CleanTextV2(text)
     if (eventType == "QUEST_DETAIL") then
         NpcInfoDB[npcID][ChattyLittleNpc.locale].quests[questID].quest_detail = text
     elseif (eventType == "QUEST_PROGRESS") then
@@ -89,7 +89,7 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
         NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions = {}
     end
 
-    local text = ChattyLittleNpc.Utils:CleanText(gossipText)
+    local text = ChattyLittleNpc.Utils:CleanTextV2(gossipText)
     local hash = ChattyLittleNpc.MD5:GenerateHash(npcID .. text)
     local hashRemainedTheSame = oldHash == hash
     if (not NpcInfoDB[npcID][ChattyLittleNpc.locale].gossipOptions[hash] or overwrite) then
@@ -134,7 +134,7 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
     UnitInfoDB[unitID][ChattyLittleNpc.locale].unitType = unitType
     local textHash = nil
     if (unitID and unitText) then
-        unitText = ChattyLittleNpc.Utils:CleanText(unitText)
+        unitText = ChattyLittleNpc.Utils:CleanTextV2(unitText)
         textHash = ChattyLittleNpc.MD5:GenerateHash(unitID .. unitText)
         UnitInfoDB[unitID][ChattyLittleNpc.locale].unitTexts[textHash] = unitText
     end
