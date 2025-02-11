@@ -1,14 +1,13 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 
--- Load the EventHandler module
+---@class EventHandler
 local EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
 EventHandler:SetChattyLittleNpcReference(ChattyLittleNpc)
 
--- Load the Options module
+---@class Options
 local Options = LibStub("AceAddon-3.0"):GetAddon("Options")
 Options:SetChattyLittleNpcReference(ChattyLittleNpc)
-
 
 ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
 ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
@@ -198,7 +197,7 @@ function ChattyLittleNpc:HandlePlaybackStart(questPhase)
     
     if (questId > 0) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, gender)
+            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
         end)
     end
 end
@@ -212,11 +211,11 @@ end
     @param id number: The ID of the gossip.
     @param gender number: The gender associated with the gossip.
 ]]
-function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
+function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id)
     local idAsNumber = tonumber(id)
     if (idAsNumber and idAsNumber > 0 and text) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text, gender)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text)
         end)
     end
 end

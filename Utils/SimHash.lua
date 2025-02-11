@@ -1,9 +1,9 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- SimHash64_CharNgrams.lua
 -- SimHash that uses character-based n-grams to make small typos yield near-identical hashes.
-
+---@class SimHash64
 local SimHash64 = {}
 ChattyLittleNpc.SimHash64 = SimHash64
 

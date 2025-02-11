@@ -1,9 +1,9 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- MD5.lua (Pure Lua MD5 implementation)
 -- This is a simple MD5 implementation you can use in your WoW addon.
-
+---@class MD5
 local MD5 = {}
 ChattyLittleNpc.MD5 = MD5
 

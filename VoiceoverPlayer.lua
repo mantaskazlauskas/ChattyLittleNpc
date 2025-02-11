@@ -1,4 +1,4 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class VoiceoverPlayer
@@ -45,7 +45,7 @@ function VoiceoverPlayer:StopCurrentSound()
     ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
 end
 
-function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, npcGender)
+function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
     if (not questId or not phase) then
         ChattyLittleNpc:Print("Missing required arguments")
         ChattyLittleNpc:Print("QuestId: ", questId)
@@ -89,7 +89,6 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, npcGender)
         local audioFileInfo = {}
             audioFileInfo.questId = questId
             audioFileInfo.phase = phase
-            audioFileInfo.gender = npcGender
             audioFileInfo.title = ChattyLittleNpc:GetTitleForQuestID(questId)
             audioFileInfo.cantBeInterrupted = true
             audioFileInfo.npcId = npcId
@@ -119,7 +118,6 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, npcGender)
 
                 VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
                 VoiceoverPlayer.currentlyPlaying.phase = phase
-                VoiceoverPlayer.currentlyPlaying.gender = npcGender
                 VoiceoverPlayer.currentlyPlaying.questId = questId
                 VoiceoverPlayer.currentlyPlaying.npcId = npcId
                 VoiceoverPlayer.currentlyPlaying.title = ChattyLittleNpc:GetTitleForQuestID(questId)
@@ -150,25 +148,18 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, npcGender)
     ChattyLittleNpc.ReplayFrame:UpdateDisplayFrameState()
 end
 
-function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, npcGender)
+function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text)
     if (not npcId or not soundType or not text) then
         ChattyLittleNpc:Print("Arguments missing to play non quest sound.")
         ChattyLittleNpc:Print("NpcId: ", npcId)
         ChattyLittleNpc:Print("SoundType: ", soundType)
         ChattyLittleNpc:Print("Text: ", text)
-        ChattyLittleNpc:Print("NpcGender(optional): ", npcGender)
         return
     end
 
-    local depersonalisedText =  ChattyLittleNpc.Utils:CleanText(text)
-    local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
-    -- transition to new text cleaning method
-    local depersonalisedText2 =  ChattyLittleNpc.Utils:CleanTextV2(text)
-    local hash2 = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText2)
+    local hashes = ChattyLittleNpc.Utils:GetHashes(npcId, text)
 
-    local hashes = {hash, hash2}
-
-    if (not npcId or not soundType or not hash) then
+    if (not npcId or not soundType or not hashes) then
         return -- fail fast in case of missing argument values
     end
 
@@ -208,10 +199,9 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, npcGender)
                     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer.currentlyPlaying or {}
                     VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
                     VoiceoverPlayer.currentlyPlaying.npcId = npcId
-                    VoiceoverPlayer.currentlyPlaying.gender = npcGender
                     VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
                     VoiceoverPlayer.currentlyPlaying.isPlaying = true
-                    VoiceoverPlayer.currentlyPlaying.title = depersonalisedText
+                    VoiceoverPlayer.currentlyPlaying.title = text
                 end
                 break
             end
@@ -223,9 +213,13 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, npcGender)
 
     if (not success) then
         if (ChattyLittleNpc.db.profile.printMissingFiles) then
-            ChattyLittleNpc:Print("Missing voiceover file: " .. npcId .. "_".. soundType .."_" .. hash .. ".ogg")
-            ChattyLittleNpc:Print("Missing voiceover file: " .. npcId .. "_".. soundType .."_" .. hash2 .. ".ogg")
+            if hashes then
+                for hash in ipairs(hashes) do
+                    ChattyLittleNpc:Print("Missing voiceover file: " .. npcId .. "_".. soundType .. "_" .. hash .. ".ogg")
+                end
+            end
         end
+        
         if (ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying) then
             ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying = false
         end

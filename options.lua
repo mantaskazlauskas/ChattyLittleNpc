@@ -1,7 +1,7 @@
----@class Options
+---@class Options: AceConsole-3.0
 local Options = LibStub("AceAddon-3.0"):NewAddon("Options", "AceConsole-3.0")
 
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc
 
 -- Store a reference to ChattyLittleNpc

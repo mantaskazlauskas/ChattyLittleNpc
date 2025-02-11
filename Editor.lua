@@ -1,8 +1,8 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class Editor
-Editor = {}
+local Editor = {}
 ChattyLittleNpc.Editor = Editor
 
 Editor.NpcId = nil

@@ -1,8 +1,8 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
+---@class Utils
 local Utils = {}
-
 ChattyLittleNpc.Utils = Utils
 
 --- Cleans the provided text by removing unwanted characters or formatting.
@@ -87,4 +87,19 @@ function Utils:ContainsString(table, searchString)
         end
     end
     return false
+end
+
+function Utils:GetHashes(npcId, text)
+    if not npcId or not text then
+        return nil
+    end
+
+    local depersonalisedText =  ChattyLittleNpc.Utils:CleanText(text)
+    local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
+
+    local depersonalisedText2 =  ChattyLittleNpc.Utils:CleanTextV2(text)
+    local hash2 = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText2)
+
+    local hashes = {hash, hash2}
+    return hashes
 end

@@ -1,11 +1,13 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class ReplayFrame
 local ReplayFrame = ChattyLittleNpc.ReplayFrame
 
+---@class PlayButton
 local PlayButton = {}
 ChattyLittleNpc.PlayButton = PlayButton
+
 PlayButton.GossipButton = "ChattyLittleGossipButton"
 PlayButton.QuestButton = "ChattyLittleQuestButton"
 PlayButton.ItemTextButton = "ChattyLittleItemTextButton"
@@ -53,22 +55,24 @@ end
 
 function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
-    if (ChattyLittleNpc.isElvuiAddonLoaded) then
-        return PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
-            local questID = PlayButton:GetSelectedQuest()
 
-            if (questID) then
-                ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+    local questID = PlayButton:GetSelectedQuest()
+    if (questID) then
+        for packName, packData in pairs(ChattyLittleNpc.VoiceoverPacks) do
+            local questFileName =  questID .. "_Desc"
+            local fileNameFound = ChattyLittleNpc.Utils:ContainsString(packData.Voiceovers, questFileName)
+            if fileNameFound then
+                if (ChattyLittleNpc.isElvuiAddonLoaded) then
+                    return PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                        ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                    end)
+                else
+                    return PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                        ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                    end)
+                end
             end
-        end)
-    else
-        return PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
-            local questID = PlayButton:GetSelectedQuest()
-
-            if (questID) then
-                ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
-            end
-        end)
+        end
     end
 end
 
@@ -108,7 +112,6 @@ end
 function PlayButton:UpdatePlayButton()
     local questID = PlayButton:GetSelectedQuest()
     for buttonName, button in pairs(PlayButton.buttons) do
-
         if (questID) then
             button:Show()
         else

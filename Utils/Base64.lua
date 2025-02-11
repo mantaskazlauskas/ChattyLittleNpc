@@ -1,7 +1,8 @@
----@class ChattyLittleNpc
+---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
 local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- Base64 Encoding in Pure Lua
+---@class Base64
 local Base64 = {}
 ChattyLittleNpc.Base64 = Base64
 
