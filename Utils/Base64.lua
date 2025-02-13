@@ -1,10 +1,10 @@
----@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+---@class ChattyLittleNpc
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- Base64 Encoding in Pure Lua
 ---@class Base64
 local Base64 = {}
-ChattyLittleNpc.Base64 = Base64
+CLN.Base64 = Base64
 
 local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
@@ -71,7 +71,7 @@ function Base64:Decode(data)
 end
 
 -- TestCases:
-function ChattyLittleNpc:RunBase64TestCases()
+function CLN:RunBase64TestCases()
     local testCases = {
         "Hello, World!",           -- Basic test
         "1234567890",              -- Numbers only
@@ -83,16 +83,16 @@ function ChattyLittleNpc:RunBase64TestCases()
     }
 
     for _, text in ipairs(testCases) do
-        ChattyLittleNpc:Print("Original Text: ", text)
+        CLN:Print("Original Text: ", text)
         local encoded = self.Base64:Encode(text)
-        ChattyLittleNpc:Print("Encoded: ", encoded)
+        CLN:Print("Encoded: ", encoded)
         local decoded = self.Base64:Decode(encoded)
-        ChattyLittleNpc:Print("Decoded: ", decoded)
-        ChattyLittleNpc:Print("Match: ", tostring(text == decoded))
+        CLN:Print("Decoded: ", decoded)
+        CLN:Print("Match: ", tostring(text == decoded))
     end
 end
 
 SLASH_CHATTEST1 = "/base64test"
 SlashCmdList["CHATTEST"] = function()
-    ChattyLittleNpc:RunBase64TestCases()
+    CLN:RunBase64TestCases()
 end

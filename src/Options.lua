@@ -1,17 +1,17 @@
----@class Options: AceConsole-3.0
+---@class Options: table, AceConsole-3.0
 local Options = LibStub("AceAddon-3.0"):NewAddon("Options", "AceConsole-3.0")
 
 ---@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local ChattyLittleNpc
+local CLN
 
 -- Store a reference to ChattyLittleNpc
 function Options:SetChattyLittleNpcReference(reference)
-    ChattyLittleNpc = reference
+    CLN = reference
 end
 
 local options = {
     name = "Chatty Little Npc",
-    handler = ChattyLittleNpc,
+    handler = CLN,
     type = 'group',
     args = {
         DebuggingImprovements = {
@@ -23,18 +23,18 @@ local options = {
                     type = 'toggle',
                     name = 'Print Missing Files',
                     desc = 'Toggle to print missing voiceover files.',
-                    get = function(info) return ChattyLittleNpc.db.profile.printMissingFiles end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.printMissingFiles = value end,
+                    get = function(info) return CLN.db.profile.printMissingFiles end,
+                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
                 },
                 logNpcTexts = {
                     type = 'toggle',
                     name = 'Track NPC data',
                     desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
-                    get = function(info) return ChattyLittleNpc.db.profile.logNpcTexts end,
+                    get = function(info) return CLN.db.profile.logNpcTexts end,
                     set = function(info, value)
-                        ChattyLittleNpc.db.profile.logNpcTexts = value
+                        CLN.db.profile.logNpcTexts = value
                         if (not value) then
-                            ChattyLittleNpc.db.profile.printNpcTexts = false
+                            CLN.db.profile.printNpcTexts = false
                         end
                     end,
                 },
@@ -42,26 +42,26 @@ local options = {
                     type = 'toggle',
                     name = 'Print NPC data (if tracking enabled)',
                     desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
-                    get = function(info) return ChattyLittleNpc.db.profile.printNpcTexts end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.printNpcTexts = value end,
+                    get = function(info) return CLN.db.profile.printNpcTexts end,
+                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
                 },
                 debugMode = {
                     type = 'toggle',
                     name = 'Print Debug Messages',
                     desc = 'Toggle to print debug messages.',
-                    get = function(info) return ChattyLittleNpc.db.profile.debugMode end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.debugMode = value end,
+                    get = function(info) return CLN.db.profile.debugMode end,
+                    set = function(info, value) CLN.db.profile.debugMode = value end,
                 },
                 showGossipEditor = {
                     type = 'toggle',
                     name = 'Show Gossip Editor',
                     desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
-                    get = function(info) return ChattyLittleNpc.Editor.Frame:IsShown() end,
+                    get = function(info) return CLN.Editor.Frame:IsShown() end,
                     set = function(info, value)
                         if value then
-                            ChattyLittleNpc.Editor.Frame:Show()
+                            CLN.Editor.Frame:Show()
                         else
-                            ChattyLittleNpc.Editor.Frame:Hide()
+                            CLN.Editor.Frame:Hide()
                         end
                     end,
                 },
@@ -69,7 +69,7 @@ local options = {
                     type = 'execute',
                     name = 'Print VO Pack metadata',
                     desc = 'Print what VO packs were loaded, what kind of voiceovers they support and how many voiceovers they have.',
-                    func = function() ChattyLittleNpc:PrintLoadedVoiceoverPacks() end,
+                    func = function() CLN:PrintLoadedVoiceoverPacks() end,
                 },
             },
         },
@@ -82,14 +82,14 @@ local options = {
                     type = 'execute',
                     name = 'Reset Replay Frame Position',
                     desc = 'Reset the replay frame position to its default values.',
-                    func = function() ChattyLittleNpc.ReplayFrame:ResetFramePosition() end,
+                    func = function() CLN.ReplayFrame:ResetFramePosition() end,
                 },
                 showReplayFrame = {
                     type = 'toggle',
                     name = 'Show Replay Window',
                     desc = 'Toggle to show the replay window.',
-                    get = function(info) return ChattyLittleNpc.db.profile.showReplayFrame end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.showReplayFrame = value end,
+                    get = function(info) return CLN.db.profile.showReplayFrame end,
+                    set = function(info, value) CLN.db.profile.showReplayFrame = value end,
                 },
             },
         },
@@ -102,18 +102,18 @@ local options = {
                     type = 'toggle',
                     name = 'Play on dialog window open',
                     desc = 'Toggle to play voiceovers when opening the gossip or quest window.',
-                    get = function(info) return ChattyLittleNpc.db.profile.autoPlayVoiceovers end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.autoPlayVoiceovers = value end,
+                    get = function(info) return CLN.db.profile.autoPlayVoiceovers end,
+                    set = function(info, value) CLN.db.profile.autoPlayVoiceovers = value end,
                 },
                 stopVoiceoverAfterDialogWindowClose = {
                     type = 'toggle',
                     name = 'Stop on dialog window close',
                     desc = 'Only play voiceover while the npc dialog window is open, and auto stop voiceover after the dialog window is closed. (Quest queueing will be disabled)',
-                    get = function(info) return ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose end,
+                    get = function(info) return CLN.db.profile.stopVoiceoverAfterDialogWindowClose end,
                     set = function(info, value)
-                        ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose = value
+                        CLN.db.profile.stopVoiceoverAfterDialogWindowClose = value
                         if (value) then
-                            ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing = false
+                            CLN.db.profile.enableQuestPlaybackQueueing = false
                         end
                     end
                 },
@@ -121,11 +121,11 @@ local options = {
                     type = 'toggle',
                     name = 'Enable Quest Playback Queueing',
                     desc = 'Toggle to enable or disable quest playback queueing. (Stop on dialog window close will be disabled)',
-                    get = function(info) return ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing end,
+                    get = function(info) return CLN.db.profile.enableQuestPlaybackQueueing end,
                     set = function(info, value)
-                        ChattyLittleNpc.db.profile.enableQuestPlaybackQueueing = value
+                        CLN.db.profile.enableQuestPlaybackQueueing = value
                         if (value) then
-                            ChattyLittleNpc.db.profile.stopVoiceoverAfterDialogWindowClose = false
+                            CLN.db.profile.stopVoiceoverAfterDialogWindowClose = false
                         end
                     end
                 },
@@ -136,8 +136,8 @@ local options = {
                     min = 0,
                     max = 3,
                     step = 0.1,
-                    get = function(info) return ChattyLittleNpc.db.profile.playVoiceoverAfterDelay end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.playVoiceoverAfterDelay = value end,
+                    get = function(info) return CLN.db.profile.playVoiceoverAfterDelay end,
+                    set = function(info, value) CLN.db.profile.playVoiceoverAfterDelay = value end,
                 },
                 audioChannel = {
                     type = 'select',
@@ -150,8 +150,8 @@ local options = {
                         MUSIC = 'MUSIC',
                         SFX = 'SFX',
                     },
-                    get = function(info) return ChattyLittleNpc.db.profile.audioChannel end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.audioChannel = value end,
+                    get = function(info) return CLN.db.profile.audioChannel end,
+                    set = function(info, value) CLN.db.profile.audioChannel = value end,
                 },
             },
         },
@@ -167,10 +167,10 @@ local options = {
                     min = -200,
                     max = 200,
                     step = 1,
-                    get = function(info) return ChattyLittleNpc.db.profile.buttonPosX or 0 end,
+                    get = function(info) return CLN.db.profile.buttonPosX or 0 end,
                     set = function(info, value)
-                        ChattyLittleNpc.db.profile.buttonPosX = value
-                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                        CLN.db.profile.buttonPosX = value
+                        CLN.PlayButton:UpdateButtonPositions()
                     end,
                 },
                 buttonPosY = {
@@ -180,10 +180,10 @@ local options = {
                     min = -200,
                     max = 200,
                     step = 1,
-                    get = function(info) return ChattyLittleNpc.db.profile.buttonPosY or 0 end,
+                    get = function(info) return CLN.db.profile.buttonPosY or 0 end,
                     set = function(info, value)
-                        ChattyLittleNpc.db.profile.buttonPosY = value
-                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                        CLN.db.profile.buttonPosY = value
+                        CLN.PlayButton:UpdateButtonPositions()
                     end,
                 },
                 resetButtonPosition = {
@@ -191,9 +191,9 @@ local options = {
                     name = 'Reset Button Positions',
                     desc = 'Reset the X and Y positions to their default values.',
                     func = function()
-                        ChattyLittleNpc.db.profile.buttonPosX = -15  -- Default X position
-                        ChattyLittleNpc.db.profile.buttonPosY = -30  -- Default Y position
-                        ChattyLittleNpc.PlayButton:UpdateButtonPositions()
+                        CLN.db.profile.buttonPosX = -15  -- Default X position
+                        CLN.db.profile.buttonPosY = -30  -- Default Y position
+                        CLN.PlayButton:UpdateButtonPositions()
                     end,
                 },
             },
@@ -207,8 +207,8 @@ local options = {
                     type = 'toggle',
                     name = 'Show Floating head frame with DialogueUI frame',
                     desc = 'When using DialogueUI addon, toggle if you want to see the floating head frame at the same time as DialogueUI frame.',
-                    get = function(info) return ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded end,
-                    set = function(info, value) ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded = value end,
+                    get = function(info) return CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded end,
+                    set = function(info, value) CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded = value end,
                 },
             }
         }

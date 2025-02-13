@@ -1,9 +1,9 @@
----@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+---@class ChattyLittleNpc
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class Utils
 local Utils = {}
-ChattyLittleNpc.Utils = Utils
+CLN.Utils = Utils
 
 --- Cleans the provided text by removing unwanted characters or formatting.
 -- @param text The string to be cleaned.
@@ -61,7 +61,7 @@ end
 ]]
 function Utils:PrintTable(t, indent)
     if (not t) then
-        ChattyLittleNpc:Print("Table is nil.")
+        CLN:Print("Table is nil.")
         return
     end
 
@@ -72,10 +72,10 @@ function Utils:PrintTable(t, indent)
     for k, v in pairs(t) do
         local formatting = string.rep("  ", indent) .. k .. ": "
         if (type(v) == "table") then
-            ChattyLittleNpc:Print(formatting)
+            CLN:Print(formatting)
             self.PrintTable(v, indent + 1)
         else
-            ChattyLittleNpc:Print(formatting, tostring(v))
+            CLN:Print(formatting, tostring(v))
         end
     end
 end
@@ -94,12 +94,18 @@ function Utils:GetHashes(npcId, text)
         return nil
     end
 
-    local depersonalisedText =  ChattyLittleNpc.Utils:CleanText(text)
-    local hash = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText)
+    local depersonalisedText =  CLN.Utils:CleanText(text)
+    local hash = CLN.MD5:GenerateHash(npcId .. depersonalisedText)
 
-    local depersonalisedText2 =  ChattyLittleNpc.Utils:CleanTextV2(text)
-    local hash2 = ChattyLittleNpc.MD5:GenerateHash(npcId .. depersonalisedText2)
+    local depersonalisedText2 =  CLN.Utils:CleanTextV2(text)
+    local hash2 = CLN.MD5:GenerateHash(npcId .. depersonalisedText2)
 
     local hashes = {hash, hash2}
     return hashes
+end
+
+function Utils:LogDebug(text)
+    if CLN.db.profile.debugMode then
+        CLN:Print(text)
+    end
 end
