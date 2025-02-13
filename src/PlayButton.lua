@@ -1,11 +1,13 @@
 ---@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class ReplayFrame
-local ReplayFrame = ChattyLittleNpc.ReplayFrame
+local ReplayFrame = CLN.ReplayFrame
 
+---@class PlayButton
 local PlayButton = {}
-ChattyLittleNpc.PlayButton = PlayButton
+CLN.PlayButton = PlayButton
+
 PlayButton.GossipButton = "ChattyLittleGossipButton"
 PlayButton.QuestButton = "ChattyLittleQuestButton"
 PlayButton.ItemTextButton = "ChattyLittleItemTextButton"
@@ -14,59 +16,73 @@ PlayButton.DetailFrameButton = "ChattyLittleDetailFrameButton"
 PlayButton.QuestLogFrameButton = "ChattyLittleQuestLogFrameButton"
 PlayButton.QuestLogDetailFrameButton = "ChattyLittleQuestLogDetailFrameButton"
 
+PlayButton.DialogWindowButtons = { PlayButton.GossipButton, PlayButton.QuestButton, PlayButton.ItemTextButton }
+PlayButton.QuestLogButtons = { PlayButton.DetailFrameButton, PlayButton.QuestLogFrameButton, PlayButton.QuestLogDetailFrameButton }
 
 PlayButton.buttons = {}
 
 function PlayButton:ClearButtons()
-    if (_G[PlayButton.GossipButton]) then
-        _G[PlayButton.GossipButton]:Hide()
-        _G[PlayButton.GossipButton] = nil
-    end
 
-    if (_G[PlayButton.QuestButton]) then
-        _G[PlayButton.QuestButton]:Hide()
-        _G[PlayButton.QuestButton] = nil
-    end
-
-    if (_G[PlayButton.ItemTextButton]) then
-        _G[PlayButton.ItemTextButton]:Hide()
-        _G[PlayButton.ItemTextButton] = nil
+    for buttonName, button in pairs(PlayButton.DialogWindowButtons) do
+        if (_G[button]) then
+            _G[button]:Hide()
+            _G[button] = nil
+        end
     end
 end
 
 function PlayButton:ClearQuestLogAndDetailButtons()
-    if (_G[PlayButton.DetailFrameButton]) then
-        _G[PlayButton.DetailFrameButton]:Hide()
-        _G[PlayButton.DetailFrameButton] = nil
-    end
-
-    if (_G[PlayButton.QuestLogFrameButton]) then
-        _G[PlayButton.QuestLogFrameButton]:Hide()
-        _G[PlayButton.QuestLogFrameButton] = nil
-    end
-
-    if (_G[PlayButton.QuestLogDetailFrameButton]) then
-        _G[PlayButton.QuestLogDetailFrameButton]:Hide()
-        _G[PlayButton.QuestLogDetailFrameButton] = nil
+    for buttonName, button in pairs(PlayButton.QuestLogButtons) do
+        if (_G[button]) then
+            _G[button]:Hide()
+            _G[button] = nil
+        end
     end
 end
 
 function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
-    if (ChattyLittleNpc.isElvuiAddonLoaded) then
-        return PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
-            local questID = PlayButton:GetSelectedQuest()
 
+    local questID = PlayButton:GetSelectedQuest()
+    if (questID) then
+        for packName, packData in pairs(CLN.VoiceoverPacks) do
+            local questFileName =  questID .. "_Desc.ogg"
+            local fileNameFound = CLN.Utils:ContainsString(packData.Voiceovers, questFileName)
+            if (CLN.isElvuiAddonLoaded) then
+                PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                    CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                end)
+                if not fileNameFound then
+                    _G[buttonName]:Hide()
+                end
+                return
+            else
+                PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                    CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                end)
+                if not fileNameFound then
+                    _G[buttonName]:Hide()
+                end
+                return
+            end
+        end
+    end
+end
+
+function PlayButton:AttachPlayButtonForQuestLog(parentFrame, offsetX, offsetY, buttonName)
+    PlayButton:ClearButtons()
+    if (CLN.isElvuiAddonLoaded) then
+        PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
+            local questID = PlayButton:GetSelectedQuest()
             if (questID) then
-                ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
             end
         end)
     else
-        return PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
+        PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
             local questID = PlayButton:GetSelectedQuest()
-
             if (questID) then
-                ChattyLittleNpc.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
             end
         end)
     end
@@ -75,10 +91,10 @@ end
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
 
-    local offsetX = ChattyLittleNpc.db.profile.buttonPosX
-    local offsetY = ChattyLittleNpc.db.profile.buttonPosY
+    local offsetX = CLN.db.profile.buttonPosX
+    local offsetY = CLN.db.profile.buttonPosY
 
-    if (ChattyLittleNpc.isElvuiAddonLoaded) then
+    if (CLN.isElvuiAddonLoaded) then
         return PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
     else
         return PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
@@ -90,25 +106,21 @@ function PlayButton:AttachQuestLogAndDetailsButtons()
 
     local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if (DetailsFrame) then
-        ChattyLittleNpc:Print("DetailsFrame is available")
-        PlayButton:AttachPlayButton(DetailsFrame, -10, -10, PlayButton.DetailFrameButton)
+        PlayButton:AttachPlayButtonForQuestLog(DetailsFrame, -10, -10, PlayButton.DetailFrameButton)
     end
 
     if (_G["QuestLogFrame"]) then
-        ChattyLittleNpc:Print("QuestLogFrame is available")
-        PlayButton:AttachPlayButton(_G["QuestLogFrame"], 40, 40, PlayButton.QuestLogFrameButton)
+        PlayButton:AttachPlayButtonForQuestLog(_G["QuestLogFrame"], 40, 40, PlayButton.QuestLogFrameButton)
     end
 
     if (_G["QuestLogDetailFrame"]) then
-        ChattyLittleNpc:Print("QuestLogDetailFrame is available")
-        PlayButton:AttachPlayButton(_G["QuestLogDetailFrame"], 40, 40, PlayButton.QuestLogDetailFrameButton)
+        PlayButton:AttachPlayButtonForQuestLog(_G["QuestLogDetailFrame"], 40, 40, PlayButton.QuestLogDetailFrameButton)
     end
 end
 
 function PlayButton:UpdatePlayButton()
     local questID = PlayButton:GetSelectedQuest()
     for buttonName, button in pairs(PlayButton.buttons) do
-
         if (questID) then
             button:Show()
         else
@@ -124,12 +136,14 @@ function PlayButton:HidePlayButton()
 end
 
 function PlayButton:GetSelectedQuest()
-    if (ChattyLittleNpc.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest) then
+    if (CLN.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest) then
         return C_QuestLog.GetSelectedQuest()
     else
+        ---@diagnostic disable-next-line: undefined-global
         local selectedIndex = GetQuestLogSelection()
 
         if (selectedIndex and selectedIndex > 0) then
+            ---@diagnostic disable-next-line: undefined-global
             local _, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
             return questID
         end
@@ -138,8 +152,8 @@ function PlayButton:GetSelectedQuest()
 end
 
 function PlayButton:UpdateButtonPositions()
-    local x = ChattyLittleNpc.db.profile.buttonPosX or 0
-    local y = ChattyLittleNpc.db.profile.buttonPosY or 0
+    local x = CLN.db.profile.buttonPosX or 0
+    local y = CLN.db.profile.buttonPosY or 0
 
     local buttonsToUpdate = {"GossipFramePlayButton", "QuestFramePlayButton"}
     for _, buttonName in pairs(buttonsToUpdate) do
@@ -222,8 +236,8 @@ function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offse
         if newX > 100 then newX = 100 end
         if newY > 100 then newY = 100 end
 
-        ChattyLittleNpc.db.profile.buttonPosX = -newX
-        ChattyLittleNpc.db.profile.buttonPosY = -newY
+        CLN.db.profile.buttonPosX = -newX
+        CLN.db.profile.buttonPosY = -newY
     end)
 
     return button
@@ -241,6 +255,7 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
 
     local ElvUI = PlayButton:GetElvUI()
     local ElvUISkins = ElvUI:GetModule('Skins')
+    ---@diagnostic disable-next-line: undefined-field
     ElvUISkins:HandleButton(button)
     button:SetText("Play Voiceover")
 
@@ -249,6 +264,7 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     end)
 
     button:SetScript("OnLeave", function()
+        ---@diagnostic disable-next-line: undefined-field
         button:SetBackdropBorderColor(unpack(ElvUI.media.bordercolor)) -- Reset border on leave
     end)
 
@@ -296,8 +312,8 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
         if newX > 100 then newX = 100 end
         if newY > 100 then newY = 100 end
 
-        ChattyLittleNpc.db.profile.buttonPosX = -newX
-        ChattyLittleNpc.db.profile.buttonPosY = -newY
+        CLN.db.profile.buttonPosX = -newX
+        CLN.db.profile.buttonPosY = -newY
     end)
 
     return button

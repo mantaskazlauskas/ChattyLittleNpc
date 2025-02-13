@@ -1,9 +1,9 @@
 ---@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class Editor
-Editor = {}
-ChattyLittleNpc.Editor = Editor
+local Editor = {}
+CLN.Editor = Editor
 
 Editor.NpcId = nil
 Editor.NpcName = nil
@@ -224,7 +224,7 @@ Editor.Frame.saveButton:SetSize(100, 25)
 Editor.Frame.saveButton:SetPoint("BOTTOMLEFT", 10, 10)
 Editor.Frame.saveButton:SetText("Save")
 Editor.Frame.saveButton:SetScript("OnClick", function()
-    ChattyLittleNpc.NpcDialogTracker:StoreGossipOptionsInfo(Editor.NpcId, Editor.GossipText, true, Editor.GossipId)
+    CLN.NpcDialogTracker:StoreGossipOptionsInfo(Editor.NpcId, Editor.GossipText, true, Editor.GossipId)
 end)
 
 -- Hash Button (non-functional for now)
@@ -233,10 +233,10 @@ Editor.Frame.generateIdButton:SetSize(100, 25)
 Editor.Frame.generateIdButton:SetPoint("BOTTOMRIGHT", -10, 10)
 Editor.Frame.generateIdButton:SetText("Generate id")
 Editor.Frame.generateIdButton:SetScript("OnClick", function()
-    local generatedID = ChattyLittleNpc.MD5:GenerateHash(Editor.NpcId .. Editor.GossipText)
+    local generatedID = CLN.MD5:GenerateHash(Editor.NpcId .. Editor.GossipText)
     local ngramSizes = {2, 3}
-    local simhash = ChattyLittleNpc.SimHash64:GenerateHash(Editor.GossipText, ngramSizes, true)
-    ChattyLittleNpc:Print("Generated ID: " .. generatedID .. " Simhash: " .. simhash)
+    local simhash = CLN.SimHash64:GenerateHash(Editor.GossipText, ngramSizes, true)
+    CLN:Print("Generated ID: " .. generatedID .. " Simhash: " .. simhash)
     Editor.Frame.generatedIDLabel:SetText("Generated ID: " .. generatedID)
 end)
 

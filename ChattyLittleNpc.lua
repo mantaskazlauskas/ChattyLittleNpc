@@ -1,35 +1,24 @@
----@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
+---@class ChattyLittleNpc: table, AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
+local CLN = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 
--- Load the EventHandler module
+---@class EventHandler
 local EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
-EventHandler:SetChattyLittleNpcReference(ChattyLittleNpc)
+EventHandler:SetChattyLittleNpcReference(CLN)
 
--- Load the Options module
+---@class Options
 local Options = LibStub("AceAddon-3.0"):GetAddon("Options")
-Options:SetChattyLittleNpcReference(ChattyLittleNpc)
+Options:SetChattyLittleNpcReference(CLN)
 
-
-ChattyLittleNpc.PlayButton = ChattyLittleNpc.PlayButton
-ChattyLittleNpc.ReplayFrame = ChattyLittleNpc.ReplayFrame
-ChattyLittleNpc.NpcDialogTracker = ChattyLittleNpc.NpcDialogTracker
-ChattyLittleNpc.VoiceoverPlayer = ChattyLittleNpc.VoiceoverPlayer
-ChattyLittleNpc.MD5 = ChattyLittleNpc.MD5
-ChattyLittleNpc.SimHash = ChattyLittleNpc.SimHash
-ChattyLittleNpc.Base64 = ChattyLittleNpc.Base64
-ChattyLittleNpc.Utils = ChattyLittleNpc.Utils
-ChattyLittleNpc.Editor = ChattyLittleNpc.Editor
-ChattyLittleNpc.VoiceoverPacks = {}
-
-ChattyLittleNpc.locale = nil
-ChattyLittleNpc.gameVersion = nil
-ChattyLittleNpc.useNamespaces = nil
-ChattyLittleNpc.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
-ChattyLittleNpc.loadedVoiceoverPacks = {}
-ChattyLittleNpc.questsQueue = {}
-ChattyLittleNpc.isDUIAddonLoaded = false
-ChattyLittleNpc.isElvuiAddonLoaded = false
-ChattyLittleNpc.currentItemInfo = {
+CLN.locale = nil
+CLN.gameVersion = nil
+CLN.useNamespaces = nil
+CLN.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+CLN.loadedVoiceoverPacks = {}
+CLN.VoiceoverPacks = {}
+CLN.questsQueue = {}
+CLN.isDUIAddonLoaded = false
+CLN.isElvuiAddonLoaded = false
+CLN.currentItemInfo = {
     ItemID = nil,
     ItemName = nil,
     ItemText = nil
@@ -61,7 +50,7 @@ local defaults = {
     }
 }
 
-function ChattyLittleNpc:OnInitialize()
+function CLN:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
 
     self.locale = GetLocale()
@@ -77,7 +66,7 @@ function ChattyLittleNpc:OnInitialize()
     end
 end
 
-function ChattyLittleNpc:OnEnable()
+function CLN:OnEnable()
     EventHandler:RegisterEvents()
 
     if (self.ReplayFrame.DisplayFrame) then
@@ -103,7 +92,7 @@ function ChattyLittleNpc:OnEnable()
     end
 end
 
-function ChattyLittleNpc:OnDisable()
+function CLN:OnDisable()
     EventHandler:UnregisterEvents()
 end
 
@@ -112,7 +101,7 @@ end
 
     @param unit (string) - The identifier of the unit to retrieve information for.
 ]]
-function ChattyLittleNpc:GetUnitInfo(unit)
+function CLN:GetUnitInfo(unit)
     local unitName = select(1, UnitName(unit)) or ""
     local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
     local sexStr = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
@@ -139,7 +128,7 @@ end
     @param questID number: The unique identifier for the quest.
     @return string: The title of the quest.
 ]]
-function ChattyLittleNpc:GetTitleForQuestID(questID)
+function CLN:GetTitleForQuestID(questID)
     if (self.useNamespaces) then
         return C_QuestLog.GetTitleForQuestID(questID)
     elseif (QuestUtils_GetQuestName) then
@@ -152,7 +141,7 @@ end
 
     @return table: A table containing the loaded expansion voiceover packs.
 ]]
-function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
+function CLN:GetLoadedExpansionVoiceoverPacks()
     for _, expansion in ipairs(self.expansions) do
         local voiceoverPackName = "ChattyLittleNpc_" .. expansion
         local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
@@ -174,7 +163,7 @@ function ChattyLittleNpc:GetLoadedExpansionVoiceoverPacks()
     end
 end
 
-function ChattyLittleNpc:PrintLoadedVoiceoverPacks()
+function CLN:PrintLoadedVoiceoverPacks()
     for packName, packData in pairs(self.VoiceoverPacks) do
         if packData.Metadata then
             self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
@@ -191,14 +180,14 @@ end
 
     @param questPhase (number) - The phase of the quest for which playback is starting.
 ]]
-function ChattyLittleNpc:HandlePlaybackStart(questPhase)
+function CLN:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
     local npcId = select(6, self:GetUnitInfo("npc"))
     local gender = select(2, self:GetUnitInfo("npc"))
     
     if (questId > 0) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, gender)
+            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
         end)
     end
 end
@@ -212,16 +201,16 @@ end
     @param id number: The ID of the gossip.
     @param gender number: The gender associated with the gossip.
 ]]
-function ChattyLittleNpc:HandleGossipPlaybackStart(text, soundType, id, gender)
+function CLN:HandleGossipPlaybackStart(text, soundType, id)
     local idAsNumber = tonumber(id)
     if (idAsNumber and idAsNumber > 0 and text) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text, gender)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text)
         end)
     end
 end
 
-function ChattyLittleNpc:GetLoadedAddonsForIntegrations()
+function CLN:GetLoadedAddonsForIntegrations()
     self.isDUIAddonLoaded = C_AddOns.IsAddOnLoaded("DialogueUI")
     if (self.db.profile.debugMode) then
         self:Print("DUI Addon Loaded:", self.isDUIAddonLoaded)
@@ -237,4 +226,4 @@ function ChattyLittleNpc:GetLoadedAddonsForIntegrations()
     end
 end
 
-ChattyLittleNpc:OnInitialize()
+CLN:OnInitialize()

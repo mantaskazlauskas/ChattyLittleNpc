@@ -1,11 +1,11 @@
 ---@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- SimHash64_CharNgrams.lua
 -- SimHash that uses character-based n-grams to make small typos yield near-identical hashes.
-
+---@class SimHash64
 local SimHash64 = {}
-ChattyLittleNpc.SimHash64 = SimHash64
+CLN.SimHash64 = SimHash64
 
 ------------------------------------------------------------
 -- 1) Lua/WoW bit operations and local references
@@ -201,7 +201,7 @@ end
 ------------------------------------------------------------
 -- 9) Example test usage
 ------------------------------------------------------------
-function ChattyLittleNpc:RunSimHash64TestCases()
+function CLN:RunSimHash64TestCases()
     local texts = {
         "While the Vizier does not approve of war profiteering",
         "While the Vizer does not approve of war profiteering",
@@ -231,5 +231,5 @@ end
 
 SLASH_SIMHASH64TEST1 = "/simhash64test"
 SlashCmdList["SIMHASH64TEST"] = function()
-    ChattyLittleNpc:RunSimHash64TestCases()
+    CLN:RunSimHash64TestCases()
 end

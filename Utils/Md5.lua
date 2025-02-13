@@ -1,11 +1,11 @@
 ---@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 -- MD5.lua (Pure Lua MD5 implementation)
 -- This is a simple MD5 implementation you can use in your WoW addon.
-
+---@class MD5
 local MD5 = {}
-ChattyLittleNpc.MD5 = MD5
+CLN.MD5 = MD5
 
 local K = {
     0xd76aa478, 0xe8c7b756, 0x242070db, 0xc1bdceee,
@@ -115,7 +115,7 @@ function MD5:GenerateHash(message)
     return string.format("%08x%08x%08x%08x", H0, H1, H2, H3)
 end
 
-function ChattyLittleNpc:RunMD5TestCases()
+function CLN:RunMD5TestCases()
     local testCases = {
         "Hello, World!",                      -- Basic test
         "1234567890",                         -- Numbers only
@@ -128,13 +128,13 @@ function ChattyLittleNpc:RunMD5TestCases()
     }
 
     for _, text in ipairs(testCases) do
-        ChattyLittleNpc:Print("Original Text: ", text)
+        CLN:Print("Original Text: ", text)
         local hash = self.MD5:GenerateHash(text)
-        ChattyLittleNpc:Print("MD5 Hash: ", hash)
+        CLN:Print("MD5 Hash: ", hash)
     end
 end
 
 SLASH_MD5TEST1 = "/md5test"
 SlashCmdList["MD5TEST"] = function()
-    ChattyLittleNpc:RunMD5TestCases()
+    CLN:RunMD5TestCases()
 end

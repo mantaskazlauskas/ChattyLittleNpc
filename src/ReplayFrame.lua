@@ -1,14 +1,13 @@
 ---@class ChattyLittleNpc
-local ChattyLittleNpc = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 
 ---@class ReplayFrame
 local ReplayFrame = {}
-
-ChattyLittleNpc.ReplayFrame = ReplayFrame
+CLN.ReplayFrame = ReplayFrame
 
 function ReplayFrame:SaveFramePosition()
     local point, relativeTo, relativePoint, xOfs, yOfs = self.DisplayFrame:GetPoint()
-    ChattyLittleNpc.db.profile.framePos = {
+    CLN.db.profile.framePos = {
         point = point,
         relativeTo = relativeTo and relativeTo:GetName() or nil,
         relativePoint = relativePoint,
@@ -18,7 +17,7 @@ function ReplayFrame:SaveFramePosition()
 end
 
 function ReplayFrame:LoadFramePosition()
-    local pos = ChattyLittleNpc.db.profile.framePos
+    local pos = CLN.db.profile.framePos
     if (pos) then
         self.DisplayFrame:ClearAllPoints()
         self.DisplayFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
@@ -28,7 +27,7 @@ function ReplayFrame:LoadFramePosition()
 end
 
 function ReplayFrame:ResetFramePosition()
-    ChattyLittleNpc.db.profile.framePos = {
+    CLN.db.profile.framePos = {
         point = "CENTER",
         relativeTo = nil,
         relativePoint = "CENTER",
@@ -42,9 +41,6 @@ end
 
 function ReplayFrame:GetDisplayFrame()
     if (ReplayFrame.DisplayFrame) then
-        if (ChattyLittleNpc.db.profile.debugMode) then
-            ChattyLittleNpc:Print("DisplayFrame already exists.. loading")
-        end
         ReplayFrame:LoadFramePosition()
         return
     end
@@ -57,12 +53,9 @@ function ReplayFrame:GetDisplayFrame()
     -- Check if DialogueUI addon is loaded
     local parentFrame = UIParent
 
-    if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded) then
+    if (CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded) then
         if (ReplayFrame:IsDialogueUIFrameShow()) then
             parentFrame = _G["DUIQuestFrame"]
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("DUIQuestFrame found")
-            end
         end
     end
 
@@ -91,27 +84,16 @@ function ReplayFrame:GetDisplayFrame()
 
     ReplayFrame.DisplayFrame:SetScript("OnMouseUp", function(frame, button)
         if (button == "RightButton") then
-            ChattyLittleNpc.questsQueue = {}
+            CLN.questsQueue = {}
             ReplayFrame.DisplayFrame:Hide()
-            ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("Hiding DisplayFrame using RMB click")
-            end
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
         end
     end)
 
     ReplayFrame.DisplayFrame:SetScript("OnHide", function()
         if (ReplayFrame:IsVoiceoverCurrenltyPlaying()) then
             ReplayFrame:UpdateDisplayFrameState()
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("Preventing hiding DisplayFrame while audio is still playing.")
-            end
-
             return
-        end
-
-        if (ChattyLittleNpc.db.profile.debugMode) then
-            ChattyLittleNpc:Print("DisplayFrame Hide event handler triggered.")
         end
     end)
 
@@ -124,12 +106,9 @@ function ReplayFrame:GetDisplayFrame()
         closeButton:SetSize(20, 20)
         closeButton:SetPoint("TOPRIGHT", ReplayFrame.ContentFrame, "TOPRIGHT", -5, -5)
         closeButton:SetScript("OnClick", function()
-            ChattyLittleNpc.questsQueue = {}
+            CLN.questsQueue = {}
             ReplayFrame.DisplayFrame:Hide()
-            ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(true)
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("Hiding Display frame using close button.")
-            end
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
         end)
 
     for i = 1, 3 do
@@ -156,10 +135,10 @@ function ReplayFrame:GetDisplayFrame()
             stopButton:SetScript("OnMouseDown", function()
                 local questIndex = i
 
-                if (questIndex == 1 and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying) then
-                    ChattyLittleNpc.VoiceoverPlayer:ForceStopCurrentSound(false)
+                if (questIndex == 1 and CLN.VoiceoverPlayer.currentlyPlaying) then
+                    CLN.VoiceoverPlayer:ForceStopCurrentSound(false)
                 else
-                    table.remove(ChattyLittleNpc.questsQueue, questIndex - 1)
+                    table.remove(CLN.questsQueue, questIndex - 1)
                 end
 
                 ReplayFrame:UpdateDisplayFrame()
@@ -187,11 +166,8 @@ function ReplayFrame:GetDisplayFrame()
 end
 
 function ReplayFrame:UpdateDisplayFrame()
-    if (not ReplayFrame:IsShowReplayFrameToggleIsEnabled() or not ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying) then
+    if (not ReplayFrame:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (ReplayFrame.DisplayFrame) then
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("Hiding DisplayFrame due to toggle or missing current voiceover")
-            end
             ReplayFrame.DisplayFrame:Hide()
         end
         return
@@ -200,47 +176,41 @@ function ReplayFrame:UpdateDisplayFrame()
     -- Hide Frame if there are no actively playing voiceover and no quests in queue
     if (not ReplayFrame:IsVoiceoverCurrenltyPlaying() and ReplayFrame:IsQuestQueueEmpty()) then
         if (ReplayFrame.DisplayFrame) then
-            if (ChattyLittleNpc.db.profile.debugMode) then
-                ChattyLittleNpc:Print("Disabling DisplayFrame due no active voiceovers")
-            end
             ReplayFrame.DisplayFrame:Hide()
         end
         return
     end
 
     if (ReplayFrame:IsDisplayFrameHideNeeded()) then
-        if (ChattyLittleNpc.db.profile.debugMode) then
-            ChattyLittleNpc:Print("Hiding DisplayFrame because there is no more quests to play in queue")
-        end
         ReplayFrame.DisplayFrame:Hide()
         return
     end
 
     local firstButton = ReplayFrame.DisplayFrame.buttons[1]
-    if (not ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title) then
-        ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title = ChattyLittleNpc:GetTitleForQuestID(ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.questId)
+    if (not CLN.VoiceoverPlayer.currentlyPlaying.title) then
+        CLN.VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(CLN.VoiceoverPlayer.currentlyPlaying.questId)
 
-        if (ChattyLittleNpc.db.profile.debugMode) then
-            ChattyLittleNpc:Print(
+        if (CLN.db.profile.debugMode) then
+            CLN:Print(
             "Getting missing title for quest id:",
-            ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.questId,
+            CLN.VoiceoverPlayer.currentlyPlaying.questId,
             ", title found is:",
-            ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title)
+            CLN.VoiceoverPlayer.currentlyPlaying.title)
         end
     end
 
-    if (ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title) then
-        local truncatedTitle = ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title
+    if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.title) then
+        local truncatedTitle = CLN.VoiceoverPlayer.currentlyPlaying.title
 
-        if (string.len(ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title) > 30) then
-            truncatedTitle = string.sub(ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title, 1, 25) .. "..."
+        if (string.len(CLN.VoiceoverPlayer.currentlyPlaying.title) > 30) then
+            truncatedTitle = string.sub(CLN.VoiceoverPlayer.currentlyPlaying.title, 1, 25) .. "..."
         end
 
         firstButton.text:SetText("-> " .. truncatedTitle)
         firstButton.frame:Show()
         firstButton.text:SetScript("OnEnter", function()
             GameTooltip:SetOwner(firstButton.frame, "ANCHOR_RIGHT")
-            GameTooltip:SetText(ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.title)
+            GameTooltip:SetText(CLN.VoiceoverPlayer.currentlyPlaying.title)
             GameTooltip:Show()
         end)
         firstButton.text:SetScript("OnLeave", function()
@@ -252,7 +222,7 @@ function ReplayFrame:UpdateDisplayFrame()
 
     for i = 1, 2 do
         local button = ReplayFrame.DisplayFrame.buttons[i + 1]
-        local quest = ChattyLittleNpc.questsQueue[i]
+        local quest = CLN.questsQueue[i]
         if (button and quest and quest.title) then
             local truncatedTitle = quest.title
 
@@ -283,7 +253,7 @@ function ReplayFrame:UpdateDisplayFrame()
 end
 
 function ReplayFrame:UpdateParent()
-    if (ChattyLittleNpc.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded and ReplayFrame:IsDialogueUIFrameShow()) then
+    if (CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded and ReplayFrame:IsDialogueUIFrameShow()) then
         ReplayFrame.DisplayFrame:SetParent(_G["DUIQuestFrame"])
     else
         ReplayFrame.DisplayFrame:SetParent(UIParent)
@@ -298,7 +268,7 @@ end
 function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if (not ReplayFrame.NpcModelFrame) then return end
 
-    local currentlyPlaying = ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying
+    local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
     if (not (ReplayFrame:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId == npcId)) then
         ReplayFrame.NpcModelFrame:Hide()
         ReplayFrame:ContractForNpcModel()
@@ -321,7 +291,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
 end
 
 function ReplayFrame:CheckAndShowModel()
-    local currentlyPlaying = ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying
+    local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
     if (ReplayFrame:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
         ReplayFrame:UpdateNpcModelDisplay(currentlyPlaying.npcId)
     else
@@ -344,11 +314,11 @@ function ReplayFrame:ContractForNpcModel()
 end
 
 function ReplayFrame:IsVoiceoverCurrenltyPlaying()
-    return ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying and ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying.isPlaying
+    return CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.isPlaying
 end
 
 function ReplayFrame:IsShowReplayFrameToggleIsEnabled()
-    return ChattyLittleNpc.db.profile.showReplayFrame
+    return CLN.db.profile.showReplayFrame
 end
 
 function ReplayFrame:IsDisplayFrameCurrentlyShown()
@@ -356,15 +326,15 @@ function ReplayFrame:IsDisplayFrameCurrentlyShown()
 end
 
 function ReplayFrame:IsQuestQueueEmpty()
-    return ChattyLittleNpc.questsQueue and #ChattyLittleNpc.questsQueue == 0
+    return CLN.questsQueue and #CLN.questsQueue == 0
 end
 
 function ReplayFrame:IsDisplayFrameHideNeeded()
     return ((not ReplayFrame:IsShowReplayFrameToggleIsEnabled())
-        or (not ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying)
+        or (not CLN.VoiceoverPlayer.currentlyPlaying)
         or ((not ReplayFrame:IsVoiceoverCurrenltyPlaying()) and ReplayFrame:IsQuestQueueEmpty() and ReplayFrame:IsDisplayFrameCurrentlyShown()))
 end
 
 function ReplayFrame:IsDialogueUIFrameShow()
-    return ChattyLittleNpc.isDUIAddonLoaded and _G["DUIQuestFrame"] and _G["DUIQuestFrame"]:IsShown()
+    return CLN.isDUIAddonLoaded and _G["DUIQuestFrame"] and _G["DUIQuestFrame"]:IsShown()
 end
