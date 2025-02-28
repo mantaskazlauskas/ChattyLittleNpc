@@ -6,6 +6,7 @@ local Utils = {}
 CLN.Utils = Utils
 
 --- Cleans the provided text by removing unwanted characters or formatting.
+--- Replacing player name, race and class with "Hero" so that it would be consistent across all players (for hash generation).
 -- @param text The string to be cleaned.
 function Utils:CleanText(text)
     text = text:gsub(UnitName("player"), "Hero")

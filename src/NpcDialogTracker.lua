@@ -89,10 +89,12 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
         NpcInfoDB[npcID][CLN.locale].gossipOptions = {}
     end
 
-    local text = CLN.Utils:CleanTextV2(gossipText)
-    local hash = CLN.MD5:GenerateHash(npcID .. text)
+    local textForHashing = CLN.Utils:CleanText(gossipText)
+    local hash = CLN.MD5:GenerateHash(npcID .. textForHashing)
     local hashRemainedTheSame = oldHash == hash
+
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions[hash] or overwrite) then
+        local text = CLN.Utils:CleanTextV2(gossipText)
         NpcInfoDB[npcID][CLN.locale].gossipOptions[hash] = text
         if (oldHash and not hashRemainedTheSame and NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash]) then
             NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash] = nil
@@ -134,8 +136,10 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
     UnitInfoDB[unitID][CLN.locale].unitType = unitType
     local textHash = nil
     if (unitID and unitText) then
+        local textForHashing = CLN.Utils:CleanText(unitText)
+        textHash = CLN.MD5:GenerateHash(unitID .. textForHashing)
+
         unitText = CLN.Utils:CleanTextV2(unitText)
-        textHash = CLN.MD5:GenerateHash(unitID .. unitText)
         UnitInfoDB[unitID][CLN.locale].unitTexts[textHash] = unitText
     end
 

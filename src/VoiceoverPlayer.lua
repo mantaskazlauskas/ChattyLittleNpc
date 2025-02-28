@@ -209,7 +209,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text)
     if (not success) then
         if (CLN.db.profile.printMissingFiles) then
             if hashes then
-                for hash in ipairs(hashes) do
+                for index, hash in ipairs(hashes) do
                     CLN:Print("Missing voiceover file: " .. npcId .. "_".. soundType .. "_" .. hash .. ".ogg")
                 end
             end
