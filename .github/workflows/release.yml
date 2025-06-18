@@ -18,10 +18,9 @@ jobs:
       - name: Create Addon ZIP
         run: |
           zip -r ChattyLittleNpc-${GITHUB_REF_NAME}.zip ChattyLittleNpc
-
       - name: Upload ZIP to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ChattyLittleNpc.zip
+          files: ChattyLittleNpc-${GITHUB_REF_NAME}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
