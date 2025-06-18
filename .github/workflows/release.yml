@@ -1,31 +1,24 @@
-name: Create Release
+name: Package WoW Addon
 
 on:
-  push:
-    tags:
-      - 'v*'
   release:
     types: [published]
 
 jobs:
-  release:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Zip ChattyLittleNpc folder
-        run: zip -r ChattyLittleNpc.zip ChattyLittleNpc
+      - name: Create Addon ZIP
+        run: |
+          zip -r ChattyLittleNpc.zip ChattyLittleNpc
 
-      - name: Create Release
+      - name: Upload ZIP to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: |
-            Release notes here.
-          draft: false
-          prerelease: false
           files: ChattyLittleNpc.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
