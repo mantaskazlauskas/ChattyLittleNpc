@@ -12,7 +12,7 @@ Options:SetChattyLittleNpcReference(CLN)
 CLN.locale = nil
 CLN.gameVersion = nil
 CLN.useNamespaces = nil
-CLN.expansions = { "Battle_for_Azeroth", "Cataclysm", "Vanilla", "Dragonflight", "Legion", "Mists_of_Pandaria", "Shadowlands", "The_Burning_Crusade", "The_War_Within", "Warlords_of_Draenor", "Wrath_of_the_Lich_King" }
+CLN.expansions = { "Battle_for_Azeroth_voiceovers", "Cataclysm_voiceovers", "Vanilla_voiceovers", "Dragonflight_voiceovers", "Legion_voiceovers", "Mists_of_Pandaria_voiceovers", "Shadowlands_voiceovers", "The_Burning_Crusade_voiceovers", "The_War_Within_voiceovers", "Warlords_of_Draenor_voiceovers", "Wrath_of_the_Lich_King_voiceovers" }
 CLN.loadedVoiceoverPacks = {}
 CLN.VoiceoverPacks = {}
 CLN.questsQueue = {}

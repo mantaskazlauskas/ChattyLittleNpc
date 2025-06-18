@@ -1,15 +1,15 @@
-## Interface: 110100
+## Interface: 110107, 50500, 40402, 30404, 20504, 11507
 ## Title: Chatty Little NPC
-## Notes: A simple addon that plays pre-recorded voice files for quest Description, Progression and Completion stages.
+## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
-## Version: 1.5.7
+## Version: 1.5.8
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
 
 embeds.xml
 
 src/EventHandler.lua
 src/Options.lua
-ChattyLittleNpc.lua
+Main.lua
 src/ReplayFrame.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua
