@@ -15,13 +15,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug zip file name
+        run: |
+          echo "Expected zip: ChattyLittleNpc-${{ github.ref_name }}.zip"
+          ls -lh
+
       - name: Create Addon ZIP
         run: |
-          zip -r ChattyLittleNpc-${GITHUB_REF_NAME}.zip ChattyLittleNpc
-          
+          zip -r "ChattyLittleNpc-${{ github.ref_name }}.zip" ChattyLittleNpc
+
       - name: Upload ZIP to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ChattyLittleNpc-${GITHUB_REF_NAME}.zip
+          files: "ChattyLittleNpc-${{ github.ref_name }}.zip"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
