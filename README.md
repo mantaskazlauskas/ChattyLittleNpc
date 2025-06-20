@@ -20,12 +20,3 @@ Ideal for gamers looking to enrich their narrative experience without complex mo
 ## For addon to work you need to download the base addon and voiceover packs for expansions that you want.
 
 ## Discord : [ChattyLittleNpc](https://discord.gg/xb9kSWqxuH)
-
-## Future Plans
-
-- (DONE) What I would like to do in the future is to re-generate the voiceovers so that male and female NPCs would use different narrator voices;
-- (DONE) Add the handling for all types of texts (gossip, quest description, quest progression, quest completion, quest greeting), so that npcs would really be chatty;
-- (DONE) Add mechanism to collect texts while playing the game and later generate (or regenerate) new or missing voiceovers;
-- (DONE) Generate voiceovers for different races and body types so that different types of npcs would feel distinct.
-- (IN PROGRESS) Keep on upgrading the voice engine to reduce halucination and inclrease the quality of the voices.
-- (IN PROGRESS) Generate packs for all expansions with unique voices
