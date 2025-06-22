@@ -38,6 +38,13 @@ local options = {
                         end
                     end,
                 },
+                overwriteExistingGossipValues = {
+                    type = 'toggle',
+                    name = 'Overwrite existing values.',
+                    desc = 'Overwrite existing values of gathered npc texts when interacting not the first time.',
+                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
+                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
+                },
                 printNpcTexts = {
                     type = 'toggle',
                     name = 'Print NPC data (if tracking enabled)',

@@ -31,6 +31,7 @@ local defaults = {
         printMissingFiles = false,
         logNpcTexts = false,
         printNpcTexts = false,
+        overwriteExistingGossipValues = false,
         showGossipEditor = false,
         showReplayFrame = true,
         framePos = { -- Default positiond

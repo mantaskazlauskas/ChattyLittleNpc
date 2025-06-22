@@ -94,6 +94,11 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
     local hashRemainedTheSame = oldHash == hash
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions[hash] or overwrite) then
+        if(overwrite) then
+            CLN:Print("Overwriting gossip option for Npc ID: " .. npcID .. " with hash: " .. hash)
+        else
+            CLN:Print("Storing new gossip option for Npc ID: " .. npcID .. " with hash: " .. hash)
+        end
         local text = CLN.Utils:CleanTextV2(gossipText)
         NpcInfoDB[npcID][CLN.locale].gossipOptions[hash] = text
         if (oldHash and not hashRemainedTheSame and NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash]) then
@@ -225,7 +230,8 @@ function NpcDialogTracker:HandleGossipText()
     if (UnitExists("npc")) then
         self:StoreNpcInfo(unitName, gender, race, unitId)
         if (gossipText) then
-            self:StoreGossipOptionsInfo(unitId, gossipText)
+            local overwrite = CLN.db.profile.overwriteExistingGossipValues
+            self:StoreGossipOptionsInfo(unitId, gossipText, overwrite)
         end
     end
     -- THIS IS FOR INTERACTING WITH GAME OBJECTS
