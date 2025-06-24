@@ -248,8 +248,8 @@ function NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
     end
 
     local npcInfo = NpcInfoDB[npcTooltipInfo.Id][CLN.locale]
-    if (not npcInfo.TooltipInfo) then
-        npcInfo.TooltipInfo = npcTooltipInfo.TooltipInfo
+    if (not npcInfo.tooltip_info) then
+        npcInfo.tooltip_info = npcTooltipInfo.tooltip_info
     end
 end
 
@@ -273,7 +273,7 @@ function NpcDialogTracker:GatherTooltipInfo()
                 local unitIdAsNumber = tonumber(unitID)
                 local npcTooltipInfo = {
                     Id = unitIdAsNumber,
-                    TooltipInfo = {}
+                    tooltip_info = {}
                 }
 
                 local lineIndex = 1
@@ -286,7 +286,7 @@ function NpcDialogTracker:GatherTooltipInfo()
                     if text then
                         -- Remove color codes from the text
                         text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-                        table.insert(npcTooltipInfo.TooltipInfo, text)
+                        table.insert(npcTooltipInfo.tooltip_info, text)
                     end
                     lineIndex = lineIndex + 1
                 end
