@@ -42,6 +42,10 @@ end
 
 function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
 
     local questID = PlayButton:GetSelectedQuest()
     if (questID) then
@@ -71,6 +75,11 @@ end
 
 function PlayButton:AttachPlayButtonForQuestLog(parentFrame, offsetX, offsetY, buttonName)
     PlayButton:ClearButtons()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
+
     if (CLN.isElvuiAddonLoaded) then
         PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
             local questID = PlayButton:GetSelectedQuest()
@@ -90,6 +99,10 @@ end
 
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
 
     local offsetX = CLN.db.profile.buttonPosX
     local offsetY = CLN.db.profile.buttonPosY
@@ -103,6 +116,10 @@ end
 
 function PlayButton:AttachQuestLogAndDetailsButtons()
     PlayButton:ClearQuestLogAndDetailButtons()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
 
     local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if (DetailsFrame) then
@@ -119,6 +136,10 @@ function PlayButton:AttachQuestLogAndDetailsButtons()
 end
 
 function PlayButton:UpdatePlayButton()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
     local questID = PlayButton:GetSelectedQuest()
     for buttonName, button in pairs(PlayButton.buttons) do
         if (questID) then
@@ -130,6 +151,10 @@ function PlayButton:UpdatePlayButton()
 end
 
 function PlayButton:HidePlayButton()
+    if (CLN.db.profile.showSpeakButton == false) then
+        -- dont create button if the setting is disabled in options
+        return
+    end
     for buttonName, button in pairs(PlayButton.buttons) do
         button:Hide()
     end

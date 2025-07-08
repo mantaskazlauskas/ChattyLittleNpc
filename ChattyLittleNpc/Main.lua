@@ -34,6 +34,7 @@ local defaults = {
         overwriteExistingGossipValues = false,
         showGossipEditor = false,
         showReplayFrame = true,
+        showSpeakButton = true,
         framePos = { -- Default positiond
             point = "CENTER",
             relativeTo = nil,

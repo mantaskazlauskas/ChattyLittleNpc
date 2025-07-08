@@ -160,6 +160,13 @@ local options = {
                     get = function(info) return CLN.db.profile.audioChannel end,
                     set = function(info, value) CLN.db.profile.audioChannel = value end,
                 },
+                showSpeakButton = {
+                    type = 'toggle',
+                    name = 'Enable Speak/Play button for dialogs',
+                    desc = 'Toggle to enable or disable Speak/Play button on next to the dialog frame.',
+                    get = function(info) return CLN.db.profile.showSpeakButton end,
+                    set = function(info, value) CLN.db.profile.showSpeakButton = value end,
+                },
             },
         },
         QuestFrameButtonOptions = {
