@@ -314,7 +314,7 @@ function ReplayFrame:ContractForNpcModel()
 end
 
 function ReplayFrame:IsVoiceoverCurrenltyPlaying()
-    return CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.isPlaying
+    return CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()
 end
 
 function ReplayFrame:IsShowReplayFrameToggleIsEnabled()

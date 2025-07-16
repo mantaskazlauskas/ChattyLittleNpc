@@ -52,17 +52,9 @@ end
 function EventHandler:StartWatcher()
     self:ScheduleRepeatingTimer(function()
         local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
-        if (currentlyPlaying and not currentlyPlaying.isPlaying) then
+        if (currentlyPlaying and not currentlyPlaying:isPlaying()) then
             self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
             return
-        end
-
-        if (currentlyPlaying and currentlyPlaying.soundHandle and currentlyPlaying.isPlaying) then
-            if (not C_Sound.IsPlaying(currentlyPlaying.soundHandle)) then
-                currentlyPlaying.isPlaying = false
-                self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
-                return
-            end
         end
     end, 0.5)
 end
@@ -78,34 +70,32 @@ function EventHandler:GOSSIP_SHOW()
     CLN.Utils:LogDebug("GOSSIP_SHOW")
 
     local parentFrame = _G["DUIQuestFrame"] or GossipFrame
-    local unitId = select(6, CLN:GetUnitInfo("npc"))
-    local gossipText = C_GossipInfo.GetText()
-    local hashes = CLN.Utils:GetHashes(unitId, gossipText)
-
-    if (hashes) then
-        for _, hash in ipairs(hashes) do
-            local fileName = unitId .. "_".. "Gossip" .."_" .. hash .. ".ogg"
-            for _, packData in pairs(CLN.VoiceoverPacks) do
-                local fileNameFound = CLN.Utils:ContainsString(packData.Voiceovers, fileName)
-                if (fileNameFound) then
-                    CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.GossipButton ,function()
-                        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", gossipText)
-                    end)
-                end
-            end
-        end
+    local _, gender, _, _, unitType, unitId = CLN:GetUnitInfo("npc")
+    local text = C_GossipInfo.GetText()
+    if (not unitId or not unitType or not text) then
+        CLN.Utils:LogDebug("No unitId, unitType or text found for gossip.")
+        return
     end
 
+    local hashes = CLN.Utils:GetHashes(unitId, text)
+    local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, "Gossip", hashes, gender)
+    if not filePath or CLN.Utils:IsNilOrEmpty(filePath) then
+        CLN.Utils:LogDebug("No file path found for gossip voiceover.")
+        return
+    end
+
+    CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.GossipButton ,function()
+        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", text, gender)
+    end)
+
     if (CLN.db.profile.autoPlayVoiceovers) then
-        local gossipText = C_GossipInfo.GetText()
-        local _, _, _, _, unitType, unitId = CLN:GetUnitInfo("npc")
-        local soundType = "Gossip"
+        local type = "Gossip"
 
         if (unitType == "GameObject") then
-            soundType = "GameObject"
+            type = "GameObject"
         end
 
-        CLN:HandleGossipPlaybackStart(gossipText, soundType, unitId)
+        CLN:HandleGossipPlaybackStart(unitId, text, type, gender)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -224,10 +214,15 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     end
 
     if (#CLN.questsQueue > 0) then
+        CLN.Utils:LogDebug("Playing next quest in queue.")
         local nextQuest = CLN.questsQueue[1]
+        CLN.VoiceoverPlayer.queueProcessed = false
         CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId)
+    elseif not CLN.VoiceoverPlayer.queueProcessed then
+        CLN.Utils:LogDebug("No more quests in queue, resetting currentlyPlaying object.")
+        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
+        CLN.VoiceoverPlayer.queueProcessed = true
     else
-        CLN.VoiceoverPlayer.currentlyPlaying = nil
         CLN.ReplayFrame:UpdateDisplayFrameState()
     end
 end
@@ -235,7 +230,6 @@ end
 function EventHandler:QUEST_FINISHED()
     CLN.Utils:LogDebug("QUEST_FINISHED")
     if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
-        CLN.VoiceoverPlayer.currentlyPlaying.isPlaying = false
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -245,34 +239,23 @@ function EventHandler:GOSSIP_CLOSED()
     CLN.PlayButton:ClearButtons()
 
     if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
-        CLN.VoiceoverPlayer.currentlyPlaying.isPlaying = false
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
 function EventHandler:CINEMATIC_START()
     CLN.Utils:LogDebug("CINEMATIC_START")
-    if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.isPlaying) then
-        CLN.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+    if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
 function EventHandler:PLAY_MOVIE()
     CLN.Utils:LogDebug("PLAY_MOVIE")
-    if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.isPlaying) then
-        CLN.VoiceoverPlayer.currentlyPlaying.isPlaying = false
+    if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
-
--- function EventHandler:CHAT_MSG_MONSTER_SAY(self, event, msg)
---     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_SAY",event, msg)
--- end
-
--- function EventHandler:CHAT_MSG_MONSTER_YELL(self, event, msg)
---     ChattyLittleNpc:Print("CHAT_MSG_MONSTER_YELL", event, msg)
--- end
 
 -- Initialize the EventHandler module
 EventHandler:OnInitialize()

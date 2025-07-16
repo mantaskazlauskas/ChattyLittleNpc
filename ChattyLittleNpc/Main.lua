@@ -2,12 +2,12 @@
 local CLN = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
 
 ---@class EventHandler
-local EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
-EventHandler:SetChattyLittleNpcReference(CLN)
+CLN.EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
+CLN.EventHandler:SetChattyLittleNpcReference(CLN)
 
 ---@class Options
-local Options = LibStub("AceAddon-3.0"):GetAddon("Options")
-Options:SetChattyLittleNpcReference(CLN)
+CLN.Options = LibStub("AceAddon-3.0"):GetAddon("Options")
+CLN.Options:SetChattyLittleNpcReference(CLN)
 
 CLN.locale = nil
 CLN.gameVersion = nil
@@ -69,7 +69,7 @@ function CLN:OnInitialize()
 end
 
 function CLN:OnEnable()
-    EventHandler:RegisterEvents()
+    CLN.EventHandler:RegisterEvents()
 
     if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
@@ -95,18 +95,24 @@ function CLN:OnEnable()
 end
 
 function CLN:OnDisable()
-    EventHandler:UnregisterEvents()
+    CLN.EventHandler:UnregisterEvents()
 end
 
 --[[
-    Retrieves information about a specified unit.
-
-    @param unit (string) - The identifier of the unit to retrieve information for.
+    Retrieves comprehensive information about a specified unit including name, gender, race, and ID.
+    
+    @param unit string: The unit identifier (e.g., "target", "npc", "player", "party1", etc.)
+    @return string unitName: The name of the unit, empty string if unavailable
+    @return string gender: The gender of the unit ("Neutral", "Male", "Female", or empty string)
+    @return string race: The race of the unit, empty string if unavailable
+    @return string unitGuid: The unique GUID of the unit, nil if unavailable
+    @return string|nil unitType: The type of unit ("Creature", "Vehicle", "GameObject", etc.), nil if unavailable
+    @return number|nil unitId: The numeric ID of the unit (for creatures, vehicles, game objects), nil if unavailable
 ]]
 function CLN:GetUnitInfo(unit)
     local unitName = select(1, UnitName(unit)) or ""
     local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
-    local sexStr = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
+    local gender = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
     local race = UnitRace(unit) or ""
 
     local unitGuid = UnitGUID(unit)
@@ -121,7 +127,7 @@ function CLN:GetUnitInfo(unit)
         end
     end
 
-    return unitName, sexStr, race, unitGuid, unitType, unitId
+    return unitName, gender, race, unitGuid, unitType, unitId
 end
 
 --[[
@@ -195,19 +201,18 @@ function CLN:HandlePlaybackStart(questPhase)
 end
 
 
---[[
+--[[ Handles the completion of a quest, including playing the associated voiceover and logging the quest text.
     Handles the start of gossip playback.
 
-    @param text string: The text of the gossip.
-    @param soundType number: The type of sound associated with the gossip.
     @param id number: The ID of the gossip.
+    @param text string: The text of the gossip.
+    @param type string: The type of sound associated with the gossip. Possible values include "Gossip", "GameObject".
     @param gender number: The gender associated with the gossip.
 ]]
-function CLN:HandleGossipPlaybackStart(text, soundType, id)
-    local idAsNumber = tonumber(id)
-    if (idAsNumber and idAsNumber > 0 and text) then
+function CLN:HandleGossipPlaybackStart(id, text, type, gender)
+    if (id > 0 and text) then
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            self.VoiceoverPlayer:PlayNonQuestSound(id, soundType, text)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender)
         end)
     end
 end
