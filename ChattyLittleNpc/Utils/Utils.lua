@@ -133,17 +133,21 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
     if not hashes or #hashes == 0 then
         return nil
     end
+    local fileName = ""
+    local fileNameWithGender = ""
 
     local addonsFolderPath = "Interface\\AddOns\\"
     for _, hash in ipairs(hashes) do
-        ---@type string
-        local fileName = npcId .. "_" .. type .. "_" .. hash .. ".ogg"
-        ---@type string
-        local fileNameWithGender = npcId .. "_" .. type .. "_" .. hash .. "_" .. gender .. ".ogg"
+        fileName = npcId .. "_" .. type .. "_" .. hash .. ".ogg"
+        if (gender) then
+            fileNameWithGender = npcId .. "_" .. type .. "_" .. hash .. "_" .. gender .. ".ogg"
+        end
+
         for packName, packData in pairs(CLN.VoiceoverPacks) do
             ---@type string
             local path = addonsFolderPath .. packName .. "\\voiceovers\\"
-            if (CLN.Utils:ContainsString(packData.Voiceovers, fileNameWithGender)) then
+            if (not CLN.Utils:IsNilOrEmpty(fileNameWithGender)
+                and CLN.Utils:ContainsString(packData.Voiceovers, fileNameWithGender)) then
                 CLN.Utils:LogDebug("Found voiceover file: " .. path .. fileNameWithGender)
                 return path .. fileNameWithGender
             end

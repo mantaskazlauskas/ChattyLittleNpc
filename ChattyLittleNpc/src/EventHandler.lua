@@ -194,6 +194,7 @@ function EventHandler:ITEM_TEXT_READY()
         unitType = select(1, string.split('-', unitGuid))
         if (unitType == "GameObject") then
             itemId = select(6, string.split("-", unitGuid));
+            itemId = tonumber(itemId) or 0
         end
     end
 
@@ -201,7 +202,7 @@ function EventHandler:ITEM_TEXT_READY()
         CLN.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
     end
 
-    CLN:HandleGossipPlaybackStart(itemText, unitType ,itemId)
+    CLN:HandleGossipPlaybackStart(itemId, itemText, unitType)
 end
 
 function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)

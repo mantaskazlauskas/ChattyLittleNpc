@@ -39,6 +39,7 @@ function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
 end
 
 function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID)
+    CLN.Utils:LogDebug("Storing npc info for NPC ID: " .. npcID)
     self:EnsureNpcInfoInitialized(npcID)
     NpcInfoDB[npcID][CLN.locale].name = unitName
 
@@ -83,6 +84,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
 end
 
 function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, oldHash, gender)
+    CLN.Utils:LogDebug("Storing gossip options for Npc ID: " .. npcID)
     self:EnsureNpcInfoInitialized(npcID)
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions) then
@@ -136,6 +138,7 @@ function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
 end
 
 function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, params)
+    CLN.Utils:LogDebug("Storing unit info for Unit ID: " .. unitID)
     params = params or {}
     local questId = params.questId
     local questText = params.questText or ""
