@@ -77,6 +77,10 @@ function EventHandler:GOSSIP_SHOW()
         return
     end
 
+    if (CLN.db.profile.logNpcTexts) then
+        CLN.NpcDialogTracker:HandleGossipText()
+    end
+
     local hashes = CLN.Utils:GetHashes(unitId, text)
     local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, "Gossip", hashes, gender)
     if not filePath or CLN.Utils:IsNilOrEmpty(filePath) then
@@ -96,10 +100,6 @@ function EventHandler:GOSSIP_SHOW()
         end
 
         CLN:HandleGossipPlaybackStart(unitId, text, type, gender)
-    end
-
-    if (CLN.db.profile.logNpcTexts) then
-        CLN.NpcDialogTracker:HandleGossipText()
     end
 end
 
