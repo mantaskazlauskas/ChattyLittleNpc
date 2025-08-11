@@ -105,6 +105,8 @@ function Utils:GetHashes(npcId, text)
     return hashes
 end
 
+--- Log debug messages to console
+-- @param str The string to test.
 function Utils:LogDebug(text)
     if CLN.db.profile.debugMode then
         CLN:Print("|cff87CEEb[DEBUG]|r |cff87CEEb" .. text)

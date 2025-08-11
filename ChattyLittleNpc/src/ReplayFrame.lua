@@ -53,10 +53,8 @@ function ReplayFrame:GetDisplayFrame()
     -- Check if DialogueUI addon is loaded
     local parentFrame = UIParent
 
-    if (CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded) then
-        if (ReplayFrame:IsDialogueUIFrameShow()) then
-            parentFrame = _G["DUIQuestFrame"]
-        end
+    if (CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded and ReplayFrame:IsDialogueUIFrameShow()) then
+        parentFrame = _G["DUIQuestFrame"]
     end
 
     ReplayFrame.DisplayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", parentFrame, "BackdropTemplate")

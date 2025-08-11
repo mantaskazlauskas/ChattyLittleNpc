@@ -231,6 +231,7 @@ end
 function EventHandler:QUEST_FINISHED()
     CLN.Utils:LogDebug("QUEST_FINISHED")
     if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
+        CLN.Utils:LogDebug("Stopping currently playing voiceover on quest finished.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -240,6 +241,7 @@ function EventHandler:GOSSIP_CLOSED()
     CLN.PlayButton:ClearButtons()
 
     if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
+        CLN.Utils:LogDebug("Stopping currently playing voiceover on gossip closed.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -247,6 +249,7 @@ end
 function EventHandler:CINEMATIC_START()
     CLN.Utils:LogDebug("CINEMATIC_START")
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
+        CLN.Utils:LogDebug("Stopping currently playing voiceover on cinematic start.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -254,6 +257,7 @@ end
 function EventHandler:PLAY_MOVIE()
     CLN.Utils:LogDebug("PLAY_MOVIE")
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
+        CLN.Utils:LogDebug("Stopping currently playing voiceover on movie play.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end

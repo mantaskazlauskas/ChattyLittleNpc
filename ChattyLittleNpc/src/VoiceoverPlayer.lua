@@ -29,6 +29,7 @@ VoiceoverPlayer.queueProcessed = false
 
 -- Clear the queue from quests and stop current audio.
 function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
+    CLN.Utils:LogDebug("Force stopping current sound")
     if (clearQueue) then
         CLN.questsQueue = {}
     end
