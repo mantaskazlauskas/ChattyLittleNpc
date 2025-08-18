@@ -93,8 +93,8 @@ local options = {
                 },
                 showReplayFrame = {
                     type = 'toggle',
-                    name = 'Show Replay Window',
-                    desc = 'Toggle to show the replay window.',
+                    name = 'Show Floating Head Frame (voiceover queue)',
+                    desc = 'Toggle to show the floating head frame (voiceover queue)',
                     get = function(info) return CLN.db.profile.showReplayFrame end,
                     set = function(info, value) CLN.db.profile.showReplayFrame = value end,
                 },
@@ -211,20 +211,6 @@ local options = {
                     end,
                 },
             },
-        },
-        Integrations = {
-            type = 'group',
-            name = 'Integrations',
-            inline = true,
-            args = {
-                ShowReplayFrameIfDialogueUIAddonIsLoaded = {
-                    type = 'toggle',
-                    name = 'Show Floating head frame with DialogueUI frame',
-                    desc = 'When using DialogueUI addon, toggle if you want to see the floating head frame at the same time as DialogueUI frame.',
-                    get = function(info) return CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded end,
-                    set = function(info, value) CLN.db.profile.ShowReplayFrameIfDialogueUIAddonIsLoaded = value end,
-                },
-            }
         }
     },
 }
