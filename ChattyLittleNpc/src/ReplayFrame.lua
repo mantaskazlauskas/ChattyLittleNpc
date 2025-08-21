@@ -115,8 +115,8 @@ function ReplayFrame:GetDisplayFrame()
     -- Dynamic scaling on resize
     ReplayFrame.DisplayFrame:SetScript("OnSizeChanged", function(frame, newWidth, newHeight)
         -- Enforce min/max size
-        local minHeight, maxHeight = 130, 150
-        local minWidth, maxWidth = minHeight + 250, maxHeight + 250
+        local minHeight, maxHeight = 100, 200
+        local minWidth, maxWidth = minHeight + 200, maxHeight + 400
         local width, height = newWidth, newHeight
         if height < minHeight then height = minHeight end
         if height > maxHeight then height = maxHeight end

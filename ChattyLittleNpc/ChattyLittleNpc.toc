@@ -2,7 +2,7 @@
 ## Title: Chatty Little NPC
 ## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
-## Version: 1.6.5
+## Version: 1.6.6
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
 
 embeds.xml
