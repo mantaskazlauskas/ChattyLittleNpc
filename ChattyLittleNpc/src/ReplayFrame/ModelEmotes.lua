@@ -9,6 +9,16 @@ ReplayFrame.Emotes = ReplayFrame.Emotes or {}
 
 -- Global camera default (kept consistent across modules)
 ReplayFrame.DEFAULT_ZOOM = ReplayFrame.DEFAULT_ZOOM or 0.65
+ReplayFrame.Camera = ReplayFrame.Camera or {
+    TALK_ZOOM = 0.65,
+    IDLE_ZOOM = 0.65,
+    WAVE_ZOOM = 0.3,
+}
+ReplayFrame.Timings = ReplayFrame.Timings or {
+    recentlyStartedWindow = 0.6,
+    stopHideDelay = 0.6,
+    waveLateStart = 2.0,
+}
 
 -- Utility: get current portrait zoom (cached or queried)
 local function getCurrentZoom(self)
@@ -34,11 +44,11 @@ end
 
 -- Camera targets per state (can be overridden on the frame)
 local function getTalkZoom(self)
-    return clamp01((self.talkZoom ~= nil) and self.talkZoom or (ReplayFrame.DEFAULT_ZOOM or 0.65))
+    return clamp01((self.talkZoom ~= nil) and self.talkZoom or (ReplayFrame.Camera and ReplayFrame.Camera.TALK_ZOOM) or (ReplayFrame.DEFAULT_ZOOM or 0.65))
 end
 
 local function getIdleZoom(self)
-    return clamp01((self.idleZoom ~= nil) and self.idleZoom or (ReplayFrame.DEFAULT_ZOOM or 0.65))
+    return clamp01((self.idleZoom ~= nil) and self.idleZoom or (ReplayFrame.Camera and ReplayFrame.Camera.IDLE_ZOOM) or (ReplayFrame.DEFAULT_ZOOM or 0.65))
 end
 
 -- Cancel any running emote
@@ -104,8 +114,12 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
         end
         -- Model animation - apply immediately for instant response
         if step.animId and m.SetAnimation then
-            -- Use single-arg SetAnimation for broad compatibility; variant can cause idle fallback
-            pcall(m.SetAnimation, m, step.animId)
+            -- Prefer wrapper to reduce flicker for common talk/idle ids
+            if self.SetModelAnim and (step.animId == 60 or step.animId == 64 or step.animId == 65 or step.animId == 0 or step.animId == 67 or step.animId == 185 or step.animId == 186) then
+                self:SetModelAnim(step.animId)
+            else
+                pcall(m.SetAnimation, m, step.animId)
+            end
             -- Some animations need a quick reapply to ensure they take
             if step.animId == 67 and C_Timer and C_Timer.After then
                 C_Timer.After(0.01, function()
@@ -173,7 +187,7 @@ function ReplayFrame:PlayWaveEmote(opts)
     if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
 
     local duration = tonumber(opts.duration) or 1.5
-    local waveZoom = (opts.waveZoom ~= nil) and opts.waveZoom or 0.3
+    local waveZoom = (opts.waveZoom ~= nil) and opts.waveZoom or (ReplayFrame.Camera and ReplayFrame.Camera.WAVE_ZOOM) or 0.3
     local waveOutDur = (opts.waveOutDur ~= nil) and opts.waveOutDur or 0.2
     local zoomBackDur = (opts.zoomBackDur ~= nil) and opts.zoomBackDur or 0.5
     local lowerDelta = (opts.lowerDelta ~= nil) and opts.lowerDelta or (self.waveLowerDelta or 0.05)
@@ -360,7 +374,7 @@ function ReplayFrame.EmoteBuilder:run(opts)
     end
     if self._name and self._name ~= "" then
         r._emoteName = self._name
-        r._animState = self._name
+        -- Do not override top-level _animState here; FSM owns state. Per-step animId applies directly.
     end
     r._emoteActive = true
     return r:_StartEmoteSequence(self.steps, opts)

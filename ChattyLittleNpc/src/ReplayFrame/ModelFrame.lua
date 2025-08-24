@@ -172,57 +172,7 @@ function ReplayFrame:SetupModelAnimations()
             local isPlaying = cur and cur.isPlaying and cur:isPlaying()
             local sameHandle = isPlaying and (r._lastSoundHandle == cur.soundHandle)
 
-            -- Smooth vertical position animation (Z)
-            if r._posAnimActive and frame.SetPosition then
-                r._posElapsed = (r._posElapsed or 0) + (elapsed or 0)
-                local d = math.max(0.01, r._posDuration or 0.25)
-                local t = math.min(1, r._posElapsed / d)
-                -- easeOutCubic
-                local e = 1 - (1 - t) * (1 - t) * (1 - t)
-                local fromZ = (r._posFromZ ~= nil) and r._posFromZ or (r._currentZOffset or r.modelZOffset or 0)
-                local toZ = (r._posToZ ~= nil) and r._posToZ or (r.modelZOffset or 0)
-                local z = fromZ + (toZ - fromZ) * e
-                pcall(frame.SetPosition, frame, 0, 0, z)
-                r._currentZOffset = z
-                if t >= 1 then
-                    r._posAnimActive = false
-                end
-            end
-
-            -- Smooth zoom animation when conversation starts
-            if r._zoomAnimActive and frame.SetPortraitZoom then
-                r._zoomElapsed = (r._zoomElapsed or 0) + (elapsed or 0)
-                local d = math.max(0.01, r._zoomDuration or 0.6)
-                local t = math.min(1, r._zoomElapsed / d)
-                -- easeOutCubic
-                local e = 1 - (1 - t) * (1 - t) * (1 - t)
-                local z = (r._zoomFrom or 0.3) + ((r._zoomTo or 0.65) - (r._zoomFrom or 0.3)) * e
-                z = math.max(0, math.min(1, z))
-                pcall(frame.SetPortraitZoom, frame, z)
-                r._currentZoom = z
-                if t >= 1 then
-                    r._zoomAnimActive = false
-                    -- If we were waiting to start talking until zoom finishes, do it now
-                    if r._pendingTalkAfterZoom then
-                        r._pendingTalkAfterZoom = false
-                        local curNow = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                        if curNow and curNow.isPlaying and curNow:isPlaying() then
-                            r._animState = "talk"
-                            r._talkPhase = "talk"
-                            if r.UpdateTalkAnimation then r:UpdateTalkAnimation() end
-                        else
-                            -- If playback just started, don't flicker to idle due to timing
-                            local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                            local inGrace = false
-                            if cur2 and cur2.startTime and GetTime then
-                                local dt = GetTime() - (cur2.startTime or 0)
-                                inGrace = dt >= 0 and dt < 0.6
-                            end
-                            if not inGrace and r.SetIdleLoop then r:SetIdleLoop() end
-                        end
-                    end
-                end
-            end
+            -- Smooth camera updates via generic animation system only
 
             -- New generalized animation system (zoom/pan)
             if r.AnimUpdate then
@@ -267,8 +217,7 @@ function ReplayFrame:SetupModelAnimations()
                 if r and r.ChooseTalkAnimIdForText and cur.title then
                     talkId = r:ChooseTalkAnimIdForText(cur.title)
                 end
-                if f.SetAnimation then pcall(f.SetAnimation, f, talkId) end
-                if f.SetSheathed then pcall(f.SetSheathed, f, true) end
+                if r and r.SetModelAnim then r:SetModelAnim(talkId) else if f.SetAnimation then pcall(f.SetAnimation, f, talkId) end; if f.SetSheathed then pcall(f.SetSheathed, f, true) end end
                 if r then
                     r._animState = "talk"
                     r._lastTalkId = talkId
@@ -276,7 +225,7 @@ function ReplayFrame:SetupModelAnimations()
                     if r.StartEmoteLoop then r:StartEmoteLoop() end
                 end
             else
-                if f.SetAnimation then pcall(f.SetAnimation, f, 0) end
+                if r and r.SetModelAnim then r:SetModelAnim(0) else if f.SetAnimation then pcall(f.SetAnimation, f, 0) end end
             end
 
             -- Let the Director refine (wave vs talk) as needed
@@ -431,8 +380,7 @@ function ReplayFrame:UpdateTalkAnimation()
     end
     local talkId = self:ChooseTalkAnimIdForText(cur.title)
     if self._animState ~= "talk" or self._lastTalkId ~= talkId then
-        if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-        pcall(m.SetAnimation, m, talkId)
+        if self.SetModelAnim then self:SetModelAnim(talkId) else if m.SetSheathed then pcall(m.SetSheathed, m, true) end; pcall(m.SetAnimation, m, talkId) end
         self._animState = "talk"
         self._lastTalkId = talkId
     end
@@ -441,98 +389,28 @@ end
 -- Public: update model animation based on current playback state
 function ReplayFrame:UpdateConversationAnimation()
     if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then return end
-    if self.Director and self.Director.OnPlaybackUpdate then
-        self.Director:OnPlaybackUpdate()
-    end
-    
-    -- Fallback: if Director didn't handle it, ensure we start talk animation
+    -- Drive via the centralized FSM
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-    if cur and cur.isPlaying and cur:isPlaying() and not self._emoteActive and not self._emoteLoopActive then
-        -- No emote system is active but audio is playing - start talk animation immediately
-        -- Use enhanced greeting detection that includes ChooseTalkAnimIdForText analysis
-        local shouldWave = false
-        if cur.title and self.HasGreetingInFirstWords then
-            shouldWave = self:HasGreetingInFirstWords(cur.title, 10)
-        end
-        
-        -- Immediately set animation on model frame to avoid idle delay
-        local m = self.NpcModelFrame
-        if m and m.SetAnimation then
-            local talkId = 60
-            if self.ChooseTalkAnimIdForText and cur and cur.title then
-                talkId = self:ChooseTalkAnimIdForText(cur.title)
-            end
-            if self._animState ~= "talk" or self._lastTalkId ~= talkId then
-                pcall(m.SetAnimation, m, talkId)
-            end
-            if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-            self._animState = "talk"
-            self._lastTalkId = talkId
-        end
-        
-        if shouldWave and self.PlayEmote then
-            -- Play wave for detected greetings (even late-detected ones)
-            self:PlayEmote("wave", { duration = 1.5, waveZoom = 0.3, waveOutDur = 0.2, zoomBackDur = 0.5 })
-        else
-            -- No greeting: start with talk animation
-            if self.PlayEmote then 
-                self:PlayEmote("talk")
-            end
-            if self.StartEmoteLoop then 
-                self:StartEmoteLoop()
-            end
-        end
+    local recentlyStarted = false
+    if cur and cur.startTime and GetTime then
+        local dt = GetTime() - (cur.startTime or 0)
+        recentlyStarted = dt >= 0 and dt < 0.6
     end
+    if cur and ( (cur.isPlaying and cur:isPlaying()) or recentlyStarted ) then
+        if self.FSM_OnPlaybackStart then self:FSM_OnPlaybackStart(cur) end
+    else
+        local lastMsg = self.Director and self.Director._lastMsg or (cur and cur.title) or nil
+        if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
+    end
+    if self.FSM_Tick then self:FSM_Tick() end
 end
 
 -- Public: when conversation stops, revert to idle
 function ReplayFrame:OnConversationStop()
-    -- Let the Director handle any farewell emote before we fully reset/hide
-    if self.Director and self.Director.Stop then self.Director:Stop() end
-    -- Keep model idling so bye/hello can play; a later timer may hide it
-    self:SetIdleLoop()
-    -- Stop emote loop and generic camera animations; do NOT cancel a potential farewell sequence
-    if self.StopEmoteLoop then self:StopEmoteLoop() end
-    if self.AnimStop then self:AnimStop("zoom"); self:AnimStop("pan") end
-    -- Do not clear emote sequence flags here; allow brief farewell to complete
-    -- Do not hard hide the model here; Director may play brief emote
-end
-
--- Start a zoom from the current zoom (or provided from) to target over duration seconds
-function ReplayFrame:StartZoom(from, to, duration)
-    if not (self.NpcModelFrame and self.NpcModelFrame.SetPortraitZoom) then return end
-    self._zoomFrom = from or self._zoomFrom or 0.3
-    self._zoomTo = to or 0.65
-    self._zoomDuration = duration or 0.6
-    self._zoomElapsed = 0
-    self._zoomAnimActive = true
-    pcall(self.NpcModelFrame.SetPortraitZoom, self.NpcModelFrame, self._zoomFrom)
-end
-
-function ReplayFrame:StartZoomTo(target, duration)
-    local from = self._currentZoom or 0.3
-    if self.NpcModelFrame and self.NpcModelFrame.GetPortraitZoom then
-        local ok, current = pcall(self.NpcModelFrame.GetPortraitZoom, self.NpcModelFrame)
-        if ok and type(current) == "number" then from = current end
-    end
-    self:StartZoom(from, target, duration)
-end
-
--- Animate the vertical position to a target Z over duration seconds
-function ReplayFrame:StartVerticalOffset(fromZ, toZ, duration)
-    if not (self.NpcModelFrame and self.NpcModelFrame.SetPosition) then return end
-    self._posFromZ = (fromZ ~= nil) and fromZ or (self._currentZOffset or self.modelZOffset or 0)
-    self._posToZ = (toZ ~= nil) and toZ or (self.modelZOffset or 0)
-    self._posDuration = duration or 0.25
-    self._posElapsed = 0
-    self._posAnimActive = true
-    pcall(self.NpcModelFrame.SetPosition, self.NpcModelFrame, 0, 0, self._posFromZ)
-    self._currentZOffset = self._posFromZ
-end
-
-function ReplayFrame:StartVerticalOffsetTo(targetZ, duration)
-    local fromZ = self._currentZOffset or self.modelZOffset or 0
-    self:StartVerticalOffset(fromZ, targetZ, duration)
+    -- Route through FSM for consistent farewell handling
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
+    if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
 end
 
 -- Utility: fully reset animation-related state so a new conversation can wave again
@@ -543,8 +421,6 @@ function ReplayFrame:ResetAnimationState()
     self._playTime = 0
     self._phaseTime = 0
     self._talkPhase = nil
-    self._zoomAnimActive = false
-    self._posAnimActive = false
     self._pendingTalkAfterZoom = false
     self._lastSoundHandle = nil
     -- Stop generalized animations
@@ -558,5 +434,29 @@ function ReplayFrame:ResetAnimationState()
     if self.NpcModelFrame and self.NpcModelFrame.SetPosition and (self.modelZOffset ~= nil) then
         pcall(self.NpcModelFrame.SetPosition, self.NpcModelFrame, 0, 0, self.modelZOffset)
         self._currentZOffset = self.modelZOffset
+    end
+end
+
+-- Centralized model animation setter; prevents redundant sets and ensures sheathed
+function ReplayFrame:SetModelAnim(animId)
+    local m = self.NpcModelFrame
+    if not (m and m.SetAnimation) then return end
+    if animId == nil then return end
+    -- Skip if already in this anim state to reduce flicker
+    if self._lastTalkId == animId and self._animState == "talk" and animId ~= 0 then
+        return
+    end
+    if animId == 0 then
+        pcall(m.SetAnimation, m, 0)
+        if m.SetSheathed then pcall(m.SetSheathed, m, true) end
+        self._animState = "idle"
+        return
+    end
+    -- Talk-like animations (60/64/65) normalize animState to talk
+    pcall(m.SetAnimation, m, animId)
+    if m.SetSheathed then pcall(m.SetSheathed, m, true) end
+    if animId == 60 or animId == 64 or animId == 65 then
+        self._animState = "talk"
+        self._lastTalkId = animId
     end
 end

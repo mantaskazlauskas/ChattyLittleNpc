@@ -36,6 +36,9 @@ function ReplayFrame:GetDisplayFrame()
     self:CreateResizeGrip()
     self:SetupFrameResize()
 
+    -- Initialize state machine (idempotent)
+    if self.InitStateMachine then self:InitStateMachine() end
+
     -- Position after components exist
     if self.LoadFramePosition then self:LoadFramePosition() end
 
