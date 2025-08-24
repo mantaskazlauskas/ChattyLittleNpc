@@ -31,27 +31,72 @@ end
 -- CORE REPLAY FRAME LOGIC
 -- ============================================================================
 
--- Build or refresh the queue data provider used by the ScrollBox
-function ReplayFrame:RefreshQueueDataProvider()
-    if not self.QueueScrollBox then return end
-    local provider = CreateDataProvider()
+-- Helper: Try to resolve an NPC name from saved DB by npcId
+function ReplayFrame:GetNpcNameById(npcId)
+    if not npcId then return nil end
+    local ok, db = pcall(function() return NpcInfoDB end)
+    if ok and db and db[npcId] and db[npcId][CLN.locale] and db[npcId][CLN.locale].name then
+        return db[npcId][CLN.locale].name
+    end
+    return nil
+end
 
-    -- Build a list of entries (now playing first, then queued)
+-- Build a normalized list of entries for the queue view
+-- Each entry: { isPlaying=bool, queueIndex=number|nil, label=string, tooltip=string }
+function ReplayFrame:BuildQueueEntries()
     local entries = {}
-    local nowPlayingIndex = nil
-    if CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.title then
-        local title = CLN.VoiceoverPlayer.currentlyPlaying.title
-        table.insert(entries, { isPlaying = true, label = title, tooltip = title })
-        nowPlayingIndex = 1
+    local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    if now and (now.title or now.questId) then
+        local isQuest = not not now.questId
+        local npcName = self:GetNpcNameById(now.npcId)
+        local content = now.title -- quest title or non-quest text
+
+        local label
+        if isQuest and content then
+            label = content
+        else
+            -- Non-quest: prefer NPC name and a bit of text
+            if npcName and content then
+                label = npcName .. " — " .. content
+            else
+                label = npcName or (content or "Unknown")
+            end
+        end
+
+        local tooltip
+        if npcName and content then
+            tooltip = npcName .. ": " .. content
+        else
+            tooltip = content or (npcName or "")
+        end
+
+        table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip })
     end
 
     if CLN.questsQueue then
-        for i, quest in ipairs(CLN.questsQueue) do
-            if quest.title then
-                table.insert(entries, { queueIndex = i, label = quest.title, tooltip = quest.title })
+        for i, q in ipairs(CLN.questsQueue) do
+            local npcName = self:GetNpcNameById(q.npcId)
+            local questTitle = q.title
+            local label = questTitle or (npcName or "Unknown")
+            local tooltip
+            if npcName and questTitle then
+                tooltip = npcName .. ": " .. questTitle
+            else
+                tooltip = questTitle or (npcName or "")
             end
+            table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip })
         end
     end
+
+    return entries
+end
+
+-- Build or refresh the queue data provider used by the ScrollBox
+function ReplayFrame:RefreshQueueDataProvider()
+    if not (self.SetQueueData and self.QueueListFrame) then return end
+
+    local entries = self:BuildQueueEntries()
+    local nowPlayingIndex = (entries[1] and entries[1].isPlaying) and 1 or nil
 
     -- Compute how many rows fit, and keep the latest that fit (always include now playing)
     local rowsFit = 6
@@ -93,12 +138,8 @@ function ReplayFrame:RefreshQueueDataProvider()
         end
     end
 
-    for _, item in ipairs(selected) do
-        provider:Insert(item)
-    end
-
-    local retain = ScrollBoxConstants and ScrollBoxConstants.RetainScrollPosition or nil
-    self.QueueScrollBox:SetDataProvider(provider, retain)
+    -- Feed directly to manual list (no scrolling)
+    self:SetQueueData(selected)
 end
 
 -- Main update function for the display frame
@@ -144,13 +185,23 @@ function ReplayFrame:UpdateDisplayFrame()
         local total = playingCount + qcount
         local collapsed = self.CollapseButton and self.CollapseButton._collapsed
         if total > 0 then
-            if collapsed and playingTitle then
-                self.HeaderText:SetText(string.format("%s (%d)", playingTitle, total))
+            if collapsed then
+                -- Show now playing title if available; otherwise fall back to Conversation Queue
+                local title = playingTitle or "Conversation Queue"
+                self.HeaderText:SetText(string.format("%s (%d)", title, total))
             else
                 self.HeaderText:SetText(string.format("Conversation Queue (%d)", total))
             end
         else
             self.HeaderText:SetText("Conversation Queue")
+        end
+        -- Ensure header fills available width before ellipses
+        if self.HeaderText and self.TruncateToWidth then
+            -- Header is anchored to the left edge and to the left of the buttons; use actual width
+            local maxW = 0
+            if self.HeaderText.GetWidth then maxW = self.HeaderText:GetWidth() or 0 end
+            maxW = math.max(40, maxW)
+            self:TruncateToWidth(self.HeaderText, self.HeaderText:GetText() or "", maxW)
         end
     end
 
@@ -216,7 +267,21 @@ function ReplayFrame:ApplyQueueTextScale()
     -- Active rows only
     if self.QueueScrollBox then
         local baseHeight = 12
-        if ScrollUtil and ScrollUtil.IterateToActive then
+        -- Support manual rows list (no ScrollBox)
+        if self.QueueRows and #self.QueueRows > 0 then
+            for _, row in ipairs(self.QueueRows) do
+                if row:IsShown() and row.text then
+                    local _, _, flags = row.text:GetFont()
+                    row.text:SetFont("Fonts\\FRIZQT__.TTF", baseHeight * finalScale, flags)
+                    -- Re-fit the text to the new size/scale
+                    if self.FitRowText then self:FitRowText(row) end
+                end
+                if row:IsShown() and row.bulletTex and row.bulletTex.SetSize then
+                    local sz = math.max(3, math.floor((baseHeight * finalScale) * 0.33))
+                    row.bulletTex:SetSize(sz, sz)
+                end
+            end
+        elseif ScrollUtil and ScrollUtil.IterateToActive then
             for _, row in ScrollUtil.IterateToActive(self.QueueScrollBox) do
                 if row.text then
                     local _, _, flags = row.text:GetFont()

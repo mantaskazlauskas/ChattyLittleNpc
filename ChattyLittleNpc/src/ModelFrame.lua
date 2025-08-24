@@ -37,16 +37,18 @@ function ReplayFrame:LayoutModelArea(frame)
 
     if self.ModelContainer then
         self.ModelContainer:ClearAllPoints()
-        self.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
-        self.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
+    -- Anchor ABOVE the frame: container bottom sits at frame top
+    self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 5, 6)
+    self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -5, 6)
         self.ModelContainer:SetHeight(self.npcModelFrameHeight or 140)
+    if self.ModelContainer.SetFrameStrata then self.ModelContainer:SetFrameStrata("HIGH") end
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
 
     if self.NpcModelFrame then
         self.NpcModelFrame:ClearAllPoints()
         self.NpcModelFrame:SetSize(self.npcModelFrameWidth or 220, self.npcModelFrameHeight or 140)
-        self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
+    self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
         if hasModel then self.NpcModelFrame:Show() else self.NpcModelFrame:Hide() end
     end
 end

@@ -8,6 +8,40 @@ local ReplayFrame = CLN.ReplayFrame
 -- UI CREATION AND LAYOUT
 -- ============================================================================
 
+-- Lazily create and return the main display frame
+function ReplayFrame:GetDisplayFrame()
+    if self.DisplayFrame then return self.DisplayFrame end
+
+    local frame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent)
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    -- Resize only allowed in Edit Mode (will be enabled there)
+    frame:SetResizable(false)
+
+    -- Defaults; will be overridden by saved size/position if present
+    self.normalWidth = self.normalWidth or 310
+    self.expandedWidth = self.expandedWidth or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
+    local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or 475)
+    local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or 165
+    frame:SetSize(defaultW, defaultH)
+    if frame.SetResizeBounds then frame:SetResizeBounds(260, 120) end
+
+    self.DisplayFrame = frame
+
+    -- Build UI parts
+    self:CreateContentFrame()
+    self:InitializeModelContainer()
+    self:CreateResizeGrip()
+    self:SetupFrameResize()
+
+    -- Position after components exist
+    if self.LoadFramePosition then self:LoadFramePosition() end
+
+    return frame
+end
+
 -- Create the minimized button that appears when frame is hidden
 function ReplayFrame:EnsureMinimizedButton()
     if self.MinButton then return end
@@ -36,184 +70,15 @@ function ReplayFrame:EnsureMinimizedButton()
     ring:SetAllPoints()
     ring:SetTexture("Interface/Minimap/MiniMap-TrackingBorder")
     btn.ring = ring
+    -- click to restore/show frame
     btn:SetScript("OnClick", function()
         ReplayFrame.userHidden = false
-        if ReplayFrame.DisplayFrame then
-            ReplayFrame.DisplayFrame:Show()
+        if ReplayFrame.UpdateDisplayFrameState then
+            ReplayFrame:UpdateDisplayFrameState()
         end
-        btn:Hide()
-        ReplayFrame:UpdateDisplayFrame()
     end)
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Conversation Queue (click to open)")
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", GameTooltip_Hide)
     self.MinButton = btn
-    self:LoadMinButtonPosition()
-    btn:Hide()
-end
-
--- Create the main display frame and all its child elements
-function ReplayFrame:GetDisplayFrame()
-    if (self.DisplayFrame) then
-        self:LoadFramePosition()
-        return
-    end
-
-    self.normalWidth = 310
-    self.npcModelFrameWidth = 140
-    self.gap = 10
-    self.expandedWidth = self.normalWidth + self.npcModelFrameWidth + self.gap
-
-    -- Check if DialogueUI addon is loaded
-    local parentFrame = UIParent
-    if (self:IsDialogueUIFrameShow()) then
-        parentFrame = _G["DUIQuestFrame"]
-    end
-
-    -- Parent frame (texture-based background; no NineSlice/Backdrop)
-    self.DisplayFrame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", parentFrame)
-    local this = self -- capture for closures below
-    
-    -- Use native resize bounds instead of manual clamping
-    if ReplayFrame.DisplayFrame.SetResizeBounds then
-        -- minWidth, minHeight; let max be unconstrained
-        ReplayFrame.DisplayFrame:SetResizeBounds(260, 120)
-    end
-    
-    -- Initial parent frame size: prefer saved size; else infer from mode
-    local initialHeight = 165
-    local initialWidth
-    local savedSize = CLN.db and CLN.db.profile and CLN.db.profile.frameSize or nil
-    if savedSize and savedSize.width and savedSize.height then
-        initialWidth, initialHeight = savedSize.width, savedSize.height
-    else
-        if CLN.db and CLN.db.profile and CLN.db.profile.compactMode then
-            initialWidth = ReplayFrame.normalWidth
-        else
-            initialWidth = initialHeight + ReplayFrame.normalWidth
-        end
-    end
-    self.DisplayFrame:SetSize(initialWidth, initialHeight)
-    self:LoadFramePosition()
-
-    -- Create background
-    self:CreateFrameBackground()
-    
-    -- Setup frame movement and interaction
-    self:SetupFrameInteraction()
-    
-    -- Initialize model container
-    self:InitializeModelContainer()
-    
-    -- Create content frame and all UI elements
-    self:CreateContentFrame()
-    
-    -- Create resize grip
-    self:CreateResizeGrip()
-    
-    -- Setup frame resize handling
-    self:SetupFrameResize()
-    
-    -- Initialize minimized button and bind edit mode
-    ReplayFrame:EnsureMinimizedButton()
-    ReplayFrame:UpdateDisplayFrameState()
-    
-    -- Bind to Blizzard Edit Mode so our frame is editable when Edit Mode is active
-    if self.BindBlizzardEditMode then
-        self:BindBlizzardEditMode()
-    end
-end
-
--- Create the frame background (transparent for objectives style)
-function ReplayFrame:CreateFrameBackground()
-    local bg = self.DisplayFrame:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    -- Keep a transparent background to match Objectives tracker look
-    bg:SetColorTexture(0, 0, 0, 0)
-    bg:SetAlpha(0)
-    self.DisplayFrame.Bg = bg
-end
-
--- Setup frame movement, dragging, and mouse interaction
-function ReplayFrame:SetupFrameInteraction()
-    local this = self
-    
-    self.DisplayFrame:SetMovable(true)
-    self.DisplayFrame:EnableMouse(true)
-    self.DisplayFrame:SetResizable(true)
-    self.DisplayFrame:SetClampedToScreen(true)
-    self.DisplayFrame:RegisterForDrag("LeftButton")
-    
-    self.DisplayFrame:SetScript("OnDragStart", function(frame)
-        this._isDragging = true
-        frame:StartMoving()
-    end)
-    
-    self.DisplayFrame:SetScript("OnDragStop", function(frame)
-        frame:StopMovingOrSizing()
-        this._isDragging = false
-        this:SaveFramePosition()
-    end)
-    
-    -- Allow closing with ESC
-    if UISpecialFrames then
-        self.DisplayFrame:RegisterForDrag("LeftButton")
-    end
-    
-    -- Right-click context menu removed for cleaner interface
-    
-    -- Handle frame hide events
-    self.DisplayFrame:SetScript("OnHide", function()
-        if this._editMode or this._isDragging then return end
-        if this.StopSpeakingAnimation then this:StopSpeakingAnimation() end
-        if this:IsVoiceoverCurrenltyPlaying() then
-            if not this.userHidden then
-                C_Timer.After(0, function()
-                    if this.DisplayFrame and not this.DisplayFrame:IsShown() then
-                        this:UpdateDisplayFrameState()
-                    end
-                end)
-            else
-                this:EnsureMinimizedButton()
-                this.MinButton:Show()
-            end
-        else
-            if this.MinButton then this.MinButton:Hide() end
-            this.userHidden = false
-        end
-    end)
-    
-    -- Hover overlay for edit mode
-    self.DisplayFrame:SetScript("OnEnter", function()
-        if this._editMode then
-            if not this._hoverOverlay then
-                local ov = CreateFrame("Frame", nil, this.DisplayFrame)
-                ov:SetAllPoints()
-                ov:EnableMouse(false)
-                ov:SetFrameStrata("TOOLTIP")
-                local bg = ov:CreateTexture(nil, "OVERLAY")
-                bg:SetAllPoints()
-                bg:SetColorTexture(0, 0.1, 0.2, 0.10)
-                ov.bg = bg
-                local label = ov:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-                label:SetPoint("CENTER")
-                label:SetText("Drag to move, resize from corner")
-                label:SetTextColor(1, 1, 1, 0.8)
-                ov.label = label
-                this._hoverOverlay = ov
-            end
-            this._hoverOverlay:Show()
-            if this.HighlightEditControls then this:HighlightEditControls(true) end
-        end
-    end)
-    
-    self.DisplayFrame:SetScript("OnLeave", function()
-        if this._hoverOverlay then this._hoverOverlay:Hide() end
-        if this.HighlightEditControls then this:HighlightEditControls(false) end
-    end)
+    if self.LoadMinButtonPosition then self:LoadMinButtonPosition() end
 end
 
 -- Initialize the model container (delegate to ModelFrame if available)
@@ -224,6 +89,9 @@ function ReplayFrame:InitializeModelContainer()
     -- Initialize the model container and model frame via extracted module (idempotent)
     if self.CreateModelUI and not (self.ModelContainer or self.NpcModelFrame) then
         self:CreateModelUI()
+        if self.LayoutModelArea and self.DisplayFrame then
+            self:LayoutModelArea(self.DisplayFrame)
+        end
     elseif not (self.ModelContainer or self.NpcModelFrame) then
         -- Fallback defaults if module hasn't loaded yet
         local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
@@ -238,6 +106,9 @@ function ReplayFrame:InitializeModelContainer()
         modelFrame:SetPoint("TOPLEFT", modelContainer, "TOPLEFT", 0, 0)
         modelFrame:Hide() -- shown dynamically when a valid model is available
         self.NpcModelFrame = modelFrame
+        if self.LayoutModelArea and self.DisplayFrame then
+            self:LayoutModelArea(self.DisplayFrame)
+        end
     end
 end
 
@@ -257,8 +128,10 @@ function ReplayFrame:CreateContentFrame()
     
     -- Create header buttons
     self:CreateHeaderButtons(contentFrame)
+    -- After buttons exist, constrain the header to end just before the buttons
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
     
-    -- Create the scroll box for the conversation queue
+    -- Create the non-scrolling list for the conversation queue
     self:CreateScrollBox(contentFrame)
     
     -- Setup CVar watcher for text scaling
@@ -272,7 +145,8 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     header:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -6)
     header:SetText("Conversation Queue")
     header:SetTextColor(1.0, 0.82, 0.0) -- gold
-    if header.SetTextToFit then header:SetTextToFit() end
+    if header.SetWordWrap then header:SetWordWrap(false) end
+    if header.SetMaxLines then header:SetMaxLines(1) end
     self.HeaderText = header
 
     -- Divider below header
@@ -282,6 +156,96 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -10, -4)
     divider:SetHeight(1)
     self.HeaderDivider = divider
+end
+-- Return the real available width (in pixels) that a row's text can use
+function ReplayFrame:GetRowTextAvailableWidth(row)
+    if not (row and row.text) then return 0 end
+    -- Preferred: compute from on-screen coordinates to include right anchor
+    local left = row.text.GetLeft and row.text:GetLeft() or nil
+    local right = row.GetRight and row:GetRight() or nil
+    if left and right then
+        local pad = 8 -- mirror the RIGHT -8 used in SetPoint
+        local w = (right - pad) - left
+        if w and w > 0 then return w end
+    end
+    -- Fallback to row width minus approximate bullet/left padding
+    local fallback = (row.GetWidth and row:GetWidth() or 0) - 28
+    return math.max(0, fallback)
+end
+
+-- Fit a single row's text to its available width, appending ellipses if needed
+function ReplayFrame:FitRowText(row)
+    if not (row and row.text) then return end
+    local full = row._fullText or row.text:GetText() or ""
+    local available = self:GetRowTextAvailableWidth(row)
+    -- If layout not ready yet (no coordinates), try again next frame
+    if (not available) or available <= 0 then
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if row and row:IsShown() then self:FitRowText(row) end
+            end)
+        end
+        return
+    end
+    local function fits(s)
+        row.text:SetText(s)
+        return (row.text:GetStringWidth() or 0) <= available
+    end
+    -- First try full text (this can undo a prior over-truncation)
+    if fits(full) then
+        row.text:SetText(full)
+        return
+    end
+    -- Binary search for the longest prefix that fits with "..."
+    local lo, hi, best = 1, #full, 0
+    while lo <= hi do
+        local mid = math.floor((lo + hi) / 2)
+        local candidate = string.sub(full, 1, mid) .. "..."
+        if fits(candidate) then best = mid; lo = mid + 1 else hi = mid - 1 end
+    end
+    if best > 0 then
+        row.text:SetText(string.sub(full, 1, best) .. "...")
+    else
+        row.text:SetText("...")
+    end
+end
+
+
+-- Ensure the header fills all space up to the left of the right-side buttons
+function ReplayFrame:AnchorHeaderToButtons()
+    if not (self.HeaderText and self.ContentFrame) then return end
+    -- Prefer the left-most always-visible button as the right anchor (editBtn exists even when lock is hidden)
+    local rightAnchor = self.EditModeButton or self.OptionsButton or self.ClearButton or self.CollapseButton
+    self.HeaderText:ClearAllPoints()
+    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+    if rightAnchor then
+        self.HeaderText:SetPoint("RIGHT", rightAnchor, "LEFT", -6, 0)
+    else
+        -- Fallback to full width if buttons missing
+        self.HeaderText:SetPoint("RIGHT", self.ContentFrame, "RIGHT", -10, 0)
+    end
+end
+
+-- Truncate a fontstring's text to fit a given pixel width using "..."
+function ReplayFrame:TruncateToWidth(fs, text, maxWidth)
+    if not (fs and text and maxWidth and maxWidth > 0) then return end
+    fs:SetText(text)
+    local w = fs:GetStringWidth() or 0
+    if w <= maxWidth then return end
+    local lo, hi = 1, #text
+    local best = 0
+    while lo <= hi do
+        local mid = math.floor((lo + hi) / 2)
+        local candidate = string.sub(text, 1, mid) .. "..."
+        fs:SetText(candidate)
+        local cw = fs:GetStringWidth() or 0
+        if cw <= maxWidth then best = mid; lo = mid + 1 else hi = mid - 1 end
+    end
+    if best > 0 then
+        fs:SetText(string.sub(text, 1, best) .. "...")
+    else
+        fs:SetText("...")
+    end
 end
 
 -- Create all header buttons (collapse, clear, options, edit)
@@ -313,22 +277,34 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     SetChevron(true)
     
     collapseBtn:SetScript("OnClick", function(self)
-        self._collapsed = not self._collapsed
-        if self._collapsed then
-            -- Collapse content area (hide scroll list but keep header visible)
-            if this.QueueScrollBox then this.QueueScrollBox:Hide() end
-            if this.QueueScrollBar then this.QueueScrollBar:Hide() end
-            if this.HeaderDivider then this.HeaderDivider:Hide() end
-            if this.ContentFrame then this.ContentFrame:SetHeight(32) end
-            SetChevron(false)
+        local targetCollapsed = not self._collapsed
+        self._collapsed = targetCollapsed
+        SetChevron(not targetCollapsed)
+        if ReplayFrame.AnimateCollapse then
+            ReplayFrame:AnimateCollapse(targetCollapsed, 0.2)
         else
-            if this.QueueScrollBox then this.QueueScrollBox:Show() end
-            if this.QueueScrollBar then this.QueueScrollBar:Show() end
-            if this.HeaderDivider then this.HeaderDivider:Show() end
-            SetChevron(true)
+            -- Instant fallback
+            local frame = this.DisplayFrame
+            if targetCollapsed then
+                if frame and frame.GetHeight then this._preCollapseHeight = frame:GetHeight() end
+                if this.QueueScrollBox then this.QueueScrollBox:Hide() end
+                if this.HeaderDivider then this.HeaderDivider:Hide() end
+                if frame and frame.SetHeight then
+                    local base = 44
+                    if this.HeaderText and this.HeaderText.GetStringHeight then
+                        local h = math.ceil(this.HeaderText:GetStringHeight() or 18)
+                        base = math.max(36, h + 24)
+                    end
+                    frame:SetHeight(base)
+                end
+            else
+                if this.HeaderDivider then this.HeaderDivider:Show() end
+                if this.QueueScrollBox then this.QueueScrollBox:Show() end
+                if frame and frame.SetHeight and this._preCollapseHeight then frame:SetHeight(this._preCollapseHeight) end
+            end
+            if this.UpdateDisplayFrame then this:UpdateDisplayFrame() end
+            if this.Relayout then this:Relayout() end
         end
-        -- Refresh header text to reflect collapsed/expanded state
-        if this.UpdateDisplayFrame then this:UpdateDisplayFrame() end
     end)
     self.CollapseButton = collapseBtn
 
@@ -397,6 +373,61 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
         end
     end)
     self.EditModeButton = editBtn
+
+    -- Lock toggle button (visible in Edit Mode; appears on hover)
+    local lockBtn = CreateFrame("Button", nil, contentFrame)
+    lockBtn:SetSize(18, 18)
+    lockBtn:SetPoint("RIGHT", editBtn, "LEFT", -6, 0)
+    local lockTex = lockBtn:CreateTexture(nil, "ARTWORK")
+    lockTex:SetAllPoints()
+    lockBtn._tex = lockTex
+    lockBtn:Hide()
+    lockBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        if ReplayFrame:IsFrameLocked() then
+            GameTooltip:SetText("Unlock window (allow moving)")
+        else
+            GameTooltip:SetText("Lock window (prevent moving)")
+        end
+        GameTooltip:Show()
+    end)
+    lockBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
+    lockBtn:SetScript("OnClick", function()
+        ReplayFrame:SetFrameLocked(not ReplayFrame:IsFrameLocked())
+        ReplayFrame:UpdateLockUI()
+    end)
+    self.LockButton = lockBtn
+    if self.UpdateLockUI then self:UpdateLockUI() end
+    -- Re-anchor the header now that all buttons exist
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+end
+
+-- Tooltip helpers: width and smart sentence splitting
+function ReplayFrame:GetTooltipMaxWidth()
+    -- Base width; scale slightly with accessibility/text scale
+    local base = 420
+    base = math.floor(base * 1.25) -- 25% wider
+    local a11y = self.GetAccessibilityTextScale and (self:GetAccessibilityTextScale() or 1) or 1
+    local scaled = math.floor(base * math.max(0.9, math.min(1.3, a11y)))
+    return scaled
+end
+
+function ReplayFrame:SplitTooltipIntoSentences(text)
+    local lines = {}
+    if not text then return lines end
+    if type(text) ~= "string" then text = tostring(text) end
+    -- Normalize whitespace
+    text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+    if #text == 0 then return lines end
+    -- Split on sentence-ending punctuation while keeping it
+    for chunk, punc in text:gmatch("([^%.%!%?]+)([%.%!%?]*)%s*") do
+        local s = (chunk or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        local seg = s .. (punc or "")
+        if #seg > 0 then table.insert(lines, seg) end
+    end
+    -- Fallback if nothing matched
+    if #lines == 0 then table.insert(lines, text) end
+    return lines
 end
 
 -- Create the resize grip in the bottom-right corner
@@ -419,36 +450,146 @@ function ReplayFrame:CreateResizeGrip()
         self:GetRegions():SetTexture("Interface/CHATFRAME/UI-ChatIM-SizeGrabber-Up")
     end)
     resizeGrip:SetScript("OnMouseDown", function()
-        this.DisplayFrame:StartSizing("BOTTOMRIGHT")
+        if this._editMode and this.DisplayFrame and this.DisplayFrame.IsResizable and this.DisplayFrame:IsResizable() then
+            this._isResizing = true
+            -- Ensure we are not moving when starting to size
+            if this.DisplayFrame.StopMovingOrSizing then this.DisplayFrame:StopMovingOrSizing() end
+            this.DisplayFrame:StartSizing("BOTTOMRIGHT")
+        end
     end)
     resizeGrip:SetScript("OnMouseUp", function()
-        this.DisplayFrame:StopMovingOrSizing()
-        this:SaveFramePosition()
+        if this.DisplayFrame and this.DisplayFrame.StopMovingOrSizing then
+            this.DisplayFrame:StopMovingOrSizing()
+        end
+        if this.SaveFramePosition then this:SaveFramePosition() end
+        this._isResizing = false
     end)
     
     resizeGrip.texture = gripTex
     self.ResizeGrip = resizeGrip
+    -- Resize only allowed in Edit Mode; keep grip hidden by default
+    resizeGrip:Hide()
+end
+
+-- Lock state helpers and visuals
+function ReplayFrame:IsFrameLocked()
+    return (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameLocked) and true or false
+end
+
+function ReplayFrame:SetFrameLocked(locked)
+    if not (CLN and CLN.db and CLN.db.profile) then return end
+    CLN.db.profile.frameLocked = not not locked
+end
+
+function ReplayFrame:UpdateLockUI()
+    if not self.LockButton then return end
+    local locked = self:IsFrameLocked()
+    if locked then
+        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Locked")
+    else
+        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Unlocked")
+    end
+end
+
+-- Smoothly animate collapse/expand of the display frame
+function ReplayFrame:AnimateCollapse(collapse, duration)
+    local frame = self.DisplayFrame
+    if not frame then return end
+    duration = duration or 0.2
+
+    -- Compute header-only target height
+    local function HeaderOnlyHeight()
+        local base = 44
+        if self.HeaderText and self.HeaderText.GetStringHeight then
+            local h = math.ceil(self.HeaderText:GetStringHeight() or 18)
+            base = math.max(36, h + 24)
+        end
+        return base
+    end
+
+    -- Record pre-collapse height if needed
+    if collapse then
+        if frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
+    end
+
+    local startH = frame:GetHeight() or 0
+    local endH = collapse and HeaderOnlyHeight() or (self._preCollapseHeight or startH)
+    if endH <= 0 then endH = startH end
+
+    -- Simple tween via OnUpdate
+    frame._animatingCollapse = true
+    frame._animStart = GetTime and GetTime() or 0
+    frame._animDur = duration
+    frame._animStartH = startH
+    frame._animEndH = endH
+    frame._animCollapse = collapse
+
+    if not frame._collapseOnUpdate then
+        frame._collapseOnUpdate = function()
+            local tNow = GetTime and GetTime() or 0
+            local t = 0
+            if frame._animDur > 0 then
+                t = math.min(1, (tNow - (frame._animStart or 0)) / frame._animDur)
+            else
+                t = 1
+            end
+            local h = (frame._animStartH or startH) + ((frame._animEndH or endH) - (frame._animStartH or startH)) * t
+            if frame.SetHeight then frame:SetHeight(h) end
+            if self.QueueScrollBox and self.QueueScrollBox.SetAlpha then
+                local alpha = frame._animCollapse and (1 - t) or t
+                self.QueueScrollBox:SetAlpha(alpha)
+            end
+            if self.HeaderDivider and self.HeaderDivider.SetAlpha then
+                local alpha = frame._animCollapse and (1 - t) or t
+                self.HeaderDivider:SetAlpha(alpha)
+            end
+            if t >= 1 then
+                frame:SetScript("OnUpdate", nil)
+                frame._animatingCollapse = false
+                -- finalize
+                if frame._animCollapse then
+                    if self.QueueScrollBox then self.QueueScrollBox:Hide() end
+                    if self.HeaderDivider then self.HeaderDivider:Hide() end
+                else
+                    if self.HeaderDivider then self.HeaderDivider:Show() end
+                    if self.QueueScrollBox then self.QueueScrollBox:Show() end
+                end
+                if self.QueueScrollBox and self.QueueScrollBox.SetAlpha then self.QueueScrollBox:SetAlpha(1) end
+                if self.HeaderDivider and self.HeaderDivider.SetAlpha then self.HeaderDivider:SetAlpha(1) end
+                if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
+            end
+        end
+    end
+    frame:SetScript("OnUpdate", frame._collapseOnUpdate)
 end
 
 -- Create the scroll box for the conversation queue
 function ReplayFrame:CreateScrollBox(contentFrame)
+    -- Manual, non-scrolling fixed-row list replacing ScrollBox
     local this = self
-    
-    -- ScrollBox list for the conversation queue
-    local scrollBox = CreateFrame("Frame", "ChattyLittleNpcQueueScrollBox", contentFrame, "WowScrollBoxList")
-    scrollBox:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -36)
-    scrollBox:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -8, 8)
+    local list = CreateFrame("Frame", "ChattyLittleNpcQueueList", contentFrame)
+    if self.HeaderDivider then
+        list:SetPoint("TOPLEFT", self.HeaderDivider, "BOTTOMLEFT", 0, -6)
+        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
+    else
+        list:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -36)
+        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
+    end
+    list:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 8, 8)
+    self.QueueListFrame = list
+    self.QueueRowHeight = 24
+    self.QueueRows = {}
 
-    local view = CreateScrollBoxListLinearView()
-    -- Provide a fixed extent so the view doesn't require template metrics
-    if view.SetElementExtent then view:SetElementExtent(24) end
-    
-    local function setupRow(row, element)
-        if not row._initialized then
-            row:SetHeight(24)
+    function this:EnsureQueueRows(n)
+        local created = 0
+        while #self.QueueRows < n do
+            local index = #self.QueueRows + 1
+            local row = CreateFrame("Button", nil, self.QueueListFrame)
+            row:SetHeight(self.QueueRowHeight)
+            row:SetPoint("TOPLEFT", self.QueueListFrame, "TOPLEFT", 0, - (index - 1) * self.QueueRowHeight)
+            row:SetPoint("TOPRIGHT", self.QueueListFrame, "TOPRIGHT", 0, - (index - 1) * self.QueueRowHeight)
             row:EnableMouse(true)
 
-            -- Manual highlight texture
             local hl = row:CreateTexture(nil, "ARTWORK")
             hl:SetAllPoints()
             hl:SetTexture("Interface/QuestFrame/UI-QuestTitleHighlight")
@@ -456,151 +597,108 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             hl:Hide()
             row._hl = hl
 
-            -- Bullet texture like Objectives tracker (small gold dot)
             local bulletTex = row:CreateTexture(nil, "ARTWORK")
             bulletTex:SetPoint("LEFT", 8, 0)
             bulletTex:SetSize(4, 4)
-            bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9) -- gold
+            bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9)
             row.bulletTex = bulletTex
 
-            -- Row text
             local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             text:SetPoint("LEFT", bulletTex, "RIGHT", 8, 0)
             text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
             text:SetJustifyH("LEFT")
-            text:SetTextColor(0.95, 0.86, 0.20) -- similar to Objectives tracker
+            if text.SetWordWrap then text:SetWordWrap(false) end
+            text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
 
-            -- Row click handler
-            row:SetScript("OnClick", function(self, button)
-                local e = self._element
+            row:SetScript("OnMouseUp", function(selfBtn, button)
+                local e = selfBtn._element
                 if not e then return end
                 if button == "LeftButton" then
                     if e.isPlaying then
-                        -- Stop current playback
                         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
                     elseif e.queueIndex then
-                        -- Play from queue position
                         local qi = e.queueIndex
                         local toPlay = {}
                         for i = qi, #CLN.questsQueue do
                             table.insert(toPlay, CLN.questsQueue[i])
                         end
                         CLN.questsQueue = {}
-                        for _, quest in ipairs(toPlay) do
-                            CLN:PlayQuestTTS(quest)
-                        end
+                        for _, q in ipairs(toPlay) do CLN:PlayQuestTTS(q) end
                     end
                 end
             end)
 
-            row:SetScript("OnEnter", function(self)
-                if self._hl then self._hl:Show() end
-                if not self._isActive and self.text then
-                    self.text:SetTextColor(1.0, 1.0, 1.0)
+            row:SetScript("OnEnter", function(selfBtn)
+                if selfBtn._hl then selfBtn._hl:Show() end
+                if not selfBtn._isActive and selfBtn.text then
+                    selfBtn.text:SetTextColor(1.0, 1.0, 1.0)
                 end
-                local element = self._element
-                if element and element.tooltip then
-                    GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-                    GameTooltip:SetText(element.tooltip, 0.9, 0.9, 0.9, true)
-                    if GameTooltip.SetMaximumWidth then GameTooltip:SetMaximumWidth(360) end
+                local e = selfBtn._element
+                if e and e.tooltip then
+                    GameTooltip:SetOwner(selfBtn, "ANCHOR_LEFT")
+                    -- Prefer smart sentence split with multiple AddLine calls to improve wrapping
+                    local maxW = ReplayFrame.GetTooltipMaxWidth and ReplayFrame:GetTooltipMaxWidth() or 420
+                    if GameTooltip.SetMaximumWidth then GameTooltip:SetMaximumWidth(maxW) end
+                    local lines = ReplayFrame.SplitTooltipIntoSentences and ReplayFrame:SplitTooltipIntoSentences(e.tooltip) or { e.tooltip }
+                    GameTooltip:ClearLines()
+                    for i, line in ipairs(lines) do
+                        if i == 1 then
+                            GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+                        else
+                            GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true)
+                        end
+                    end
                     GameTooltip:Show()
                 end
             end)
-            
-            row:SetScript("OnLeave", function(self)
-                if self._hl then self._hl:Hide() end
-                if not self._isActive and self.text then
-                    self.text:SetTextColor(0.95, 0.86, 0.20)
+            row:SetScript("OnLeave", function(selfBtn)
+                if selfBtn._hl then selfBtn._hl:Hide() end
+                if not selfBtn._isActive and selfBtn.text then
+                    selfBtn.text:SetTextColor(0.95, 0.86, 0.20)
                 end
                 GameTooltip_Hide()
             end)
-        end
-        
-        -- Update row content
-        row._element = element
-        if element then
-            row._isActive = element.isPlaying
-            if row.text then
-                -- Set text and handle wrapping
-                local label = element.label or "Unknown"
-                row._fullText = label
-                row.text:SetText(label)
-                
-                -- Apply text scaling
-                if this.ApplyQueueTextScale then this:ApplyQueueTextScale() end
-                
-                -- Fit text to available width
-                local available = (row:GetWidth() or 0) - 28
-                if available > 20 then
-                    local function fits(s)
-                        row.text:SetText(s)
-                        return (row.text:GetStringWidth() or 0) <= available
-                    end
-                    if not fits(label) then
-                        local lo, hi = 1, #label
-                        local best = 0
-                        while lo <= hi do
-                            local mid = math.floor((lo + hi) / 2)
-                            local candidate = string.sub(label, 1, mid) .. "..."
-                            if fits(candidate) then 
-                                best = mid
-                                lo = mid + 1 
-                            else 
-                                hi = mid - 1 
-                            end
-                        end
-                        if best > 0 then
-                            row.text:SetText(string.sub(label, 1, best) .. "...")
-                        else
-                            row.text:SetText("...")
-                        end
-                    end
-                end
-                
-                -- Set text color based on state
-                if element.isPlaying then
-                    row.text:SetTextColor(0.2, 1.0, 0.2) -- bright green for playing
-                else
-                    row.text:SetTextColor(0.95, 0.86, 0.20) -- gold for queued
-                end
-            end
-            
-            -- Show/hide bullet
-            if row.bulletTex then
-                row.bulletTex:SetShown(true)
-            end
-        else
-            -- Clear row
-            if row.text then row.text:SetText("") end
-            if row.bulletTex then row.bulletTex:Hide() end
-            row._isActive = false
-        end
-    end
-    
-    view:SetElementFactory(function(factory)
-        factory("Frame", setupRow)
-    end)
 
-    -- Initialize without a visible scrollbar when supported (Retail)
-    if ScrollUtil and ScrollUtil.InitScrollBoxList then
-        ScrollUtil.InitScrollBoxList(scrollBox, view)
-    else
-        -- Fallback for older clients: create a hidden scrollbar to satisfy API
-        local scrollBar = CreateFrame("EventFrame", "ChattyLittleNpcQueueScrollBar", contentFrame, "WowTrimScrollBar")
-        scrollBar:SetPoint("TOPLEFT", scrollBox, "TOPRIGHT", 2, 0)
-        scrollBar:SetPoint("BOTTOMLEFT", scrollBox, "BOTTOMRIGHT", 2, 0)
-        scrollBar:Hide()
-        if ScrollUtil and ScrollUtil.InitScrollBoxListWithScrollBar then
-            ScrollUtil.InitScrollBoxListWithScrollBar(scrollBox, scrollBar, view)
+            table.insert(self.QueueRows, row)
+            created = created + 1
         end
-        self.QueueScrollBar = scrollBar
+        return created
     end
-    
-    self.QueueScrollBox = scrollBox
-    self.QueueView = view
+
+    function this:SetQueueData(entries)
+        entries = entries or {}
+        local h = self.QueueListFrame:GetHeight() or 0
+        local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
+        local toShow = math.min(#entries, maxRows)
+        self:EnsureQueueRows(toShow)
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil end
+        for i = 1, toShow do
+            local row = self.QueueRows[i]
+            local element = entries[i]
+            row._element = element
+            row._isActive = element.isPlaying
+            row:Show()
+            local label = element.label or "Unknown"
+            row._fullText = label
+            row.text:SetText(label)
+            if element.isPlaying then
+                row.text:SetTextColor(0.2, 1.0, 0.2)
+            else
+                row.text:SetTextColor(0.95, 0.86, 0.20)
+            end
+            if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+            -- Fit to actual width; will also undo early ellipses if space allows
+            self:FitRowText(row)
+            if row.bulletTex then row.bulletTex:Show() end
+        end
+    end
+
+    -- Backwards compat naming so other code can Hide/Show this container
+    self.QueueScrollBox = self.QueueListFrame
+    self.QueueScrollBar = nil
 end
 
 -- Setup CVar watcher for accessibility text scaling
@@ -641,6 +739,29 @@ function ReplayFrame:SetupFrameResize()
         local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
         local hasModel = this._hasValidModel and not compact
 
+        -- If collapsed, keep header-only layout and skip further content layout
+        if this.CollapseButton and this.CollapseButton._collapsed then
+            if this.ModelContainer then this.ModelContainer:Hide() end
+            if this.NpcModelFrame then this.NpcModelFrame:Hide() end
+            if this.ContentFrame then
+                this.ContentFrame:ClearAllPoints()
+                this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
+                this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+                this.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
+            end
+            if this.HeaderDivider then this.HeaderDivider:Hide() end
+            if this.QueueScrollBox then this.QueueScrollBox:Hide() end
+            if this.QueueScrollBar then this.QueueScrollBar:Hide() end
+            -- Only scale header font and exit
+            if this.HeaderText then
+                local headerFontSize = math.max(10, math.min(20, math.floor((height) / 8)))
+                local scale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueTextScale) or 1.0
+                this.HeaderText:SetFont("Fonts\\FRIZQT__.TTF", headerFontSize * scale, "")
+            end
+            if this.SaveSizeForActiveLayout then this:SaveSizeForActiveLayout() end
+            return
+        end
+
         if this.ModelContainer then
             this.ModelContainer:ClearAllPoints()
             this.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
@@ -672,42 +793,17 @@ function ReplayFrame:SetupFrameResize()
             local headerFontSize = math.max(10, math.min(20, math.floor((height) / 8)))
             local scale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueTextScale) or 1.0
             this.HeaderText:SetFont("Fonts\\FRIZQT__.TTF", headerFontSize * scale, "")
-        end
-        
-        -- ScrollBox anchors handle their own layout; nothing else to do here.
-        if this.ApplyQueueTextScale then this:ApplyQueueTextScale() end
-        
-        -- Re-flow visible row texts to fit new width
-        if this.QueueScrollBox and ScrollUtil and ScrollUtil.IterateToActive then
-            for _, row in ScrollUtil.IterateToActive(this.QueueScrollBox) do
-                if row.text and row.text.GetText then
-                    local original = row._fullText or row.text:GetText()
-                    row._fullText = original
-                    row.text:SetText(original)
-                    local available = (row:GetWidth() or 0) - 28
-                    if available > 20 then
-                        local function fits(s)
-                            row.text:SetText(s)
-                            return (row.text:GetStringWidth() or 0) <= available
-                        end
-                        if not fits(original) then
-                            local lo, hi = 1, #original
-                            local best = 0
-                            while lo <= hi do
-                                local mid = math.floor((lo + hi) / 2)
-                                local candidate = string.sub(original, 1, mid) .. "..."
-                                if fits(candidate) then best = mid; lo = mid + 1 else hi = mid - 1 end
-                            end
-                            if best > 0 then
-                                row.text:SetText(string.sub(original, 1, best) .. "...")
-                            else
-                                row.text:SetText("...")
-                            end
-                        end
-                    end
-                end
+            -- Measure actual header width (anchored between left edge and buttons)
+            if this.TruncateToWidth and this.HeaderText.GetWidth then
+                local maxW = math.max(40, self.HeaderText:GetWidth() or 0)
+                this:TruncateToWidth(this.HeaderText, this.HeaderText:GetText() or "", maxW)
             end
         end
+        
+        if this.ApplyQueueTextScale then this:ApplyQueueTextScale() end
+
+    -- Recompute visible rows for manual list using centralized provider
+    if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
         
         if this.SaveSizeForActiveLayout then this:SaveSizeForActiveLayout() end
     end)
