@@ -83,28 +83,28 @@ function ReplayFrame:InitStateMachine()
             if self.SetIdleLoop then self:SetIdleLoop() end
             fsm.hideAt = nil
     elseif newState == S.WAVE then
-            -- play wave/hello and return to talk on complete
+            -- play hello and transition on EMOTE_COMPLETE
             local ok = false
             if self.PlayEmote then
-                ok = self:PlayEmote("hello", {
-                    duration = 1.5,
-                    waveZoom = 0.3,
-                    waveOutDur = 0.2,
-                    zoomBackDur = 0.5,
-                    onComplete = function()
-                        -- Guard that playback is still current
-                        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                        if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
-                self:_fsm_enter(S.TALK)
-                        else
-                self:_fsm_enter(S.IDLE)
-                        end
+                -- One-time listener for completion
+                local handled = false
+                self:OnEmote("EMOTE_COMPLETE", function(payload)
+                    if handled then return end
+                    if not payload or payload.name ~= "hello" then return end
+                    handled = true
+                    -- Guard that playback is still current
+                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                        self:_fsm_enter(S.TALK)
+                    else
+                        self:_fsm_enter(S.IDLE)
                     end
-                })
+                end)
+                ok = self:PlayEmote("hello", { duration = 1.5, waveZoom = 0.3, waveOutDur = 0.2, zoomBackDur = 0.5 })
             end
             if not ok then
                 -- fallback directly to talk
-        self:_fsm_enter(S.TALK)
+                self:_fsm_enter(S.TALK)
             end
     elseif newState == S.TALK then
             -- Ensure camera in talk preset
@@ -137,17 +137,19 @@ function ReplayFrame:InitStateMachine()
             if self.ModelContainer then self.ModelContainer:Show() end
             if self.NpcModelFrame then self.NpcModelFrame:Show() end
             if self.PlayEmote then
-                self:PlayEmote(emote, {
-                    duration = duration,
-                    onComplete = function()
-            self:_fsm_enter(S.IDLE)
-                        -- schedule hide if nothing resumed
-                        local t = now() + 0.6
-                        if self._fsm then self._fsm.hideAt = t end
-                    end
-                })
+                local handled = false
+                self:OnEmote("EMOTE_COMPLETE", function(payload)
+                    if handled then return end
+                    if not payload or payload.name ~= emote then return end
+                    handled = true
+                    self:_fsm_enter(S.IDLE)
+                    -- schedule hide if nothing resumed
+                    local t = now() + 0.6
+                    if self._fsm then self._fsm.hideAt = t end
+                end)
+                self:PlayEmote(emote, { duration = duration })
             else
-        self:_fsm_enter(S.IDLE)
+                self:_fsm_enter(S.IDLE)
             end
         end
     end
@@ -164,7 +166,6 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     -- update handle & last message
     fsm.lastHandle = cur.soundHandle
     fsm.lastMsg = cur.title
-    self._fsmMarkInteracted()
 
     -- Decide wave vs talk
     local recentlyStarted = false
@@ -181,6 +182,9 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     else
         self:_fsm_enter(S.TALK)
     end
+
+    -- Mark interaction after deciding/starting state so it doesn't block the wave gate
+    self._fsmMarkInteracted()
 end
 
 function ReplayFrame:FSM_OnPlaybackStop(lastMsg)

@@ -7,6 +7,33 @@ local ReplayFrame = CLN.ReplayFrame
 -- Emote registry and helpers
 ReplayFrame.Emotes = ReplayFrame.Emotes or {}
 
+-- Lightweight emote lifecycle events (optional):
+-- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via AceEvent if available.
+-- Also supports local listeners via ReplayFrame:OnEmote(event, fn).
+function ReplayFrame:_EmitEmoteEvent(event, payload)
+    local ev = tostring(event or "")
+    if ev == "" then return end
+    -- AceEvent broadcast (addon-wide)
+    if CLN and CLN.SendMessage then
+        pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
+    end
+    -- Local listeners on this frame
+    if self._emoteEventHandlers and self._emoteEventHandlers[ev] then
+        for _, fn in ipairs(self._emoteEventHandlers[ev]) do
+            pcall(fn, payload, self)
+        end
+    end
+end
+
+function ReplayFrame:OnEmote(event, fn)
+    if type(fn) ~= "function" then return end
+    local ev = tostring(event or "")
+    if ev == "" then return end
+    self._emoteEventHandlers = self._emoteEventHandlers or {}
+    self._emoteEventHandlers[ev] = self._emoteEventHandlers[ev] or {}
+    table.insert(self._emoteEventHandlers[ev], fn)
+end
+
 -- Global camera default (kept consistent across modules)
 ReplayFrame.DEFAULT_ZOOM = ReplayFrame.DEFAULT_ZOOM or 0.65
 ReplayFrame.Camera = ReplayFrame.Camera or {
@@ -53,11 +80,14 @@ end
 
 -- Cancel any running emote
 function ReplayFrame:CancelEmote()
+    local old = self._emoteName
     self._emoteActive = false
     self._emoteName = nil
     self._emoteData = nil
     -- Mark any sequence runner as inactive; closures check these flags
     self._emoteSeqActive = false
+    -- Notify cancellation
+    self:_EmitEmoteEvent("EMOTE_CANCELLED", { name = old })
 end
 
 -- Public: Play an emote by name
@@ -194,9 +224,11 @@ function ReplayFrame:PlayWaveEmote(opts)
     -- After waving, transition to the defined talk zoom, not merely the original zoom
     local targetAfterWave = getTalkZoom(self)
     local baseZ = getBaseZ(self)
+    -- Use EmoteBuilder's standardized completion chaining
+    local emoteName = tostring(opts.emoteName or "wave")
 
     return (self.EmoteBuilder and self.EmoteBuilder:new()
-        :name("wave")
+        :name(emoteName)
         :zoom(waveZoom, waveOutDur)
         :pan(baseZ - lowerDelta, 0.15)
         :anim(67)
@@ -204,8 +236,7 @@ function ReplayFrame:PlayWaveEmote(opts)
         :zoom(targetAfterWave, zoomBackDur)
         :pan(baseZ, 0.25)
         :hold(0.05)
-        :run({
-        onComplete = function()
+        :onComplete(function()
             -- After wave, continue conversation emote loop if still the same playback
             local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
             local inGrace = false
@@ -213,13 +244,13 @@ function ReplayFrame:PlayWaveEmote(opts)
                 local dt = GetTime() - (cur.startTime or 0)
                 inGrace = dt >= 0 and dt < 0.6
             end
-            if cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop then
+            if emoteName ~= "bye" and cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop then
                 self:StartEmoteLoop()
             else
                 if (not inGrace) and self.SetIdleLoop then self:SetIdleLoop() end
             end
-        end
-    })) or false
+        end)
+        :run(opts)) or false
 end
 
 -- Alias: Hello emote uses the same wave choreography with tuned defaults
@@ -229,6 +260,7 @@ function ReplayFrame:PlayHelloEmote(opts)
     if opts.waveZoom == nil then opts.waveZoom = 0.3 end
     if opts.waveOutDur == nil then opts.waveOutDur = 0.2 end
     if opts.zoomBackDur == nil then opts.zoomBackDur = 0.5 end
+    opts.emoteName = opts.emoteName or "hello"
     return self:PlayWaveEmote(opts)
 end
 
@@ -240,6 +272,7 @@ function ReplayFrame:PlayByeEmote(opts)
     if opts.waveOutDur == nil then opts.waveOutDur = 0.15 end
     if opts.zoomBackDur == nil then opts.zoomBackDur = 0.4 end
     if opts.lowerDelta == nil then opts.lowerDelta = (self.waveLowerDelta or 0.04) end
+    opts.emoteName = opts.emoteName or "bye"
     return self:PlayWaveEmote(opts)
 end
 
@@ -265,7 +298,7 @@ function ReplayFrame:PlayNodEmote(opts)
         :hold(duration)
         :zoom(baseZoom, 0.25)
         :pan(baseZ, 0.15)
-        :run({ onComplete = function() end })) or false
+    :run({ onComplete = opts.onComplete })) or false
 end
 
 -- Head shake (NO) emote: small zoom-in and quick head shake using animation id 186 (EmoteNo).
@@ -290,7 +323,7 @@ function ReplayFrame:PlayHeadShakeEmote(opts)
         :hold(duration)
         :zoom(baseZoom, 0.25)
         :pan(baseZ, 0.15)
-        :run({ onComplete = function() end })) or false
+    :run({ onComplete = opts.onComplete })) or false
 end
 
 -- =============================
@@ -304,7 +337,8 @@ function ReplayFrame.EmoteBuilder:new()
         r = ReplayFrame,
         steps = {},
         cur = {},
-        _name = nil,
+    _name = nil,
+    _internalOnComplete = nil,
     }
     setmetatable(o, { __index = self })
     return o
@@ -313,6 +347,17 @@ end
 -- Set the emote name for state tracking
 function ReplayFrame.EmoteBuilder:name(emoteName)
     self._name = tostring(emoteName or "")
+    return self
+end
+
+-- Optional internal completion handler set by the emote implementation.
+-- This will execute before any user-provided opts.onComplete passed to :run().
+function ReplayFrame.EmoteBuilder:onComplete(fn)
+    if type(fn) == "function" then
+        self._internalOnComplete = fn
+    else
+        self._internalOnComplete = nil
+    end
     return self
 end
 
@@ -377,7 +422,38 @@ function ReplayFrame.EmoteBuilder:run(opts)
         -- Do not override top-level _animState here; FSM owns state. Per-step animId applies directly.
     end
     r._emoteActive = true
-    return r:_StartEmoteSequence(self.steps, opts)
+    -- Broadcast started
+    r:_EmitEmoteEvent("EMOTE_STARTED", { name = self._name })
+    -- Chain internal and user callbacks in a consistent order
+    local runOpts = opts or {}
+    if self._internalOnComplete then
+        local userCb = runOpts.onComplete
+        runOpts = {}
+        for k, v in pairs(opts or {}) do runOpts[k] = v end
+        runOpts.onComplete = function()
+            pcall(self._internalOnComplete, r)
+            if userCb then pcall(userCb) end
+            -- Broadcast complete after callbacks
+            r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
+        end
+    else
+        -- If no internal handler, still broadcast completion after user callback
+        if runOpts.onComplete then
+            local userCb = runOpts.onComplete
+            runOpts = {}
+            for k, v in pairs(opts or {}) do runOpts[k] = v end
+            runOpts.onComplete = function()
+                pcall(userCb)
+                r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
+            end
+        else
+            -- No callbacks supplied; ensure we still emit completion after sequence ends
+            runOpts.onComplete = function()
+                r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
+            end
+        end
+    end
+    return r:_StartEmoteSequence(self.steps, runOpts)
 end
 
 -- Simple talk emote: choose appropriate talk animation id and apply; duration controlled by caller
