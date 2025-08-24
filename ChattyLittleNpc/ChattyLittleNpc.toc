@@ -11,6 +11,7 @@ src/EventHandler.lua
 src/Options.lua
 Main.lua
 src/ReplayFrame.lua
+src/ModelFrame.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua

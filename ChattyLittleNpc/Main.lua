@@ -35,13 +35,21 @@ local defaults = {
         showGossipEditor = false,
         showReplayFrame = true,
         showSpeakButton = true,
-        framePos = { -- Default positiond
+    lockInEditMode = false,
+    hideInEditMode = false,
+    compactMode = false,
+    queueTextScale = 1.0,
+    -- Last known window position/size
+    framePos = { -- Default position
             point = "CENTER",
             relativeTo = nil,
             relativePoint = "CENTER",
             xOfs = 500,
             yOfs = 0
         },
+    frameSize = { width = 310 + 165, height = 165 },
+        layoutPositions = {},
+        layoutSizes = {},
         buttonPosX = -15,
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true,
