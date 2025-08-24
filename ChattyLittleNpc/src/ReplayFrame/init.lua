@@ -31,6 +31,25 @@ end
 -- CORE REPLAY FRAME LOGIC
 -- ============================================================================
 
+-- Removed GetFirstLine; use ToSingleLine for UI strings
+
+-- Convert any multi-line WoW-formatted string to a clean single line suitable for headers
+function ReplayFrame:ToSingleLine(text)
+    if not text or type(text) ~= "string" then return text end
+    local s = text
+    -- Strip WoW color codes, textures, and hyperlink wrappers
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    s = s:gsub("|T.-|t", "")
+    s = s:gsub("|H.-|h", ""):gsub("|h", "")
+    -- Replace WoW newlines with spaces and normalize CR/LF to spaces
+    s = s:gsub("|n", " ")
+    s = s:gsub("\r\n", " "):gsub("\r", " "):gsub("\n", " ")
+    -- Collapse whitespace and trim
+    s = s:gsub("%s+", " ")
+    s = s:gsub("^%s+", ""):gsub("%s+$", "")
+    return s
+end
+
 -- Helper: Try to resolve an NPC name from saved DB by npcId
 function ReplayFrame:GetNpcNameById(npcId)
     if not npcId then return nil end
@@ -53,13 +72,17 @@ function ReplayFrame:BuildQueueEntries()
 
         local label
         if isQuest and content then
-            label = content
+            -- Quest: "NPC — Title" when NPC known
+            label = npcName and (npcName .. " — " .. content) or content
         else
             -- Non-quest: prefer NPC name and a bit of text
-            if npcName and content then
-                label = npcName .. " — " .. content
+            local single = self:ToSingleLine(content or "")
+            if npcName and single ~= "" then
+                label = npcName .. ": " .. single
+            elseif npcName then
+                label = npcName
             else
-                label = npcName or (content or "Unknown")
+                label = single ~= "" and single or "Unknown"
             end
         end
 
@@ -77,7 +100,15 @@ function ReplayFrame:BuildQueueEntries()
         for i, q in ipairs(CLN.questsQueue) do
             local npcName = self:GetNpcNameById(q.npcId)
             local questTitle = q.title
-            local label = questTitle or (npcName or "Unknown")
+            local single = self:ToSingleLine(questTitle or "")
+            local label
+            if npcName and single ~= "" then
+                label = npcName .. " — " .. single
+            elseif npcName then
+                label = npcName
+            else
+                label = single ~= "" and single or "Unknown"
+            end
             local tooltip
             if npcName and questTitle then
                 tooltip = npcName .. ": " .. questTitle
@@ -180,20 +211,26 @@ function ReplayFrame:UpdateDisplayFrame()
 
     if (self.HeaderText) then
         local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
-        local playingTitle = CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.title or nil
+    local playingTitle = CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.title or nil
+    local playingSingleLine = playingTitle and self:ToSingleLine(playingTitle) or nil
         local playingCount = playingTitle and 1 or 0
         local total = playingCount + qcount
         local collapsed = self.CollapseButton and self.CollapseButton._collapsed
         if total > 0 then
             if collapsed then
-                -- Show now playing title if available; otherwise fall back to Conversation Queue
-                local title = playingTitle or "Conversation Queue"
+                -- Show now playing title; prefix with NPC when available and not a quest
+                local title = playingSingleLine or "Conversations"
+                local npcName = self:GetNpcNameById(CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId)
+                local isQuest = CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.questId
+                if npcName and not isQuest and title and title ~= "" then
+                    title = npcName .. ": " .. title
+                end
                 self.HeaderText:SetText(string.format("%s (%d)", title, total))
             else
-                self.HeaderText:SetText(string.format("Conversation Queue (%d)", total))
+                self.HeaderText:SetText(string.format("Conversations (%d)", total))
             end
         else
-            self.HeaderText:SetText("Conversation Queue")
+            self.HeaderText:SetText("Conversations")
         end
         -- Ensure header fills available width before ellipses
         if self.HeaderText and self.TruncateToWidth then
@@ -208,6 +245,7 @@ function ReplayFrame:UpdateDisplayFrame()
     -- Refresh the ScrollBox list from current state
     self:RefreshQueueDataProvider()
     if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+    if self.UpdateConversationAnimation then self:UpdateConversationAnimation() end
 
     -- Respect user-hidden during playback: keep minimized indicator instead of reopening
     if (not self._forceShow) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then

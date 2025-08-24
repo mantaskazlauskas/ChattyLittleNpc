@@ -216,6 +216,10 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 
     if (#CLN.questsQueue > 0) then
         CLN.Utils:LogDebug("Playing next quest in queue.")
+        -- Ensure previous emote/animation state is clean before starting next
+        if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+            CLN.ReplayFrame:ResetAnimationState()
+        end
         local nextQuest = CLN.questsQueue[1]
         CLN.VoiceoverPlayer.queueProcessed = false
         CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId)
@@ -223,8 +227,15 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         CLN.Utils:LogDebug("No more quests in queue, resetting currentlyPlaying object.")
         CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
         CLN.VoiceoverPlayer.queueProcessed = true
+        -- Conversation truly stopped; reset animations and let farewell logic run
+        if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
+            CLN.ReplayFrame:OnConversationStop()
+        end
     else
         CLN.ReplayFrame:UpdateDisplayFrameState()
+        if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
+            CLN.ReplayFrame:OnConversationStop()
+        end
     end
 end
 

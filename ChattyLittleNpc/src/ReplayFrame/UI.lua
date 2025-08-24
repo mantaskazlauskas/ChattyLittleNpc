@@ -143,7 +143,7 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     -- Header title (styled like Objectives tracker)
     local header = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     header:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -6)
-    header:SetText("Conversation Queue")
+    header:SetText("Conversations")
     header:SetTextColor(1.0, 0.82, 0.0) -- gold
     if header.SetWordWrap then header:SetWordWrap(false) end
     if header.SetMaxLines then header:SetMaxLines(1) end
@@ -398,6 +398,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     end)
     self.LockButton = lockBtn
     if self.UpdateLockUI then self:UpdateLockUI() end
+
     -- Re-anchor the header now that all buttons exist
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 end

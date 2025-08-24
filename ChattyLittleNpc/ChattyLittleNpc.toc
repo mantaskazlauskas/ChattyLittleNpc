@@ -14,7 +14,11 @@ src/ReplayFrame/init.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
 src/ReplayFrame/EditMode.lua
-src/ModelFrame.lua
+src/ReplayFrame/TextAnalysis.lua
+src/ReplayFrame/ModelAnimation.lua
+src/ReplayFrame/ModelEmotes.lua
+src/ReplayFrame/ModelDirector.lua
+src/ReplayFrame/ModelFrame.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua

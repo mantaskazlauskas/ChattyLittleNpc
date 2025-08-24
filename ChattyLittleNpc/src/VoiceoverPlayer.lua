@@ -126,10 +126,22 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
                 VoiceoverPlayer.currentlyPlaying.npcId = npcId
                 VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
                 VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = true
+                -- Mark playback start time for animation gating
+                if GetTime then
+                    VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
+                end
+
+                -- Always start fresh for new playback to avoid stale state
+                if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+                    CLN.ReplayFrame:ResetAnimationState()
+                end
 
                 if (VoiceoverPlayer.currentlyPlaying.title) then
                     table.remove(CLN.questsQueue, 1)
                     CLN.ReplayFrame:UpdateDisplayFrameState()
+                    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
+                        CLN.ReplayFrame:UpdateConversationAnimation()
+                    end
                 end
             end
             break
@@ -149,6 +161,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
     end
 
     CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
+        CLN.ReplayFrame:UpdateConversationAnimation()
+    end
 end
 
 function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
@@ -181,6 +196,20 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
             VoiceoverPlayer.currentlyPlaying.title = text
+            -- Mark playback start time for animation gating
+            if GetTime then
+                VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
+            end
+
+            -- Always start fresh for new playback to avoid stale state
+            if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+                CLN.ReplayFrame:ResetAnimationState()
+            end
+
+            -- Trigger animation pipeline immediately for non-quest lines
+            if CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
+                CLN.ReplayFrame:UpdateConversationAnimation()
+            end
         end
     end
 
@@ -195,4 +224,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
     end
 
     CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
+        CLN.ReplayFrame:UpdateConversationAnimation()
+    end
 end
