@@ -5,6 +5,21 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local ReplayFrame = {}
 CLN.ReplayFrame = ReplayFrame
 
+-- Pure helpers namespace
+ReplayFrame.Pure = ReplayFrame.Pure or {}
+
+-- Lightweight debug logger (disabled unless profile.debugMode is true)
+function ReplayFrame:Debug(...)
+    local ok = CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode
+    if not ok then return end
+    local args = {...}
+    local strs = {}
+    for i, arg in ipairs(args) do
+        strs[i] = tostring(arg)
+    end
+    CLN:Print("|cff87CEEb[DEBUG]|r |cff87CEEb" .. table.concat(strs, " "))
+end
+
 -- ============================================================================
 -- INITIALIZATION AND BINDING
 -- ============================================================================
@@ -33,31 +48,125 @@ end
 
 -- Removed GetFirstLine; use ToSingleLine for UI strings
 
--- Convert any multi-line WoW-formatted string to a clean single line suitable for headers
-function ReplayFrame:ToSingleLine(text)
+-- Convert any multi-line WoW-formatted string to a clean single line suitable for headers (pure)
+function ReplayFrame.Pure.ToSingleLine(text)
     if not text or type(text) ~= "string" then return text end
     local s = text
-    -- Strip WoW color codes, textures, and hyperlink wrappers
     s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
     s = s:gsub("|T.-|t", "")
     s = s:gsub("|H.-|h", ""):gsub("|h", "")
-    -- Replace WoW newlines with spaces and normalize CR/LF to spaces
     s = s:gsub("|n", " ")
     s = s:gsub("\r\n", " "):gsub("\r", " "):gsub("\n", " ")
-    -- Collapse whitespace and trim
     s = s:gsub("%s+", " ")
     s = s:gsub("^%s+", ""):gsub("%s+$", "")
     return s
 end
 
+function ReplayFrame:ToSingleLine(text)
+    return ReplayFrame.Pure.ToSingleLine(text)
+end
+
+-- Pure: choose header text given state
+function ReplayFrame.Pure.BuildHeaderText(playingTitle, npcName, isQuest, qcount, collapsed)
+    local total = (playingTitle and 1 or 0) + (qcount or 0)
+    if total <= 0 then
+        return "Conversations"
+    end
+    if collapsed then
+        local title = ReplayFrame.Pure.ToSingleLine(playingTitle or "")
+        if title == nil or title == "" then title = "Conversations" end
+        if npcName and not isQuest and title ~= "" then
+            title = npcName .. ": " .. title
+        end
+        return string.format("%s (%d)", title, total)
+    else
+        return string.format("Conversations (%d)", total)
+    end
+end
+
+-- Pure: label/tooltip formatting for queue entries
+function ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
+    local safeContent = content or ""
+    if isQuest then
+        if safeContent ~= "" then
+            return npcName and (npcName .. " — " .. safeContent) or safeContent
+        end
+        return npcName or "Unknown"
+    else
+        local single = ReplayFrame.Pure.ToSingleLine(safeContent)
+        if npcName and single ~= "" then
+            return npcName .. ": " .. single
+        elseif npcName then
+            return npcName
+        else
+            return (single ~= "" and single) or "Unknown"
+        end
+    end
+end
+
+function ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
+    local safeContent = content or ""
+    if npcName and safeContent ~= "" then
+        return npcName .. ": " .. safeContent
+    end
+    return safeContent ~= "" and safeContent or (npcName or "")
+end
+
+-- Header truncation: compute max width once and truncate consistently
+function ReplayFrame:ApplyHeaderTruncation(fs, text)
+    if not (fs and text) then return end
+    -- Set desired text first so fs:GetWidth() reflects the anchored region width
+    fs:SetText(text)
+    local maxW = 0
+    if fs.GetWidth then maxW = fs:GetWidth() or 0 end
+    maxW = math.max(40, maxW)
+    if self.TruncateToWidth then
+        self:TruncateToWidth(fs, text, maxW)
+    end
+end
+
+-- Pure: choose talk animation id based on punctuation proportions; rng optional
+function ReplayFrame.Pure.ChooseTalkAnimIdForText(text, rng)
+    local s = ReplayFrame.Pure.ToSingleLine(text or "") or ""
+    -- Count sentences (rough): split on . ! ?
+    local total = 0
+    s:gsub("[%.%!%?]+", function() total = total + 1 end)
+    if total == 0 then total = 1 end
+    local q = 0; s:gsub("%?", function() q = q + 1 end)
+    local e = 0; s:gsub("%!", function() e = e + 1 end)
+    local pQ = math.min(1, math.max(0, q / total))
+    local pE = math.min(1, math.max(0, e / total))
+    local sum = pQ + pE
+    if sum > 1 then pQ = pQ / sum; pE = pE / sum end
+    local remaining = math.max(0, 1 - (pQ + pE))
+    -- subdued maps to 60 as well; kept for conceptual parity
+    local pSubdued = remaining * 0.75
+    local pNormal = remaining * 0.25
+    local draw = (type(rng) == "function") and rng() or math.random()
+    if draw < pE then
+        return 64
+    elseif draw < (pE + pQ) then
+        return 65
+    else
+        return 60
+    end
+end
+
 -- Helper: Try to resolve an NPC name from saved DB by npcId
 function ReplayFrame:GetNpcNameById(npcId)
     if not npcId then return nil end
-    local ok, db = pcall(function() return NpcInfoDB end)
-    if ok and db and db[npcId] and db[npcId][CLN.locale] and db[npcId][CLN.locale].name then
-        return db[npcId][CLN.locale].name
+    self._npcNameCache = self._npcNameCache or {}
+    local loc = CLN.locale or "enUS"
+    local byLoc = self._npcNameCache[loc]
+    if byLoc and byLoc[npcId] ~= nil then return byLoc[npcId] end
+    local db = type(NpcInfoDB) == "table" and NpcInfoDB or nil
+    local name = nil
+    if db and db[npcId] and db[npcId][loc] and db[npcId][loc].name then
+        name = db[npcId][loc].name
     end
-    return nil
+    if not self._npcNameCache[loc] then self._npcNameCache[loc] = {} end
+    self._npcNameCache[loc][npcId] = name -- cache misses as nil to avoid re-lookup churn
+    return name
 end
 
 -- Build a normalized list of entries for the queue view
@@ -66,32 +175,11 @@ function ReplayFrame:BuildQueueEntries()
     local entries = {}
     local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
     if now and (now.title or now.questId) then
-        local isQuest = not not now.questId
-        local npcName = self:GetNpcNameById(now.npcId)
-        local content = now.title -- quest title or non-quest text
-
-        local label
-        if isQuest and content then
-            -- Quest: "NPC — Title" when NPC known
-            label = npcName and (npcName .. " — " .. content) or content
-        else
-            -- Non-quest: prefer NPC name and a bit of text
-            local single = self:ToSingleLine(content or "")
-            if npcName and single ~= "" then
-                label = npcName .. ": " .. single
-            elseif npcName then
-                label = npcName
-            else
-                label = single ~= "" and single or "Unknown"
-            end
-        end
-
-        local tooltip
-        if npcName and content then
-            tooltip = npcName .. ": " .. content
-        else
-            tooltip = content or (npcName or "")
-        end
+    local isQuest = not not now.questId
+    local npcName = self:GetNpcNameById(now.npcId)
+    local content = now.title
+    local label = ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
+    local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
 
         table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip })
     end
@@ -100,21 +188,8 @@ function ReplayFrame:BuildQueueEntries()
         for i, q in ipairs(CLN.questsQueue) do
             local npcName = self:GetNpcNameById(q.npcId)
             local questTitle = q.title
-            local single = self:ToSingleLine(questTitle or "")
-            local label
-            if npcName and single ~= "" then
-                label = npcName .. " — " .. single
-            elseif npcName then
-                label = npcName
-            else
-                label = single ~= "" and single or "Unknown"
-            end
-            local tooltip
-            if npcName and questTitle then
-                tooltip = npcName .. ": " .. questTitle
-            else
-                tooltip = questTitle or (npcName or "")
-            end
+            local label = ReplayFrame.Pure.FormatEntryLabel(npcName, questTitle, true)
+            local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, questTitle)
             table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip })
         end
     end
@@ -173,92 +248,135 @@ function ReplayFrame:RefreshQueueDataProvider()
     self:SetQueueData(selected)
 end
 
--- Main update function for the display frame
-function ReplayFrame:UpdateDisplayFrame()
+-- Mark queue data dirty; coalesce refreshes to avoid churn during bursts
+function ReplayFrame:MarkQueueDirty()
+    self._queueDirty = true
+    local nowT = (type(GetTime) == "function") and GetTime() or 0
+    self._queueDirtyAt = nowT
+    -- Optionally schedule a near-future refresh if frame is visible
+    if C_Timer and C_Timer.After then
+        -- Use a very short delay to coalesce multiple marks in the same frame
+        C_Timer.After(0.05, function()
+            -- Only refresh if still dirty and frame exists
+            if self._queueDirty then
+                self._queueDirty = false
+                self:RefreshQueueDataProvider()
+                if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+            end
+        end)
+    end
+end
+
+-- =============================
+-- Visibility and header helpers
+-- =============================
+
+-- Centralized header builder (wraps pure version)
+function ReplayFrame:BuildHeaderText(playingTitle, npcId, isQuest, qcount, collapsed)
+    return ReplayFrame.Pure.BuildHeaderText(playingTitle, npcId, isQuest, qcount, collapsed)
+end
+
+-- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue
+function ReplayFrame:UpdateVisibility()
     if (not self._forceShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
-        if (self.DisplayFrame) then
-            self.DisplayFrame:Hide()
-        end
-        return
+        if (self.DisplayFrame) then self.DisplayFrame:Hide() end
+        return false
     end
 
-    -- Hide Frame if there are no actively playing voiceover and no quests in queue
     if (not self._forceShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
-        if (self.DisplayFrame) then
-            self.DisplayFrame:Hide()
-        end
+        if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         self.userHidden = false
-        return
+        return false
     end
 
     if (not self._forceShow) and (self:IsDisplayFrameHideNeeded()) then
-        self.DisplayFrame:Hide()
-        return
+        if self.DisplayFrame then self.DisplayFrame:Hide() end
+        return false
     end
-
-    if (not CLN.VoiceoverPlayer.currentlyPlaying.title) then
-        CLN.VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(CLN.VoiceoverPlayer.currentlyPlaying.questId)
-
-        if (CLN.db.profile.debugMode) then
-            CLN:Print(
-            "Getting missing title for quest id:",
-            CLN.VoiceoverPlayer.currentlyPlaying.questId,
-            ", title found is:",
-            CLN.VoiceoverPlayer.currentlyPlaying.title)
-        end
-    end
-
-    if (self.HeaderText) then
-        local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
-    local playingTitle = CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.title or nil
-    local playingSingleLine = playingTitle and self:ToSingleLine(playingTitle) or nil
-        local playingCount = playingTitle and 1 or 0
-        local total = playingCount + qcount
-        local collapsed = self.CollapseButton and self.CollapseButton._collapsed
-        if total > 0 then
-            if collapsed then
-                -- Show now playing title; prefix with NPC when available and not a quest
-                local title = playingSingleLine or "Conversations"
-                local npcName = self:GetNpcNameById(CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId)
-                local isQuest = CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.questId
-                if npcName and not isQuest and title and title ~= "" then
-                    title = npcName .. ": " .. title
-                end
-                self.HeaderText:SetText(string.format("%s (%d)", title, total))
-            else
-                self.HeaderText:SetText(string.format("Conversations (%d)", total))
-            end
-        else
-            self.HeaderText:SetText("Conversations")
-        end
-        -- Ensure header fills available width before ellipses
-        if self.HeaderText and self.TruncateToWidth then
-            -- Header is anchored to the left edge and to the left of the buttons; use actual width
-            local maxW = 0
-            if self.HeaderText.GetWidth then maxW = self.HeaderText:GetWidth() or 0 end
-            maxW = math.max(40, maxW)
-            self:TruncateToWidth(self.HeaderText, self.HeaderText:GetText() or "", maxW)
-        end
-    end
-
-    -- Refresh the ScrollBox list from current state
-    self:RefreshQueueDataProvider()
-    if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-    if self.UpdateConversationAnimation then self:UpdateConversationAnimation() end
 
     -- Respect user-hidden during playback: keep minimized indicator instead of reopening
     if (not self._forceShow) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then
         self:EnsureMinimizedButton()
-        self.MinButton:Show()
-        return
+        if self.MinButton then self.MinButton:Show() end
+        return false
     end
 
     self:UpdateParent()
-    self.DisplayFrame:Show()
+    if self.DisplayFrame then self.DisplayFrame:Show() end
     if self.MinButton then self.MinButton:Hide() end
     self:CheckAndShowModel()
     self.userHidden = false
+    return true
+end
+
+-- List refresh debounce/dirty handling
+function ReplayFrame:RefreshListIfNeeded(sig, nowT)
+    local needRefresh = false
+    if self._lastDisplaySig == sig then
+        local dt = nowT - (self._lastDisplaySigT or 0)
+        if dt >= 0.25 then
+            needRefresh = true
+        end
+    else
+        needRefresh = true
+    end
+    if self._queueDirty then
+        needRefresh = true
+        self._queueDirty = false
+    end
+    if needRefresh then
+        self:RefreshQueueDataProvider()
+        if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+        self._lastDisplaySig = sig
+        self._lastDisplaySigT = nowT
+    end
+end
+
+-- Visible + playing animation update helper
+function ReplayFrame:UpdateAnimationsIfNeeded()
+    if self:IsVoiceoverCurrenltyPlaying() and self.NpcModelFrame and self.NpcModelFrame:IsShown()
+        and self.UpdateConversationAnimation then
+        CLN.Utils:LogAnimDebug("UpdateDisplayFrame - calling UpdateConversationAnimation (visible+playing)")
+        self:UpdateConversationAnimation()
+    else
+        CLN.Utils:LogAnimDebug("UpdateDisplayFrame - skipping UpdateConversationAnimation (not visible or not playing)")
+    end
+end
+
+-- Main update function for the display frame
+function ReplayFrame:UpdateDisplayFrame()
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
+    local collapsed = self.CollapseButton and self.CollapseButton._collapsed or false
+    local w = self.DisplayFrame and self.DisplayFrame.GetWidth and math.floor((self.DisplayFrame:GetWidth() or 0) + 0.5) or 0
+    local h = self.DisplayFrame and self.DisplayFrame.GetHeight and math.floor((self.DisplayFrame:GetHeight() or 0) + 0.5) or 0
+    local handle = cur and cur.soundHandle or nil
+    local title = cur and cur.title or nil
+    local playing = cur and cur.isPlaying and cur:isPlaying() or false
+    local sig = table.concat({ tostring(handle), tostring(title or ""), qcount, collapsed and 1 or 0, w, h, playing and 1 or 0 }, ":")
+    local nowT = GetTime and GetTime() or 0
+
+    -- Early visibility checks and show/min logic
+    if not self:UpdateVisibility() then return end
+    if (self.HeaderText) then
+        local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
+        local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local playingTitle = cur2 and cur2.title or nil
+        local npcName = cur2 and self:GetNpcNameById(cur2.npcId) or nil
+        local isQuest = cur2 and cur2.questId or nil
+        local collapsed2 = self.CollapseButton and self.CollapseButton._collapsed
+        local header = self:BuildHeaderText(playingTitle, npcName, isQuest, qcount, collapsed2)
+        self:ApplyHeaderTruncation(self.HeaderText, header)
+    end
+
+    -- Refresh the ScrollBox list from current state
+    -- Refresh list if needed
+    self:RefreshListIfNeeded(sig, nowT)
+
+    -- Animation updates gated by visibility and playback
+    self:UpdateAnimationsIfNeeded()
+
 end
 
 -- Update display frame state
@@ -295,6 +413,12 @@ function ReplayFrame:ApplyQueueTextScale()
     local a11y = self:GetAccessibilityTextScale() or 1
     local finalScale = math.max(0.5, math.min(2.0, userScale * a11y))
 
+    -- Skip if effectively unchanged (epsilon)
+    if self._lastQueueTextScale and math.abs((self._lastQueueTextScale or 0) - finalScale) < 0.001 then
+        return
+    end
+    self._lastQueueTextScale = finalScale
+
     -- Header
     if self.HeaderText and self.DisplayFrame then
         local h = self.DisplayFrame:GetHeight() or 165
@@ -305,7 +429,7 @@ function ReplayFrame:ApplyQueueTextScale()
     -- Active rows only
     if self.QueueScrollBox then
         local baseHeight = 12
-        -- Support manual rows list (no ScrollBox)
+        -- Manual rows only
         if self.QueueRows and #self.QueueRows > 0 then
             for _, row in ipairs(self.QueueRows) do
                 if row:IsShown() and row.text then
@@ -319,55 +443,8 @@ function ReplayFrame:ApplyQueueTextScale()
                     row.bulletTex:SetSize(sz, sz)
                 end
             end
-        elseif ScrollUtil and ScrollUtil.IterateToActive then
-            for _, row in ScrollUtil.IterateToActive(self.QueueScrollBox) do
-                if row.text then
-                    local _, _, flags = row.text:GetFont()
-                    row.text:SetFont("Fonts\\FRIZQT__.TTF", baseHeight * finalScale, flags)
-                end
-                if row.bulletTex and row.bulletTex.SetSize then
-                    local sz = math.max(3, math.floor((baseHeight * finalScale) * 0.33))
-                    row.bulletTex:SetSize(sz, sz)
-                end
-            end
         end
     end
 end
 
--- ============================================================================
--- MODULE LOADING
--- Load all other ReplayFrame modules
--- ============================================================================
-
--- Load Position management module
-local positionModule = {}
-local positionFile = CLN and CLN.GetAddonPath and CLN.GetAddonPath() .. "\\src\\ReplayFrame\\Position.lua"
-if positionFile and loadfile and pcall(loadfile, positionFile) then
-    -- Position module loaded
-else
-    -- Fallback: inline loading (for development)
-    -- This would load the Position.lua functions if the file loading fails
-end
-
--- Load UI creation module
-local uiModule = {}
-local uiFile = CLN and CLN.GetAddonPath and CLN.GetAddonPath() .. "\\src\\ReplayFrame\\UI.lua"
-if uiFile and loadfile and pcall(loadfile, uiFile) then
-    -- UI module loaded
-else
-    -- Fallback: inline loading (for development)
-end
-
--- Load EditMode module
-local editModeModule = {}
-local editModeFile = CLN and CLN.GetAddonPath and CLN.GetAddonPath() .. "\\src\\ReplayFrame\\EditMode.lua"
-if editModeFile and loadfile and pcall(loadfile, editModeFile) then
-    -- EditMode module loaded
-else
-    -- Fallback: inline loading (for development)
-end
-
--- Note: Since WoW addons use a different loading mechanism, the above file loading
--- won't work in practice. The modules will be loaded by the addon system through
--- the .toc file includes. The functions defined in the separate files will be
--- available because they all extend the same ReplayFrame table.
+-- Modules are loaded via .toc; dev-time loadfile fallbacks removed for clarity.

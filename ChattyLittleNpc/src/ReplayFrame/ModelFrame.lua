@@ -35,6 +35,26 @@ function ReplayFrame:LayoutModelArea(frame)
     local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
     local hasModel = self._hasValidModel and not compact
 
+    -- Ensure we react to the display frame visibility to stop model rendering off-screen
+    if frame and not self._hookedDisplayFrame then
+        if frame.HookScript then
+            frame:HookScript("OnHide", function()
+                -- Hide and clear model to avoid rendering costs while window is hidden
+                if self.NpcModelFrame then
+                    if self.NpcModelFrame.ClearModel then pcall(self.NpcModelFrame.ClearModel, self.NpcModelFrame) end
+                    self.NpcModelFrame:Hide()
+                end
+                if self.ModelContainer then self.ModelContainer:Hide() end
+                if self.ResetAnimationState then self:ResetAnimationState() end
+            end)
+            frame:HookScript("OnShow", function()
+                -- Re-evaluate model only when window becomes visible
+                if self.CheckAndShowModel then self:CheckAndShowModel() end
+            end)
+        end
+        self._hookedDisplayFrame = true
+    end
+
     if self.ModelContainer then
         self.ModelContainer:ClearAllPoints()
     -- Anchor ABOVE the frame: container bottom sits at frame top
@@ -56,6 +76,12 @@ end
 -- Build/update the model with npcId and handle container visibility
 function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if (not self.NpcModelFrame) then return end
+    -- Skip any model work if the window itself is hidden
+    if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
+        if self.ModelContainer then self.ModelContainer:Hide() end
+        self.NpcModelFrame:Hide()
+        return
+    end
     -- Defensive: ensure we only have one PlayerModel child
     if self.ModelContainer and self.ModelContainer.GetChildren then
         local count = 0
@@ -107,20 +133,15 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         -- If audio is playing for this NPC, set talk immediately; otherwise idle
         local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
         local isPlaying = cur and cur.isPlaying and cur:isPlaying() and cur.npcId == npcId
-        if self.NpcModelFrame.SetAnimation then
-            if isPlaying then
-                local talkId = 60
-                if self.ChooseTalkAnimIdForText and cur and cur.title then
-                    talkId = self:ChooseTalkAnimIdForText(cur.title)
-                end
-                pcall(self.NpcModelFrame.SetAnimation, self.NpcModelFrame, talkId)
-                if self.NpcModelFrame.SetSheathed then pcall(self.NpcModelFrame.SetSheathed, self.NpcModelFrame, true) end
-                self._animState = "talk"
-                self._lastTalkId = talkId
-                if self.StartEmoteLoop then self:StartEmoteLoop() end
-            else
-                pcall(self.NpcModelFrame.SetAnimation, self.NpcModelFrame, 0) -- 0 = Stand/Idle
+        if isPlaying then
+            local talkId = 60
+            if self.ChooseTalkAnimIdForText and cur and cur.title then
+                talkId = self:ChooseTalkAnimIdForText(cur.title)
             end
+            -- Set initial talk animation; let FSM start the loop/camera
+            self:SetModelAnim(talkId)
+        else
+            self:SetModelAnim(0) -- Idle
         end
         self._hasValidModel = true
         if self.ModelContainer then self.ModelContainer:Show() end
@@ -137,12 +158,25 @@ end
 
 function ReplayFrame:CheckAndShowModel()
     local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
+    -- Do nothing if the window is hidden
+    if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
+        if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
+        if (self.ModelContainer) then self.ModelContainer:Hide() end
+        return
+    end
     if (not self:IsCompactModeEnabled() and self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
-    if self.UpdateConversationAnimation then self:UpdateConversationAnimation() end
+    -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
+    -- to avoid duplicate calls when the model becomes visible
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then 
+            CLN.Utils:LogAnimDebug("CheckAndShowModel - showing model, letting OnShow hook handle animation")
+        end
     else
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
+            CLN.Utils:LogAnimDebug("CheckAndShowModel - hiding model")
+        end
     end
 end
 
@@ -179,23 +213,62 @@ function ReplayFrame:SetupModelAnimations()
                 r:AnimUpdate(elapsed or 0)
             end
 
-            -- Conversation emote loop is now external and timer-driven; nothing needed here
-            -- Emote loop timing: use absolute time to avoid drift from chained timers
-            if r._emoteLoopActive and r._emoteSegEndTime then
-                local tNow = GetTime and GetTime() or (frame._t or 0)
-                if tNow >= r._emoteSegEndTime then
-                    if r._EmoteLoop_PickAndStartSegment then
-                        r:_EmoteLoop_PickAndStartSegment(tNow)
-                    end
-                end
-            end
+            -- Conversation emote loop is now external and timer-driven; no per-frame checks
 
             -- Some models stop animating after loads; poke idle periodically only when idling
-            if frame.SetAnimation and (r._animState == "idle" or not sameHandle) then
+            if frame.SetAnimation and ((r._lastAppliedAnimId == 0) or not sameHandle) then
                 frame._poke = (frame._poke or 0) + (elapsed or 0)
                 if frame._poke > 4.0 then
                     pcall(frame.SetAnimation, frame, 0)
                     frame._poke = 0
+                end
+            end
+
+            -- One-shot animation finish watcher: only while visible and flagged
+            if r._watchAnimActive and frame.IsShown and frame:IsShown() then
+                -- Use timeout as a safety; WoW API lacks a universal IsAnimationFinished
+                local nowT = (type(GetTime) == "function") and GetTime() or 0
+                local started = tonumber(r._watchStartedAt or 0) or 0
+                local timeout = tonumber(r._watchTimeout or 0) or 0
+                local timedOut = (timeout > 0) and ((nowT - started) >= timeout)
+                local animDone = false
+                -- If GetModelAnimation exists, try to detect switch back to idle/talk
+                if frame.GetAnimation then
+                    local ok, current = pcall(frame.GetAnimation, frame)
+                    if ok and type(current) == "number" then
+                        if current ~= r._watchAnimId then
+                            animDone = true
+                        end
+
+                        -- Safety: if we expect a talk animation but the model isn't playing it, reapply occasionally
+                        if frame.SetAnimation and r and r._lastAppliedAnimId and (r._lastAppliedAnimId == 60 or r._lastAppliedAnimId == 64 or r._lastAppliedAnimId == 65) then
+                            frame._talkPoke = (frame._talkPoke or 0) + (elapsed or 0)
+                            if frame._talkPoke > 1.2 then
+                                frame._talkPoke = 0
+                                if frame.GetAnimation then
+                                    local ok, curAnim = pcall(frame.GetAnimation, frame)
+                                    if ok and type(curAnim) == "number" and curAnim ~= r._lastAppliedAnimId then
+                                        pcall(frame.SetAnimation, frame, r._lastAppliedAnimId)
+                                        if frame.SetSheathed then pcall(frame.SetSheathed, frame, true) end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                if timedOut or animDone then
+                    -- Clear watcher first
+                    r._watchAnimActive = false
+                    r._watchAnimId = nil
+                    r._watchStartedAt = nil
+                    r._watchTimeout = nil
+                    -- If playback is ongoing, resume talk and ensure loop is running
+                    local stillPlaying = cur and cur.isPlaying and cur:isPlaying()
+                    if stillPlaying then
+                        if r.UpdateTalkAnimation then r:UpdateTalkAnimation() end
+                        if r.StartEmoteLoop then r:StartEmoteLoop() end
+                    end
+                    if r._UpdateModelOnUpdateHook then r:_UpdateModelOnUpdateHook() end
                 end
             end
         end
@@ -204,9 +277,15 @@ function ReplayFrame:SetupModelAnimations()
     -- Hook model frame lifecycle for the update
     if not m._hookedAnim then
         m:HookScript("OnShow", function(f)
-            -- Initialize timers and attach updater
+            -- Record first visible time for timing-sensitive decisions (e.g., greeting wave)
+            if type(GetTime) == "function" then
+                ReplayFrame._modelBecameVisibleAt = GetTime()
+            else
+                ReplayFrame._modelBecameVisibleAt = (ReplayFrame._modelBecameVisibleAt or 0)
+            end
+            -- Initialize timers; OnUpdate will be attached only if needed via gate
             f._t = 0; f._poke = 0
-            if f.SetScript then f:SetScript("OnUpdate", m._animOnUpdate) end
+            if ReplayFrame and ReplayFrame._UpdateModelOnUpdateHook then ReplayFrame:_UpdateModelOnUpdateHook() end
 
             -- Do not force idle; choose animation based on current playback immediately
             local r = ReplayFrame
@@ -217,18 +296,16 @@ function ReplayFrame:SetupModelAnimations()
                 if r and r.ChooseTalkAnimIdForText and cur.title then
                     talkId = r:ChooseTalkAnimIdForText(cur.title)
                 end
-                if r and r.SetModelAnim then r:SetModelAnim(talkId) else if f.SetAnimation then pcall(f.SetAnimation, f, talkId) end; if f.SetSheathed then pcall(f.SetSheathed, f, true) end end
-                if r then
-                    r._animState = "talk"
-                    r._lastTalkId = talkId
-                    -- Start the loop quickly if not already
-                    if r.StartEmoteLoop then r:StartEmoteLoop() end
-                end
+                -- Set base anim, defer loop and camera to FSM
+                r:SetModelAnim(talkId)
             else
-                if r and r.SetModelAnim then r:SetModelAnim(0) else if f.SetAnimation then pcall(f.SetAnimation, f, 0) end end
+                r:SetModelAnim(0)
             end
 
             -- Let the Director refine (wave vs talk) as needed
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
+                CLN.Utils:LogAnimDebug("ModelFrame OnShow hook - calling UpdateConversationAnimation")
+            end
             if r and r.UpdateConversationAnimation then r:UpdateConversationAnimation() end
         end)
         m:HookScript("OnHide", function(f)
@@ -236,13 +313,60 @@ function ReplayFrame:SetupModelAnimations()
             if ReplayFrame and ReplayFrame.ResetAnimationState then
                 ReplayFrame:ResetAnimationState()
             end
+            ReplayFrame._modelBecameVisibleAt = nil
         end)
         m._hookedAnim = true
     end
 
     -- If already shown, start updates immediately
-    if m:IsShown() and m.SetScript then
+    if m:IsShown() and self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+end
+
+-- =========================
+-- OnUpdate gating helpers
+-- =========================
+
+-- Determine if the model needs a per-frame OnUpdate (active anims or emote loop)
+function ReplayFrame:_ModelNeedsOnUpdate()
+    local m = self.NpcModelFrame
+    if not (m and m.IsShown and m:IsShown()) then return false end
+    if self._anims and #self._anims > 0 then return true end
+    -- Need updates while watching for a one-shot animation to finish
+    if self._watchAnimActive then return true end
+    -- Keep updates while our emote loop is active to guard talk animations from dropping
+    if self._emoteLoopActive then return true end
+    -- If we expect talk (cached id) keep lightweight updates for safety reapply
+    if self._lastAppliedAnimId == 60 or self._lastAppliedAnimId == 64 or self._lastAppliedAnimId == 65 then return true end
+    return false
+end
+
+-- Attach/detach the model's OnUpdate based on current needs
+function ReplayFrame:_UpdateModelOnUpdateHook()
+    local m = self.NpcModelFrame
+    if not m then return end
+    -- Ensure update function exists
+    if not m._animOnUpdate then
+        if self.SetupModelAnimations then self:SetupModelAnimations() end
+    end
+    local need = self:_ModelNeedsOnUpdate()
+    local isAttached = m.GetScript and (m:GetScript("OnUpdate") ~= nil)
+    
+    -- Log only when state changes to avoid spam
+    do
+        local count = (self._anims and #self._anims or 0)
+        local last = self._lastUpdateHookState or {}
+        if last.need ~= need or last.attached ~= isAttached or last.count ~= count then
+            CLN.Utils:LogAnimDebug("_UpdateModelOnUpdateHook: need=" .. tostring(need) .. ", isAttached=" .. tostring(isAttached) .. ", anims=" .. tostring(count))
+            self._lastUpdateHookState = { need = need, attached = isAttached, count = count }
+        end
+    end
+    
+    if need and not isAttached and m._animOnUpdate and m.SetScript then
+        CLN.Utils:LogAnimDebug("Attaching OnUpdate handler to model")
         m:SetScript("OnUpdate", m._animOnUpdate)
+    elseif (not need) and isAttached and m.SetScript then
+        CLN.Utils:LogAnimDebug("Detaching OnUpdate handler from model")
+        m:SetScript("OnUpdate", nil)
     end
 end
 
@@ -257,60 +381,19 @@ end
 -- 65 = EmoteTalkQuestion (question)
 -- Note: 66 is EmoteBow (not a talk anim). There is no EmoteTalkSubdued id.
 function ReplayFrame:ChooseTalkAnimIdForText(text)
-    local s = self.ToSingleLine and self:ToSingleLine(text or "") or (text or "")
-    s = tostring(s)
-
-    -- Compute sentence punctuation stats
-    local stats = self.TA_SentencePunctuationStats and self:TA_SentencePunctuationStats(s) or { total = 0, questions = 0, exclamations = 0 }
-    local total = stats.total or 0
-    local q = stats.questions or 0
-    local e = stats.exclamations or 0
-
-    -- If there are sentences, set probabilities based on proportions of ? and ! across sentences.
-    local pQ, pE
-    if total > 0 then
-        pQ = math.min(1, math.max(0, q / total))
-        pE = math.min(1, math.max(0, e / total))
-        local sum = pQ + pE
-        if sum > 1 then
-            -- Normalize in case of overlapping "!?" punctuation counting toward both
-            pQ = pQ / sum
-            pE = pE / sum
-        end
-    else
-        pQ, pE = 0, 0
-    end
-
-    -- Base preference when no strong punctuation bias: prefer a subdued take 3:1 over normal.
-    -- Since there is no dedicated "subdued" id, we fall back to EmoteTalk (60) in both cases; variety can be added via variants per model.
-    local remaining = math.max(0, 1 - (pQ + pE))
-    local pSubdued = remaining * 0.75
-    local pNormal = remaining * 0.25
-
-    -- Random draw
-    local r = math.random()
-    if r < pE then
-        return 64 -- Exclamation
-    elseif r < (pE + pQ) then
-        return 65 -- Question
-    else
-        -- Both subdued and normal map to 60; reserved for future per-model variants if safe
-        return 60
-    end
+    return ReplayFrame.Pure.ChooseTalkAnimIdForText(text)
 end
 
 function ReplayFrame:SetIdleLoop()
     local m = self.NpcModelFrame
-    if not m or not m.SetAnimation then return end
-    pcall(m.SetAnimation, m, 0) -- Stand/idle
-    if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-    self._animState = "idle"
+    if not m then return end
+    self:SetModelAnim(0)
 end
 
 -- Play a one-shot wave at the start of a new sound handle
 function ReplayFrame:MaybePlayStartWave()
     local m = self.NpcModelFrame
-    if not (m and m.SetAnimation) then return end
+    if not m then return end
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local handle = cur and cur.soundHandle or nil
     if not handle then return end
@@ -319,9 +402,8 @@ function ReplayFrame:MaybePlayStartWave()
     -- Skip wave for quest audio (often mid-sentence or UI-triggered)
     if cur and cur.questId then
         self._lastSoundHandle = handle
-        -- start the talk animation path directly for quests
-        self._animState = "talk"
-        self._talkPhase = "talk"
+    -- start the talk animation path directly for quests
+    self._talkPhase = "talk"
         self:UpdateTalkAnimation()
         return
     end
@@ -332,7 +414,6 @@ function ReplayFrame:MaybePlayStartWave()
     -- If it's been a while (>2.0s), treat as already in-progress: don't wave
     if sinceStart > 2.0 then
         self._lastSoundHandle = handle
-        self._animState = "talk"
         self._talkPhase = "talk"
         self:UpdateTalkAnimation()
         return
@@ -379,34 +460,61 @@ function ReplayFrame:UpdateTalkAnimation()
         return
     end
     local talkId = self:ChooseTalkAnimIdForText(cur.title)
-    if self._animState ~= "talk" or self._lastTalkId ~= talkId then
-        if self.SetModelAnim then self:SetModelAnim(talkId) else if m.SetSheathed then pcall(m.SetSheathed, m, true) end; pcall(m.SetAnimation, m, talkId) end
-        self._animState = "talk"
-        self._lastTalkId = talkId
+    if self._lastAppliedAnimId ~= talkId then
+        self:SetModelAnim(talkId)
     end
 end
 
 -- Public: update model animation based on current playback state
 function ReplayFrame:UpdateConversationAnimation()
-    if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then return end
-    -- Drive via the centralized FSM
+    -- Only act when model is visible to avoid hidden-frame churn
+    if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then 
+        -- if CLN.Utils and CLN.Utils.LogAnimDebug then CLN.Utils:LogAnimDebug("UpdateConversationAnimation - ModelFrame not shown") end
+        return 
+    end
+
+    -- Debounce per handle/title to avoid re-triggering every frame
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local handle = cur and cur.soundHandle or nil
+    local title = cur and cur.title or nil
+    local nowT = GetTime and GetTime() or 0
+    if handle and self._lastAnimDecision and self._lastAnimDecision.handle == handle 
+        and self._lastAnimDecision.title == title then
+        -- If we just decided very recently (< 0.2s), skip
+        if (nowT - (self._lastAnimDecision.t or 0)) < 0.2 then
+            return
+        end
+    end
+
+    -- Drive via the centralized FSM
     local recentlyStarted = false
     if cur and cur.startTime and GetTime then
-        local dt = GetTime() - (cur.startTime or 0)
+        local dt = nowT - (cur.startTime or 0)
         recentlyStarted = dt >= 0 and dt < 0.6
+        if CLN.Utils:ShouldLogAnimDebug() then 
+            CLN.Utils:LogAnimDebug("UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
+        end
     end
+    
     if cur and ( (cur.isPlaying and cur:isPlaying()) or recentlyStarted ) then
         if self.FSM_OnPlaybackStart then self:FSM_OnPlaybackStart(cur) end
     else
-        local lastMsg = self.Director and self.Director._lastMsg or (cur and cur.title) or nil
+        local lastMsg = self.Director and self.Director._lastMsg or title
         if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
     end
     if self.FSM_Tick then self:FSM_Tick() end
+
+    -- Record last decision context/time
+    self._lastAnimDecision = { handle = handle, title = title, t = nowT }
 end
 
 -- Public: when conversation stops, revert to idle
 function ReplayFrame:OnConversationStop()
+    -- Don't run stop/farewell animations if the model isn't visible
+    if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then
+        self:ResetAnimationState()
+        return
+    end
     -- Route through FSM for consistent farewell handling
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
@@ -423,6 +531,10 @@ function ReplayFrame:ResetAnimationState()
     self._talkPhase = nil
     self._pendingTalkAfterZoom = false
     self._lastSoundHandle = nil
+    -- Cancel any scripted emote sequence that might be running
+    self._emoteSeqActive = false
+    self._emoteActive = false
+    self._emoteName = nil
     -- Stop generalized animations
     if self.AnimStop then
         self:AnimStop("zoom")
@@ -442,21 +554,44 @@ function ReplayFrame:SetModelAnim(animId)
     local m = self.NpcModelFrame
     if not (m and m.SetAnimation) then return end
     if animId == nil then return end
-    -- Skip if already in this anim state to reduce flicker
-    if self._lastTalkId == animId and self._animState == "talk" and animId ~= 0 then
-        return
+    -- Query current animation if available to avoid false "already applied" when it didn't take
+    local curAnim
+    if m.GetAnimation then
+        local ok, a = pcall(m.GetAnimation, m)
+        if ok and type(a) == "number" then curAnim = a end
     end
-    if animId == 0 then
-        pcall(m.SetAnimation, m, 0)
-        if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-        self._animState = "idle"
-        return
-    end
-    -- Talk-like animations (60/64/65) normalize animState to talk
+    -- Skip only if both our cached value and the model's actual state match
+    if self._lastAppliedAnimId == animId and curAnim == animId then return end
     pcall(m.SetAnimation, m, animId)
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-    if animId == 60 or animId == 64 or animId == 65 then
-        self._animState = "talk"
-        self._lastTalkId = animId
+    if m.SetPaused then pcall(m.SetPaused, m, false) end
+    self._lastAppliedAnimId = animId
+
+    -- Start/stop one-shot finish watcher for specific non-looping emotes when visible
+    local visible = m and m.IsShown and m:IsShown()
+    local isOneShot = (animId == 67) or (animId == 185) or (animId == 186)
+    if visible and isOneShot then
+        self._watchAnimActive = true
+        self._watchAnimId = animId
+        self._watchStartedAt = (type(GetTime) == "function") and GetTime() or 0
+        local cfg = (ReplayFrame.Config and ReplayFrame.Config.Timings) or {}
+        self._watchTimeout = tonumber(cfg.oneShotWatchTimeout) or 2.0
+        if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+    else
+        -- Clear watcher when switching away or hidden
+        self._watchAnimActive = false
+        self._watchAnimId = nil
+        self._watchStartedAt = nil
+        self._watchTimeout = nil
+        if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
     end
+end
+
+-- Intent wrappers to keep FSM boundary clear (no-op if FSM not present)
+function ReplayFrame:OnPlaybackStart(cur)
+    if self.FSM_OnPlaybackStart then self:FSM_OnPlaybackStart(cur) end
+end
+
+function ReplayFrame:OnPlaybackStop(msg)
+    if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(msg) end
 end

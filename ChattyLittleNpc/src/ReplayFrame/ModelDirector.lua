@@ -55,12 +55,19 @@ local GREETING_PATTERNS = {
 }
 
 function Director:LooksLikeGreeting(msg)
-    if not msg or msg == "" then return false end
+    if not msg or msg == "" then 
+        if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("LooksLikeGreeting - empty message") end
+        return false 
+    end
+    
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("LooksLikeGreeting analyzing:", string.sub(msg, 1, 50) .. (string.len(msg) > 50 and "..." or "")) end
+    
     msg = tostring(msg):lower()
     
     -- direct pattern matching
     for _, pat in ipairs(GREETING_PATTERNS) do
         if string.find(msg, pat) then
+            if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Found greeting pattern:", pat) end
             return true
         end
     end
@@ -86,12 +93,17 @@ function Director:LooksLikeGreeting(msg)
                                          string.find(firstPart, "you") or
                                          string.find(firstPart, "what") or
                                          string.find(firstPart, "how")
+            if CLN.Utils and CLN.Utils.LogAnimDebug then 
+                CLN.Utils:LogAnimDebug("Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
+            end
             if hasCommonGreetingWords and #firstPart < GREETING_HEURISTIC_MAX_LEN then
+                if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Heuristic detected greeting") end
                 return true
             end
         end
     end
     
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("No greeting detected") end
     return false
 end
 
@@ -112,11 +124,21 @@ function Director:CanWave()
     local key = getWaveKey() or "unknown"
     local now = GetTime and GetTime() or 0
     local last = lastWaveBy[key]
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("CanWave check - key:", key, "now:", now, "lastWave:", last or "never") end
     if (not last) or ((now - last) > WAVE_COOLDOWN) then
-        lastWaveBy[key] = now
+        if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Wave allowed (cooldown free)") end
         return true
     end
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Wave blocked by cooldown, time remaining:", WAVE_COOLDOWN - (now - last)) end
     return false
+end
+
+-- Mark that we actually performed a wave for the current NPC key (start cooldown)
+function Director:MarkWaved()
+    local key = getWaveKey() or "unknown"
+    local now = GetTime and GetTime() or 0
+    lastWaveBy[key] = now
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("MarkWaved - starting cooldown for key:", key, "at:", now) end
 end
 
 local lastInteractBy = {}
@@ -129,7 +151,9 @@ function Director:HasInteractedRecently()
     local key = getInteractKey()
     local now = GetTime and GetTime() or 0
     local last = lastInteractBy[key]
-    return last and ((now - last) < RECENT_INTERACT_TTL) or false
+    local hasInteracted = last and ((now - last) < RECENT_INTERACT_TTL) or false
+    if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("HasInteractedRecently - key:", key, "lastInteract:", last or "never", "hasInteracted:", hasInteracted) end
+    return hasInteracted
 end
 
 function Director:MarkInteracted()

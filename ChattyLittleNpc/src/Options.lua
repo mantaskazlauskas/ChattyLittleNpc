@@ -57,7 +57,17 @@ local options = {
                     name = 'Print Debug Messages',
                     desc = 'Toggle to print debug messages.',
                     get = function(info) return CLN.db.profile.debugMode end,
-                    set = function(info, value) CLN.db.profile.debugMode = value end,
+                    set = function(info, value) 
+                        CLN.db.profile.debugMode = value 
+                        -- no additional action required; gates read dynamically
+                    end,
+                },
+                debugAnimations = {
+                    type = 'toggle',
+                    name = 'Animation Debug',
+                    desc = 'Reduce noise: only print animation-related debug when enabled.',
+                    get = function(info) return CLN.db.profile.debugAnimations end,
+                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
                 },
                 showGossipEditor = {
                     type = 'toggle',
@@ -98,9 +108,7 @@ local options = {
                     end,
                     set = function(info, value)
                         CLN.db.profile.queueTextScale = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then
-                            CLN.ReplayFrame:ApplyQueueTextScale()
-                        end
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
                     end,
                 },
                 compactMode = {
@@ -110,9 +118,7 @@ local options = {
                     get = function(info) return CLN.db.profile.compactMode end,
                     set = function(info, value)
                         CLN.db.profile.compactMode = value
-                        if CLN.ReplayFrame.ApplyCompactMode then
-                            CLN.ReplayFrame:ApplyCompactMode()
-                        end
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
                     end,
                 },
                 resetFramePos = {
@@ -136,7 +142,10 @@ local options = {
                     name = 'Show Floating Head Frame (voiceover queue)',
                     desc = 'Toggle to show the floating head frame (voiceover queue)',
                     get = function(info) return CLN.db.profile.showReplayFrame end,
-                    set = function(info, value) CLN.db.profile.showReplayFrame = value end,
+                    set = function(info, value)
+                        CLN.db.profile.showReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
                 },
             },
         },

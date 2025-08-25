@@ -32,19 +32,61 @@ function ReplayFrame:OnEmote(event, fn)
     self._emoteEventHandlers = self._emoteEventHandlers or {}
     self._emoteEventHandlers[ev] = self._emoteEventHandlers[ev] or {}
     table.insert(self._emoteEventHandlers[ev], fn)
+    return fn
+end
+
+-- Remove a previously registered local listener for an emote event
+function ReplayFrame:OffEmote(event, fn)
+    local ev = tostring(event or "")
+    if ev == "" or type(fn) ~= "function" then return end
+    local handlers = self._emoteEventHandlers and self._emoteEventHandlers[ev]
+    if not handlers then return end
+    for i = #handlers, 1, -1 do
+        if handlers[i] == fn then
+            table.remove(handlers, i)
+            break
+        end
+    end
+end
+
+-- Register a one-shot local listener that auto-unregisters after the first call
+function ReplayFrame:OnceEmote(event, fn)
+    if type(fn) ~= "function" then return end
+    local selfRef
+    local wrapper = function(payload)
+        -- ensure we remove before invoking to avoid reentrancy issues
+        if selfRef then selfRef:OffEmote(event, wrapper) end
+        fn(payload)
+    end
+    selfRef = self
+    return self:OnEmote(event, wrapper)
 end
 
 -- Global camera default (kept consistent across modules)
-ReplayFrame.DEFAULT_ZOOM = ReplayFrame.DEFAULT_ZOOM or 0.65
-ReplayFrame.Camera = ReplayFrame.Camera or {
-    TALK_ZOOM = 0.65,
-    IDLE_ZOOM = 0.65,
-    WAVE_ZOOM = 0.3,
-}
-ReplayFrame.Timings = ReplayFrame.Timings or {
-    recentlyStartedWindow = 0.6,
-    stopHideDelay = 0.6,
-    waveLateStart = 2.0,
+ReplayFrame.Config = ReplayFrame.Config or {
+    DEFAULT_ZOOM = 0.65,
+    Camera = {
+        TALK_ZOOM = 0.60, -- slightly more zoomed out for talk
+        IDLE_ZOOM = 0.60, -- slightly more zoomed out for idle
+        WAVE_ZOOM = 0.3,
+        HAND_FOCUS_DELTA = -0.25, -- legacy/fallback delta
+    TALK_PAN_Z = -0.12,       -- absolute Z for talk pan (higher)
+    IDLE_PAN_Z = -0.12,       -- absolute Z for idle pan (higher)
+    },
+    Timings = {
+        recentlyStartedWindow = 0.6,
+        stopHideDelay = 0.6,
+        waveLateStart = 2.0,
+    waveAfterModelVisible = 1.2, -- extra grace to allow waving shortly after model shows
+    oneShotWatchTimeout = 2.0, -- fallback timeout for non-looping emote watcher
+    },
+    Loop = {
+    talkChance = 0.92,
+    talkMin = 1.8,
+    talkMax = 3.2,
+    idleMin = 0.25,
+    idleMax = 0.6,
+    },
 }
 
 -- Utility: get current portrait zoom (cached or queried)
@@ -54,7 +96,7 @@ local function getCurrentZoom(self)
         local ok, z = pcall(self.NpcModelFrame.GetPortraitZoom, self.NpcModelFrame)
         if ok and type(z) == "number" then return z end
     end
-    return ReplayFrame.DEFAULT_ZOOM or 0.65
+    return (ReplayFrame.Config and ReplayFrame.Config.DEFAULT_ZOOM) or 0.65
 end
 
 -- Utility: get baseline Z offset
@@ -71,11 +113,11 @@ end
 
 -- Camera targets per state (can be overridden on the frame)
 local function getTalkZoom(self)
-    return clamp01((self.talkZoom ~= nil) and self.talkZoom or (ReplayFrame.Camera and ReplayFrame.Camera.TALK_ZOOM) or (ReplayFrame.DEFAULT_ZOOM or 0.65))
+    return clamp01((self.talkZoom ~= nil) and self.talkZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.TALK_ZOOM) or (ReplayFrame.Config and ReplayFrame.Config.DEFAULT_ZOOM) or 0.65)
 end
 
 local function getIdleZoom(self)
-    return clamp01((self.idleZoom ~= nil) and self.idleZoom or (ReplayFrame.Camera and ReplayFrame.Camera.IDLE_ZOOM) or (ReplayFrame.DEFAULT_ZOOM or 0.65))
+    return clamp01((self.idleZoom ~= nil) and self.idleZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.IDLE_ZOOM) or (ReplayFrame.Config and ReplayFrame.Config.DEFAULT_ZOOM) or 0.65)
 end
 
 -- Cancel any running emote
@@ -119,11 +161,21 @@ end
 -- Run a simple sequence where each step can specify target zoom and/or pan (Z) and durations.
 -- Each step may also apply an animation id or a named emote animation.
 -- steps: array of { zoom?, zoomDur?, panZ?, panDur?, animId?, animName?, hold? }
--- opts: { onComplete? = function() end }
+-- Note: completion is emitted via EMOTE_COMPLETE; external callbacks are deprecated.
 function ReplayFrame:_StartEmoteSequence(steps, opts)
-    if not (steps and type(steps) == "table" and #steps > 0) then return false end
+    if not (steps and type(steps) == "table" and #steps > 0) then 
+        CLN.Utils:LogAnimDebug("_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
+        return false 
+    end
     local m = self.NpcModelFrame
-    if not m then return false end
+    if not m then 
+        CLN.Utils:LogAnimDebug("_StartEmoteSequence failed - no NpcModelFrame")
+        return false 
+    end
+
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
+        CLN.Utils:LogAnimDebug("Emote sequence start: steps=" .. tostring(#steps))
+    end
 
     self:CancelEmote()
     self._emoteSeqActive = true
@@ -135,6 +187,7 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
 
     local function applyStep(step)
         if not self._emoteSeqActive then return end
+        
         -- Camera transitions handled by animation system
         if step.zoom ~= nil and self.AnimZoomTo then
             self:AnimZoomTo(step.zoom, step.zoomDur or 0.4, { easing = step.zoomEase or "easeOutCubic" })
@@ -157,12 +210,7 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
                 end)
             end
             -- Update state immediately
-            if step.animId == 60 or step.animId == 64 or step.animId == 65 then
-                self._animState = "talk"
-                self._lastTalkId = step.animId
-            elseif step.animId == 0 then
-                self._animState = "idle"
-            end
+            -- State writes removed; FSM owns state. We only set animations.
         elseif step.animName then
             -- Use higher level for named emotes
             if step.animName == "talk" then
@@ -181,8 +229,14 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
             -- Sequence complete
             self._emoteSeqActive = false
             self._emoteActive = false
+            local finishedName = self._emoteName
             self._emoteName = nil
-            if opts and opts.onComplete then pcall(opts.onComplete) end
+            -- Emit completion if not already handled by builder.run
+            if not (opts and opts.onComplete) then
+                self:_EmitEmoteEvent("EMOTE_COMPLETE", { name = finishedName })
+            else
+                pcall(opts.onComplete)
+            end
             return
         end
         applyStep(step)
@@ -214,43 +268,43 @@ end
 -- Options: duration (default 1.5), waveZoom (0.3), waveOutDur (0.2), zoomBackDur (0.5), lowerDelta (0.05)
 function ReplayFrame:PlayWaveEmote(opts)
     local m = self.NpcModelFrame
-    if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
+    if not (m and self.AnimZoomTo and self.AnimPanTo) then 
+        return false 
+    end
+    -- Skip entirely if the model isn't visible
+    if not m:IsShown() then
+        return false
+    end
 
     local duration = tonumber(opts.duration) or 1.5
-    local waveZoom = (opts.waveZoom ~= nil) and opts.waveZoom or (ReplayFrame.Camera and ReplayFrame.Camera.WAVE_ZOOM) or 0.3
+    local waveZoom = (opts.waveZoom ~= nil) and opts.waveZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.WAVE_ZOOM) or 0.3
     local waveOutDur = (opts.waveOutDur ~= nil) and opts.waveOutDur or 0.2
     local zoomBackDur = (opts.zoomBackDur ~= nil) and opts.zoomBackDur or 0.5
     local lowerDelta = (opts.lowerDelta ~= nil) and opts.lowerDelta or (self.waveLowerDelta or 0.05)
     -- After waving, transition to the defined talk zoom, not merely the original zoom
     local targetAfterWave = getTalkZoom(self)
     local baseZ = getBaseZ(self)
+    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
+    local handDelta = cam.HAND_FOCUS_DELTA or 0
+    local wavePanZ = baseZ + handDelta - lowerDelta
+    local afterPanZ = (cam and cam.TALK_PAN_Z) or baseZ
     -- Use EmoteBuilder's standardized completion chaining
     local emoteName = tostring(opts.emoteName or "wave")
 
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name(emoteName)
         :zoom(waveZoom, waveOutDur)
-        :pan(baseZ - lowerDelta, 0.15)
+    :pan(wavePanZ, 0.15)
         :anim(67)
         :hold(duration)
         :zoom(targetAfterWave, zoomBackDur)
-        :pan(baseZ, 0.25)
+    :pan(afterPanZ, 0.25)
         :hold(0.05)
-        :onComplete(function()
-            -- After wave, continue conversation emote loop if still the same playback
-            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-            local inGrace = false
-            if cur and cur.startTime and GetTime then
-                local dt = GetTime() - (cur.startTime or 0)
-                inGrace = dt >= 0 and dt < 0.6
-            end
-            if emoteName ~= "bye" and cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop then
-                self:StartEmoteLoop()
-            else
-                if (not inGrace) and self.SetIdleLoop then self:SetIdleLoop() end
-            end
-        end)
-        :run(opts)) or false
+    :onComplete(function()
+        -- Defer to FSM's EMOTE_COMPLETE handler to enter TALK and start loop.
+        -- Avoid starting loop here to prevent duplicate PlayTalkEmote calls.
+    end)
+    :run()) or false
 end
 
 -- Alias: Hello emote uses the same wave choreography with tuned defaults
@@ -281,6 +335,7 @@ end
 function ReplayFrame:PlayNodEmote(opts)
     local m = self.NpcModelFrame
     if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
+    if not m:IsShown() then return false end
     opts = opts or {}
     local duration = tonumber(opts.duration) or 0.9
     local zoomIn = (opts.zoomIn ~= nil) and opts.zoomIn or 0.08
@@ -298,7 +353,14 @@ function ReplayFrame:PlayNodEmote(opts)
         :hold(duration)
         :zoom(baseZoom, 0.25)
         :pan(baseZ, 0.15)
-    :run({ onComplete = opts.onComplete })) or false
+        :onComplete(function()
+            -- Let animation system handle next steps after nod
+            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            if cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop and self.NpcModelFrame and self.NpcModelFrame:IsShown() then
+                self:StartEmoteLoop()
+            end
+        end)
+    :run()) or false
 end
 
 -- Head shake (NO) emote: small zoom-in and quick head shake using animation id 186 (EmoteNo).
@@ -306,6 +368,7 @@ end
 function ReplayFrame:PlayHeadShakeEmote(opts)
     local m = self.NpcModelFrame
     if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
+    if not m:IsShown() then return false end
     opts = opts or {}
     local duration = tonumber(opts.duration) or 1.1
     local zoomIn = (opts.zoomIn ~= nil) and opts.zoomIn or 0.08
@@ -323,7 +386,14 @@ function ReplayFrame:PlayHeadShakeEmote(opts)
         :hold(duration)
         :zoom(baseZoom, 0.25)
         :pan(baseZ, 0.15)
-    :run({ onComplete = opts.onComplete })) or false
+        :onComplete(function()
+            -- Let animation system handle next steps after head shake
+            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            if cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop and self.NpcModelFrame and self.NpcModelFrame:IsShown() then
+                self:StartEmoteLoop()
+            end
+        end)
+    :run()) or false
 end
 
 -- =============================
@@ -351,7 +421,7 @@ function ReplayFrame.EmoteBuilder:name(emoteName)
 end
 
 -- Optional internal completion handler set by the emote implementation.
--- This will execute before any user-provided opts.onComplete passed to :run().
+-- This will execute before EMOTE_COMPLETE is emitted.
 function ReplayFrame.EmoteBuilder:onComplete(fn)
     if type(fn) == "function" then
         self._internalOnComplete = fn
@@ -417,6 +487,12 @@ function ReplayFrame.EmoteBuilder:run(opts)
         table.insert(self.steps, self.cur)
         self.cur = {}
     end
+    
+    -- Minimal logging only when debug is explicitly enabled
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
+        CLN.Utils:LogAnimDebug("EmoteBuilder run: steps=" .. tostring(#self.steps) .. ", name=" .. tostring(self._name))
+    end
+    
     if self._name and self._name ~= "" then
         r._emoteName = self._name
         -- Do not override top-level _animState here; FSM owns state. Per-step animId applies directly.
@@ -424,36 +500,18 @@ function ReplayFrame.EmoteBuilder:run(opts)
     r._emoteActive = true
     -- Broadcast started
     r:_EmitEmoteEvent("EMOTE_STARTED", { name = self._name })
-    -- Chain internal and user callbacks in a consistent order
-    local runOpts = opts or {}
-    if self._internalOnComplete then
-        local userCb = runOpts.onComplete
-        runOpts = {}
-        for k, v in pairs(opts or {}) do runOpts[k] = v end
-        runOpts.onComplete = function()
-            pcall(self._internalOnComplete, r)
-            if userCb then pcall(userCb) end
-            -- Broadcast complete after callbacks
-            r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
-        end
-    else
-        -- If no internal handler, still broadcast completion after user callback
-        if runOpts.onComplete then
-            local userCb = runOpts.onComplete
-            runOpts = {}
-            for k, v in pairs(opts or {}) do runOpts[k] = v end
-            runOpts.onComplete = function()
-                pcall(userCb)
-                r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
-            end
-        else
-            -- No callbacks supplied; ensure we still emit completion after sequence ends
-            runOpts.onComplete = function()
-                r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
-            end
-        end
+    -- Always run internal completion first (if present), then emit EMOTE_COMPLETE
+    local runOpts = {}
+    runOpts.onComplete = function()
+        if self._internalOnComplete then pcall(self._internalOnComplete, r) end
+        r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
+        -- Clear emote state to let animation system take over
+        r._emoteActive = false
+        r._emoteName = nil
     end
-    return r:_StartEmoteSequence(self.steps, runOpts)
+    
+    local result = r:_StartEmoteSequence(self.steps, runOpts)
+    return result
 end
 
 -- Simple talk emote: choose appropriate talk animation id and apply; duration controlled by caller
@@ -461,19 +519,20 @@ function ReplayFrame:PlayTalkEmote(opts)
     local m = self.NpcModelFrame
     if not m then return false end
     opts = opts or {}
+    -- Absolute camera targets for TALK
+    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
+    local talkPanZ = (cam and cam.TALK_PAN_Z) or getBaseZ(self)
+    local talkZoom = getTalkZoom(self)
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local talkId = 60
     if self.ChooseTalkAnimIdForText and cur and cur.title then
         talkId = self:ChooseTalkAnimIdForText(cur.title)
     end
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
+    -- Use central setter to avoid redundant flicker and keep state consistent
+    if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
 
-    -- Always set the animation directly first for immediate response
-    if m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
-    self._animState = "talk"
-    self._lastTalkId = talkId
-
-    -- Duration control via our emote system so we can chain onComplete precisely
+    -- Duration control via our emote system so we can emit completion events precisely
     local duration = tonumber(opts.duration) or 0
     -- Optional: callers may supply a specific variant via opts.talkVariant; we don't set by default
     local variant = tonumber(opts.talkVariant)
@@ -485,15 +544,17 @@ function ReplayFrame:PlayTalkEmote(opts)
             -- Fallback: animation already set above
             return true
         end
-        builder:name("talk"):anim(talkId)
+        builder:name("talk"):zoom(talkZoom, 0.5):pan(talkPanZ, 0.25):anim(talkId)
         -- Avoid passing variant unless explicitly requested; many models don't support it
         if variant then builder:animVariant(variant) end
         if duration > 0 then builder:hold(duration) end
-        local ok = builder:run({ onComplete = opts.onComplete }) or false
+        local ok = builder:run() or false
         return ok
     else
         -- For zero or no duration, just use the direct animation we already set
-        if opts.onComplete then pcall(opts.onComplete) end
+        -- Move camera absolutely to TALK targets
+        if self.AnimZoomTo then self:AnimZoomTo(talkZoom, 0.5, { easing = "easeOutCubic" }) end
+        if self.AnimPanTo then self:AnimPanTo(talkPanZ, 0.25, { easing = "easeOutCubic" }) end
         return true
     end
 end
@@ -503,16 +564,29 @@ function ReplayFrame:PlayIdleEmote(opts)
     local m = self.NpcModelFrame
     if not m then return false end
     opts = opts or {}
+    -- Absolute camera targets for IDLE
+    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
+    local idlePanZ = (cam and cam.IDLE_PAN_Z) or getBaseZ(self)
+    local idleZoom = getIdleZoom(self)
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
 
     local duration = tonumber(opts.duration) or 0
-    local builder = self.EmoteBuilder and self.EmoteBuilder:new()
-    if not builder then return false end
-    builder:name("idle"):anim(0)
-    if duration > 0 then builder:hold(duration) end
-    local ok = builder:run({ onComplete = opts.onComplete }) or false
-    self._animState = "idle"
-    return ok
+    if duration > 0 then
+        local builder = self.EmoteBuilder and self.EmoteBuilder:new()
+        if not builder then return false end
+        builder:name("idle"):zoom(idleZoom, 0.5):pan(idlePanZ, 0.25):anim(0)
+        builder:hold(duration)
+        local ok = builder:run() or false
+        -- State writes removed; FSM owns state
+        return ok
+    else
+        -- Direct idle animation, let system handle what comes next
+        if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
+        -- Move camera absolutely to IDLE targets
+        if self.AnimZoomTo then self:AnimZoomTo(idleZoom, 0.5, { easing = "easeOutCubic" }) end
+        if self.AnimPanTo then self:AnimPanTo(idlePanZ, 0.25, { easing = "easeOutCubic" }) end
+        return true
+    end
 end
 
 -- Conversation emote loop: 80% talk / 20% idle by RNG
@@ -529,42 +603,44 @@ function ReplayFrame:StartEmoteLoop(opts)
     
     self._emoteLoopActive = true
     self._emoteLoopHandle = cur.soundHandle
-
-    -- Ensure camera moves to the TALK preset when the loop starts
-    do
-        local baseZ = getBaseZ(self)
-        if self.AnimZoomTo then self:AnimZoomTo(getTalkZoom(self), 0.5, { easing = "easeOutCubic" }) end
-        if self.AnimPanTo then self:AnimPanTo(baseZ, 0.25, { easing = "easeOutCubic" }) end
+    if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+    -- Reset loop scheduling token and cancel any pending timer
+    self._emoteLoopToken = (self._emoteLoopToken or 0) + 1
+    if self._emoteLoopTimer and self._emoteLoopTimer.Cancel then
+        pcall(function() self._emoteLoopTimer:Cancel() end)
     end
+    self._emoteLoopTimer = nil
+
+    -- Camera will be set by PlayTalkEmote/PlayIdleEmote on each segment
 
     -- Store config for the loop; use sane defaults
     opts = opts or {}
-    self._loopTalkChance = tonumber(opts.talkChance or self.talkChance) or 0.95  -- probability to choose talk over idle
-    self._loopTalkMin = tonumber(opts.talkMinDuration or self.talkMinDuration) or 3.5
-    self._loopTalkMax = tonumber(opts.talkMaxDuration or self.talkMaxDuration) or 6.5
-    self._loopIdleMin = tonumber(opts.idleMinDuration or self.idleMinDuration) or 0.2
-    self._loopIdleMax = tonumber(opts.idleMaxDuration or self.idleMaxDuration) or 0.5
+    local L = (ReplayFrame.Config and ReplayFrame.Config.Loop) or {}
+    self._loopTalkChance = tonumber(opts.talkChance or self.talkChance) or L.talkChance or 0.95
+    self._loopTalkMin = tonumber(opts.talkMinDuration or self.talkMinDuration) or L.talkMin or 3.5
+    self._loopTalkMax = tonumber(opts.talkMaxDuration or self.talkMaxDuration) or L.talkMax or 6.5
+    self._loopIdleMin = tonumber(opts.idleMinDuration or self.idleMinDuration) or L.idleMin or 0.2
+    self._loopIdleMax = tonumber(opts.idleMaxDuration or self.idleMaxDuration) or L.idleMax or 0.5
     self._loopLastWasIdle = false
 
     -- Ensure the first segment is TALK to avoid any initial idle
     self._emoteFirstSegmentForced = true
-    -- Immediately start with talk animation to avoid idle delay
-    self:PlayTalkEmote({ duration = 0.1 }) -- small duration to ensure it starts
+    -- Immediately start with talk animation to avoid idle delay (no sequence/hold)
+    self:PlayTalkEmote({ duration = 0 })
     self._emoteSegType = "talk"
-    self._animState = "talk"
     
-    -- Also directly set the animation on the model frame as fallback
+    -- Also ensure animation via central setter as fallback
     local m = self.NpcModelFrame
-    if m and m.SetAnimation then
+    if m then
         local talkId = 60
         if self.ChooseTalkAnimIdForText and cur and cur.title then
             talkId = self:ChooseTalkAnimIdForText(cur.title)
         end
-        pcall(m.SetAnimation, m, talkId)
+        if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
         if m.SetSheathed then pcall(m.SetSheathed, m, true) end
     end
 
-    -- Start the first segment immediately; OnUpdate will handle subsequent transitions by time
+    -- Start the first segment immediately; subsequent transitions are timer-driven
     if self._EmoteLoop_PickAndStartSegment then
         self:_EmoteLoop_PickAndStartSegment(GetTime and GetTime() or 0)
     end
@@ -603,11 +679,12 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
         self._emoteSegType = "idle"
     end
     local nowT = now or (GetTime and GetTime() or 0)
-    self._emoteSegEndTime = nowT + dur
+    -- Switch to timer-based scheduling; do not rely on per-frame polling
+    self._emoteSegEndTime = nil
     
     -- Safety check: ensure model has an animation set
     local m = self.NpcModelFrame
-    if m and m.SetAnimation then
+    if m then
         if not chooseIdle then
             -- Force set talk animation in case PlayTalkEmote didn't work
             local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -615,10 +692,14 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
             if self.ChooseTalkAnimIdForText and cur and cur.title then
                 talkId = self:ChooseTalkAnimIdForText(cur.title)
             end
-            pcall(m.SetAnimation, m, talkId)
+            if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
         else
-            pcall(m.SetAnimation, m, 0) -- idle
+            if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
         end
+    end
+    -- Schedule next segment via timer
+    if self._EmoteLoop_ScheduleNext then
+        self:_EmoteLoop_ScheduleNext(dur)
     end
 end
 
@@ -629,4 +710,33 @@ function ReplayFrame:StopEmoteLoop()
     self._emoteSegType = nil
     self._loopLastWasIdle = nil
     self._emoteFirstSegmentForced = nil
+    -- Invalidate and cancel any pending timer
+    self._emoteLoopToken = (self._emoteLoopToken or 0) + 1
+    if self._emoteLoopTimer and self._emoteLoopTimer.Cancel then
+        pcall(function() self._emoteLoopTimer:Cancel() end)
+    end
+    self._emoteLoopTimer = nil
+    if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+end
+
+-- Schedule the next emote loop tick using C_Timer, with cancellation via token
+function ReplayFrame:_EmoteLoop_ScheduleNext(dur)
+    local tok = (self._emoteLoopToken or 0)
+    local function cb()
+        -- Ignore if loop stopped or token changed
+        if not self:_EmoteLoop_StillValid() then return end
+        if tok ~= (self._emoteLoopToken or 0) then return end
+        if self._EmoteLoop_PickAndStartSegment then
+            self:_EmoteLoop_PickAndStartSegment(GetTime and GetTime() or 0)
+        end
+    end
+    if C_Timer and C_Timer.NewTimer then
+        if self._emoteLoopTimer and self._emoteLoopTimer.Cancel then
+            pcall(function() self._emoteLoopTimer:Cancel() end)
+        end
+        self._emoteLoopTimer = C_Timer.NewTimer(dur, cb)
+    elseif C_Timer and C_Timer.After then
+        -- After cannot be cancelled; token check in cb prevents stale execution
+        C_Timer.After(dur, cb)
+    end
 end

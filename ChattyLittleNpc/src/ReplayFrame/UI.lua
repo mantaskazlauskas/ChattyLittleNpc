@@ -326,6 +326,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     clearBtn:SetScript("OnClick", function()
         CLN.questsQueue = {}
+        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
         ReplayFrame:UpdateDisplayFrame()
     end)
     self.ClearButton = clearBtn
@@ -630,6 +631,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                             table.insert(toPlay, CLN.questsQueue[i])
                         end
                         CLN.questsQueue = {}
+                        if this.MarkQueueDirty then this:MarkQueueDirty() end
                         for _, q in ipairs(toPlay) do CLN:PlayQuestTTS(q) end
                     end
                 end
@@ -687,15 +689,21 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             row:Show()
             local label = element.label or "Unknown"
             row._fullText = label
-            row.text:SetText(label)
+            -- Apply coloring
             if element.isPlaying then
                 row.text:SetTextColor(0.2, 1.0, 0.2)
             else
                 row.text:SetTextColor(0.95, 0.86, 0.20)
             end
-            if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-            -- Fit to actual width; will also undo early ellipses if space allows
-            self:FitRowText(row)
+            -- Only update text/fit if content or available width changed
+            local avail = self:GetRowTextAvailableWidth(row)
+            if row._lastLabel ~= label or row._lastAvail ~= avail then
+                row.text:SetText(label)
+                if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+                self:FitRowText(row)
+                row._lastLabel = label
+                row._lastAvail = avail
+            end
             if row.bulletTex then row.bulletTex:Show() end
         end
     end
