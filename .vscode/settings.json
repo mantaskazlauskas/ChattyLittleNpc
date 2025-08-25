@@ -51,7 +51,8 @@
         "GameTooltipTextLeft2",
         "GameTooltipTextLeft3",
         "GameTooltipTextLeft4",
-        "ID"
+        "ID",
+        "EditModeManagerFrame"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"
