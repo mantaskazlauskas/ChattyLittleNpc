@@ -80,11 +80,11 @@ ReplayFrame.Config = ReplayFrame.Config or {
     oneShotWatchTimeout = 2.0, -- fallback timeout for non-looping emote watcher
     },
     Loop = {
-    talkChance = 0.92,
-    talkMin = 1.8,
-    talkMax = 3.2,
-    idleMin = 0.25,
-    idleMax = 0.6,
+    talkChance = 0.97,
+    talkMin = 3.5,
+    talkMax = 7.5,
+    idleMin = 0.15,
+    idleMax = 0.35,
     },
 }
 
@@ -135,12 +135,15 @@ end
 function ReplayFrame:PlayEmote(name, opts)
     opts = opts or {}
     name = tostring(name or "")
+    -- Guard: if an emote is already active, cancel it before starting a new one to avoid overlap
+    if self._emoteActive then
+        self:CancelEmote()
+    end
     if name == "wave" then
         return self:PlayWaveEmote(opts)
     elseif name == "hello" then
         return self:PlayHelloEmote(opts)
-    elseif name == "bye" or name == "goodbye" or name == "farewell" then
-        return self:PlayByeEmote(opts)
+    -- farewell/bye emotes removed
     elseif name == "nod" or name == "yes" then
         return self:PlayNodEmote(opts)
     elseif name == "no" or name == "shake" or name == "headshake" then
@@ -176,7 +179,10 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
         CLN.Utils:LogAnimDebug("Emote sequence start: steps=" .. tostring(#steps))
     end
 
-    self:CancelEmote()
+    -- Cancel any prior running emote to avoid overlapping sequences
+    if self._emoteActive then
+        self:CancelEmote()
+    end
     self._emoteSeqActive = true
     self._emoteSeqIndex = 0
 
@@ -317,17 +323,7 @@ function ReplayFrame:PlayHelloEmote(opts)
     return self:PlayWaveEmote(opts)
 end
 
--- Targeted Bye/Farewell emote: a slightly snappier wave
-function ReplayFrame:PlayByeEmote(opts)
-    opts = opts or {}
-    if opts.duration == nil then opts.duration = 1.2 end
-    if opts.waveZoom == nil then opts.waveZoom = 0.3 end
-    if opts.waveOutDur == nil then opts.waveOutDur = 0.15 end
-    if opts.zoomBackDur == nil then opts.zoomBackDur = 0.4 end
-    if opts.lowerDelta == nil then opts.lowerDelta = (self.waveLowerDelta or 0.04) end
-    opts.emoteName = opts.emoteName or "bye"
-    return self:PlayWaveEmote(opts)
-end
+-- PlayByeEmote removed (farewell support dropped)
 
 -- Nod (YES) emote: small zoom-in and quick nod using animation id 185 (EmoteYes).
 -- Options: duration (default 0.9), zoomIn (default +0.08), lowerDelta (default 0.02)

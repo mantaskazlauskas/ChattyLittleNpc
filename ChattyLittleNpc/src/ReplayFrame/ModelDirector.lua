@@ -29,7 +29,7 @@ local WAVE_COOLDOWN = 30 -- seconds, per-NPC
 -- Interaction gate
 local RECENT_INTERACT_TTL = 120 -- seconds
 
-local BYE_COOLDOWN = 45 -- seconds, per-NPC
+-- Removed farewell/bye cooldown and detection
 
 
 -- Pattern-based greeting detection (lowercased, Lua patterns allowed)
@@ -153,41 +153,7 @@ function Director:MarkInteracted()
     lastInteractBy[key] = now
 end
 
-
--- Farewell detection
-local FAREWELL_PATTERNS = {
-    "farewell", "^farewell", "goodbye", "^goodbye", "%f[%a]bye%f[%A]", "^bye$", "see you", "until we meet again",
-    "safe travels", "walk with the earth mother", "be seeing you", "light guide you", "go in peace",
-    "remember the sunwell", "winds at your back", "watch your back", "shadows guide you",
-}
-
-function Director:LooksLikeFarewell(msg)
-    if not msg or msg == "" then return false end
-    msg = tostring(msg):lower()
-    for _, pat in ipairs(FAREWELL_PATTERNS) do
-        if string.find(msg, pat) then
-            return true
-        end
-    end
-    return false
-end
-
-local lastByeBy = {}
-
-local function getByeKey()
-    return getWaveKey() or "unknown"
-end
-
-function Director:CanPlayBye()
-    local key = getByeKey()
-    local now = GetTime and GetTime() or 0
-    local last = lastByeBy[key]
-    if (not last) or ((now - last) > BYE_COOLDOWN) then
-        lastByeBy[key] = now
-        return true
-    end
-    return false
-end
+-- Farewell detection removed
 
 -- Start decision-making for the current playback state
 -- Start/Stop/Update are managed by the new ReplayFrame FSM; Director now provides only heuristics and gates.

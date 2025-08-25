@@ -5,14 +5,13 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local ReplayFrame = CLN.ReplayFrame
 
 -- Finite State Machine for reliable animation control
--- States: idle -> wave? -> talk -> farewell? -> idle
+-- States: idle -> wave? -> talk -> idle
 
 -- Exported state constants (use these across modules to avoid string typos)
 ReplayFrame.State = ReplayFrame.State or {
     IDLE = "idle",
     WAVE = "wave",
     TALK = "talk",
-    FAREWELL = "farewell",
 }
 local S = ReplayFrame.State
 
@@ -48,12 +47,7 @@ function ReplayFrame:InitStateMachine()
     self._fsmMarkInteracted = function()
         if self.Director and self.Director.MarkInteracted then self.Director:MarkInteracted() end
     end
-    self._fsmLooksLikeFarewell = function(msg)
-        return self.Director and self.Director.LooksLikeFarewell and self.Director:LooksLikeFarewell(msg) or false
-    end
-    self._fsmCanPlayBye = function()
-        return self.Director and self.Director.CanPlayBye and self.Director:CanPlayBye() or true
-    end
+    -- Farewell support removed
 
     -- State actions
     -- Define with self as first parameter because callers use colon syntax (self:_fsm_enter(...))
@@ -70,9 +64,7 @@ function ReplayFrame:InitStateMachine()
             -- cancel any pending emote sequence
             if self.CancelEmote then self:CancelEmote() end
         end
-        if fsm.state == S.FAREWELL then
-            if self.CancelEmote then self:CancelEmote() end
-        end
+    -- No farewell state
 
         -- transition
         fsm.state = newState
@@ -127,30 +119,6 @@ function ReplayFrame:InitStateMachine()
         elseif newState == S.TALK then
             -- Let the conversation loop drive both animation and absolute camera targets
             if self.StartEmoteLoop then self:StartEmoteLoop() end
-        elseif newState == S.FAREWELL then
-            -- Play a short bye/hello emote and schedule hide
-            local msg = self._fsm and self._fsm.lastMsg or ""
-            local emote = (msg and msg:lower():find("hello") or msg:lower():find("greetings") or msg:lower():find("well met")) and "hello" or "bye"
-            local duration = (emote == "bye") and 1.2 or 1.5
-            if self.ModelContainer then self.ModelContainer:Show() end
-            if self.NpcModelFrame then self.NpcModelFrame:Show() end
-            if self.PlayEmote then
-                local handled = false
-                self:OnEmote("EMOTE_COMPLETE", function(payload)
-                    if handled then return end
-                    if not payload or payload.name ~= emote then return end
-                    handled = true
-                    self:_fsm_enter(S.IDLE)
-                    -- schedule hide if nothing resumed
-                    local t = now() + 0.6
-                    if self._fsm then self._fsm.hideAt = t end
-                    -- Process any pending context after farewell completes
-                    self:_processPendingContext()
-                end)
-                self:PlayEmote(emote, { duration = duration })
-            else
-                self:_fsm_enter(S.IDLE)
-            end
         end
     end
 
@@ -190,9 +158,9 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
             return
         end
         
-        -- If it's different content or enough time has passed, allow processing
-        -- But if we're currently in WAVE or FAREWELL state for different content, let it complete first
-        if (fsm.state == S.WAVE or fsm.state == S.FAREWELL) and not isSameHandle then
+    -- If it's different content or enough time has passed, allow processing
+    -- But if we're currently in WAVE state for different content, let it complete first
+    if (fsm.state == S.WAVE) and not isSameHandle then
             if self.Debug then self:Debug("Current state:", fsm.state, "is busy with different content, deferring") end
             -- Store for later processing when current animation completes
             fsm.pendingContext = currentContext
@@ -207,6 +175,14 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     
     if self.Debug then self:Debug("FSM_OnPlaybackStart processing - title:", cur.title or "nil", "handle:", cur.soundHandle) end
     
+    -- If switching handle, clear one-shot watcher and any active emote to avoid overlap
+    if fsm.lastHandle and fsm.lastHandle ~= cur.soundHandle then
+        self._watchAnimActive = false
+        self._watchAnimId = nil
+        self._watchStartedAt = nil
+        self._watchTimeout = nil
+        if self.CancelEmote then self:CancelEmote() end
+    end
     -- update handle & last message
     fsm.lastHandle = cur.soundHandle
     fsm.lastMsg = cur.title
@@ -277,17 +253,12 @@ function ReplayFrame:FSM_OnPlaybackStop(lastMsg)
     
     fsm.lastMsg = lastMsg
 
-    -- Farewell decision
-    if lastMsg and self._fsmLooksLikeFarewell(lastMsg) and self._fsmCanPlayBye() then
-    if self.Debug then self:Debug("Entering FAREWELL state") end
-        self:_fsm_enter(S.FAREWELL)
-    else
+    -- Always go to IDLE on stop; farewell support removed
     if self.Debug then self:Debug("Entering IDLE state") end
-        self:_fsm_enter(S.IDLE)
-        -- schedule hide shortly if nothing is playing
-        local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
-        fsm.hideAt = now() + delay
-    end
+    self:_fsm_enter(S.IDLE)
+    -- schedule hide shortly if nothing is playing
+    local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
+    fsm.hideAt = now() + delay
 end
 
 -- Helper function to process pending context after animation completes

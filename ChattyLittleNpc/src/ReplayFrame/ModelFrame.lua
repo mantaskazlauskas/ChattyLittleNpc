@@ -4,8 +4,8 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
--- Creates a full-width container for the NPC model and a fixed-size PlayerModel inside it.
--- Keeps the model from resizing with the frame; only the container spans the width.
+-- Creates a full-width container for the NPC model and a PlayerModel that spans the full width (fixed height).
+-- The model itself isn't changed; we just give it more horizontal space for animations.
 function ReplayFrame:CreateModelUI()
     -- Prevent duplicate creation
     if self.ModelContainer or self.NpcModelFrame then return end
@@ -22,10 +22,12 @@ function ReplayFrame:CreateModelUI()
     modelContainer:Hide()
     self.ModelContainer = modelContainer
 
-    -- Fixed-size model anchored left within the container
+    -- Model spans full container width; keep a fixed height
     local modelFrame = CreateFrame("PlayerModel", "ChattyLittleNpcModelFrame", modelContainer)
-    modelFrame:SetSize(self.npcModelFrameWidth, self.npcModelFrameHeight)
+    modelFrame:ClearAllPoints()
     modelFrame:SetPoint("TOPLEFT", modelContainer, "TOPLEFT", 0, 0)
+    modelFrame:SetPoint("TOPRIGHT", modelContainer, "TOPRIGHT", 0, 0)
+    modelFrame:SetHeight(self.npcModelFrameHeight)
     modelFrame:Hide()
     self.NpcModelFrame = modelFrame
 end
@@ -67,8 +69,9 @@ function ReplayFrame:LayoutModelArea(frame)
 
     if self.NpcModelFrame then
         self.NpcModelFrame:ClearAllPoints()
-        self.NpcModelFrame:SetSize(self.npcModelFrameWidth or 220, self.npcModelFrameHeight or 140)
-    self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
+        self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
+        self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, 0)
+        self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or 140)
         if hasModel then self.NpcModelFrame:Show() else self.NpcModelFrame:Hide() end
     end
 end
@@ -117,6 +120,11 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
 
     local displayID = NpcDisplayIdDB[npcId]
     if (displayID) then
+        -- If model changed, reset animation state to avoid stale loops from previous model
+        if self._lastDisplayID ~= displayID then
+            if self.ResetAnimationState then self:ResetAnimationState() end
+            self._lastDisplayID = displayID
+        end
         self.NpcModelFrame:ClearModel()
         self.NpcModelFrame:SetDisplayInfo(displayID)
         -- Slightly zoomed out for more headroom so tall models aren't clipped
@@ -141,6 +149,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             -- Set initial talk animation; let FSM start the loop/camera
             self:SetModelAnim(talkId)
         else
+            -- Ensure any conversation loop is stopped when not playing
+            if self.StopEmoteLoop then self:StopEmoteLoop() end
             self:SetModelAnim(0) -- Idle
         end
         self._hasValidModel = true
@@ -455,12 +465,12 @@ end
 
 -- Public: when conversation stops, revert to idle
 function ReplayFrame:OnConversationStop()
-    -- Don't run stop/farewell animations if the model isn't visible
+    -- Don't run stop animations if the model isn't visible
     if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then
         self:ResetAnimationState()
         return
     end
-    -- Route through FSM for consistent farewell handling
+    -- Route through FSM for consistent stop handling
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
     if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
@@ -507,6 +517,17 @@ function ReplayFrame:SetModelAnim(animId)
     end
     -- Skip only if both our cached value and the model's actual state match
     if self._lastAppliedAnimId == animId and curAnim == animId then return end
+    -- If switching between different one-shots, clear watcher and cancel any sequence before applying new one
+    local wasOneShot = self._lastAppliedAnimId == 67 or self._lastAppliedAnimId == 185 or self._lastAppliedAnimId == 186
+    local willBeOneShot = animId == 67 or animId == 185 or animId == 186
+    if wasOneShot and (animId ~= self._lastAppliedAnimId) then
+        -- Clear one-shot watcher and any pending emote to avoid overlap/races
+        self._watchAnimActive = false
+        self._watchAnimId = nil
+        self._watchStartedAt = nil
+        self._watchTimeout = nil
+        if self.CancelEmote then self:CancelEmote() end
+    end
     pcall(m.SetAnimation, m, animId)
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
     if m.SetPaused then pcall(m.SetPaused, m, false) end

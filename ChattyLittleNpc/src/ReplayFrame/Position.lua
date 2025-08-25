@@ -189,5 +189,3 @@ end
 function ReplayFrame:IsDialogueUIFrameShow()
     return CLN.isDUIAddonLoaded and _G["DUIQuestFrame"] and _G["DUIQuestFrame"]:IsShown()
 end
-
--- Decide if there's enough horizontal room to show the NPC talking head
