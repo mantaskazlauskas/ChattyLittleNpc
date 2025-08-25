@@ -50,10 +50,32 @@ end
 
 -- Register a job that triggers events
 function EventHandler:StartWatcher()
+    -- Latch to avoid sending VOICEOVER_STOP repeatedly for the same sound handle
+    self._stopLatchHandle = nil
     self:ScheduleRepeatingTimer(function()
-        local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
-        if (currentlyPlaying and not currentlyPlaying:isPlaying()) then
-            self:SendMessage("VOICEOVER_STOP", currentlyPlaying)
+        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        if not cp then return end
+
+        local handle = cp.soundHandle
+        local isPlaying = cp.isPlaying and cp:isPlaying() or false
+
+        -- If a new handle starts playing, clear the latch
+        if handle and isPlaying and self._stopLatchHandle and self._stopLatchHandle ~= handle then
+            if CLN and CLN.Utils and CLN.Utils.LogDebug then
+                CLN.Utils:LogDebug("Watcher: clearing stop latch for new handle " .. tostring(handle))
+            end
+            self._stopLatchHandle = nil
+        end
+
+        -- Only emit stop once per handle, and only when we have a valid handle
+        if handle and not isPlaying then
+            if self._stopLatchHandle ~= handle then
+                if CLN and CLN.Utils and CLN.Utils.LogDebug then
+                    CLN.Utils:LogDebug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle))
+                end
+                self._stopLatchHandle = handle
+                self:SendMessage("VOICEOVER_STOP", cp)
+            end
             return
         end
     end, 0.5)
@@ -206,25 +228,55 @@ function EventHandler:ITEM_TEXT_READY()
 end
 
 function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
+    -- Deduplicate rapid repeated stops for the same handle
+    local stoppedHandle = stoppedVoiceover and stoppedVoiceover.soundHandle
+    local now = (type(GetTime) == "function") and GetTime() or 0
+    if stoppedHandle then
+        if self._lastStoppedHandle == stoppedHandle and self._lastStoppedTime and (now - self._lastStoppedTime) < 1.0 then
+            if CLN and CLN.Utils and CLN.Utils.LogDebug then
+                CLN.Utils:LogDebug("OnVoiceoverStop: deduped for handle " .. tostring(stoppedHandle))
+            end
+            return
+        end
+        self._lastStoppedHandle = stoppedHandle
+        self._lastStoppedTime = now
+    end
+
     for i, quest in ipairs(CLN.questsQueue) do
         if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
             CLN.Utils:LogDebug("Removing quest from queue:" .. quest.questId)
             table.remove(CLN.questsQueue, i)
+            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
             break
         end
     end
 
     if (#CLN.questsQueue > 0) then
         CLN.Utils:LogDebug("Playing next quest in queue.")
+        -- Ensure previous emote/animation state is clean before starting next
+        if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+            CLN.ReplayFrame:ResetAnimationState()
+        end
         local nextQuest = CLN.questsQueue[1]
         CLN.VoiceoverPlayer.queueProcessed = false
         CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId)
-    elseif not CLN.VoiceoverPlayer.queueProcessed then
-        CLN.Utils:LogDebug("No more quests in queue, resetting currentlyPlaying object.")
-        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
-        CLN.VoiceoverPlayer.queueProcessed = true
     else
-        CLN.ReplayFrame:UpdateDisplayFrameState()
+        -- Nothing left in the queue; clear current if it matches the stopped handle
+        local curr = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local currHandle = curr and curr.soundHandle or nil
+        local stillPlaying = curr and curr.isPlaying and curr:isPlaying() or false
+        if not stillPlaying or (stoppedHandle and currHandle == stoppedHandle) then
+            CLN.Utils:LogDebug("No more quests in queue, clearing currentlyPlaying and closing UI.")
+	        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
+            CLN.VoiceoverPlayer.queueProcessed = true
+        end
+        -- Conversation stopped; refresh UI and let FSM drive farewell/hide
+        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+            CLN.ReplayFrame:UpdateDisplayFrameState()
+        end
+        if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
+            CLN.ReplayFrame:OnConversationStop()
+        end
     end
 end
 

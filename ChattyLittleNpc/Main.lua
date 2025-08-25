@@ -35,19 +35,28 @@ local defaults = {
         showGossipEditor = false,
         showReplayFrame = true,
         showSpeakButton = true,
-        framePos = { -- Default positiond
+    lockInEditMode = false,
+    hideInEditMode = false,
+    compactMode = false,
+    queueTextScale = 1.0,
+    -- Last known window position/size
+    framePos = { -- Default position
             point = "CENTER",
             relativeTo = nil,
             relativePoint = "CENTER",
             xOfs = 500,
             yOfs = 0
         },
+    frameSize = { width = 310 + 165, height = 165 },
+        layoutPositions = {},
+        layoutSizes = {},
         buttonPosX = -15,
         buttonPosY = -30,
         enableQuestPlaybackQueueing = true,
         stopVoiceoverAfterDialogWindowClose = false,
         audioChannel = "MASTER",
-        debugMode = false
+    debugMode = false,
+    debugAnimations = false
     }
 }
 
@@ -90,6 +99,35 @@ function CLN:OnEnable()
 
     if (self.db.profile.logNpcTexts) then
         self.NpcDialogTracker:GatherTooltipInfo()
+    end
+
+    -- Live option change hooks: apply visuals immediately
+    if self.db and self.db.RegisterCallback and not self._dbProfileHooked then
+        local function applyKey(key)
+            if key == "queueTextScale" and self.ReplayFrame and self.ReplayFrame.ApplyQueueTextScale then
+                self.ReplayFrame:ApplyQueueTextScale()
+            elseif key == "compactMode" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
+                self.ReplayFrame:UpdateDisplayFrameState()
+            elseif key == "showReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
+                self.ReplayFrame:UpdateDisplayFrameState()
+            elseif key == "debugMode" or key == "debugAnimations" then
+                -- no-op: toggles just affect logging gates
+            end
+        end
+        -- Use dot-notation per CallbackHandler: self is the addon receiving callbacks
+        self.db.RegisterCallback(self, "OnProfileChanged", function()
+            -- Rebuild UI scaling and visibility on profile switch
+            applyKey("queueTextScale")
+            applyKey("compactMode")
+            applyKey("showReplayFrame")
+        end)
+        self.db.RegisterCallback(self, "OnProfileCopied", function()
+            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
+        end)
+        self.db.RegisterCallback(self, "OnProfileReset", function()
+            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
+        end)
+        self._dbProfileHooked = true
     end
 end
 

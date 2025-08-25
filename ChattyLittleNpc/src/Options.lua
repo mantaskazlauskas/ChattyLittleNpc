@@ -57,7 +57,17 @@ local options = {
                     name = 'Print Debug Messages',
                     desc = 'Toggle to print debug messages.',
                     get = function(info) return CLN.db.profile.debugMode end,
-                    set = function(info, value) CLN.db.profile.debugMode = value end,
+                    set = function(info, value) 
+                        CLN.db.profile.debugMode = value 
+                        -- no additional action required; gates read dynamically
+                    end,
+                },
+                debugAnimations = {
+                    type = 'toggle',
+                    name = 'Animation Debug',
+                    desc = 'Reduce noise: only print animation-related debug when enabled.',
+                    get = function(info) return CLN.db.profile.debugAnimations end,
+                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
                 },
                 showGossipEditor = {
                     type = 'toggle',
@@ -85,18 +95,57 @@ local options = {
             name = 'Replay Frame',
             inline = true,
             args = {
+                -- Edit Mode specific settings removed
+                queueTextScale = {
+                    type = 'range',
+                    name = 'Queue Text Scale',
+                    desc = 'Scale the header and queue row text size.',
+                    min = 0.75,
+                    max = 1.5,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.queueTextScale or 1.0
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.queueTextScale = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
+                    end,
+                },
+                compactMode = {
+                    type = 'toggle',
+                    name = 'Compact Mode (hide NPC model)',
+                    desc = 'Hide the NPC model and shrink the queue frame width.',
+                    get = function(info) return CLN.db.profile.compactMode end,
+                    set = function(info, value)
+                        CLN.db.profile.compactMode = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
                 resetFramePos = {
                     type = 'execute',
                     name = 'Reset Replay Frame Position',
                     desc = 'Reset the replay frame position to its default values.',
                     func = function() CLN.ReplayFrame:ResetFramePosition() end,
                 },
+                openEditMode = {
+                    type = 'execute',
+                    name = 'Open Edit Mode (show frame)',
+                    desc = 'Show the replay frame and enter Edit Mode so you can move/resize it, even if nothing is playing.',
+                    func = function()
+                        if CLN and CLN.ReplayFrame and CLN.ReplayFrame.ShowForEdit then
+                            CLN.ReplayFrame:ShowForEdit()
+                        end
+                    end,
+                },
                 showReplayFrame = {
                     type = 'toggle',
                     name = 'Show Floating Head Frame (voiceover queue)',
                     desc = 'Toggle to show the floating head frame (voiceover queue)',
                     get = function(info) return CLN.db.profile.showReplayFrame end,
-                    set = function(info, value) CLN.db.profile.showReplayFrame = value end,
+                    set = function(info, value)
+                        CLN.db.profile.showReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
                 },
             },
         },
@@ -224,3 +273,15 @@ end
 
 -- Initialize the Options module
 Options:SetupOptions()
+
+-- Helper for other modules to open the Settings category
+function Options:OpenSettings()
+    local dlg = LibStub("AceConfigDialog-3.0", true)
+    if dlg and dlg.Open then
+        dlg:Open("ChattyLittleNpc")
+        return
+    end
+    if InterfaceOptionsFrame_OpenToCategory and self.optionsFrame then
+        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
+    end
+end
