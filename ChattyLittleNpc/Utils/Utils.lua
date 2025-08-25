@@ -106,11 +106,26 @@ function Utils:GetHashes(npcId, text)
 end
 
 --- Log debug messages to console
--- @param str The string to test.
+-- @param text The debug message to log.
 function Utils:LogDebug(text)
     if CLN.db.profile.debugMode then
         CLN:Print("|cff87CEEb[DEBUG]|r |cff87CEEb" .. text)
     end
+end
+
+--- Log animation debug messages to console
+-- @param text The animation debug message to log.
+function Utils:LogAnimDebug(text)
+    if CLN.db.profile.debugMode and CLN.db.profile.debugAnimations then
+    -- Use the same default blue as other debug messages
+    CLN:Print("|cff87CEEb[ANIM]|r |cff87CEEb" .. text)
+    end
+end
+
+--- Helper function to check if animation debug logging is enabled
+-- @return boolean true if animation debug logging is enabled
+function Utils:ShouldLogAnimDebug()
+    return CLN.db.profile.debugMode and CLN.db.profile.debugAnimations
 end
 
 --- Determines whether a string is null or empty.
