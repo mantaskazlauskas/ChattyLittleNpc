@@ -72,8 +72,7 @@ function ReplayFrame:SetEditMode(enabled)
         if self.ResizeGrip then self.ResizeGrip:Show() end
         if self.PrepareEditControlHighlights then self:PrepareEditControlHighlights() end
 
-        -- Make window draggable from anywhere in edit mode (if not locked)
-        if not self._origDragScripts then self._origDragScripts = {} end
+    -- Make window draggable from anywhere in edit mode (if not locked)
         local f = self.DisplayFrame
         -- Drag handlers
         if not locked then
@@ -360,42 +359,3 @@ function ReplayFrame:EndManualEdit()
     end
 end
 
--- Build context menu entries for right-click menu (DISABLED)
---[[
-local function CLN_BuildContextMenuEntries(self)
-    local entries = {}
-    if self:IsVoiceoverCurrenltyPlaying() then
-        table.insert(entries, { text = "Stop current", func = function()
-            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
-            self.userHidden = false
-            self:UpdateDisplayFrameState()
-        end })
-    end
-    if CLN.questsQueue and #CLN.questsQueue > 0 then
-        table.insert(entries, { text = "Clear queue", func = function()
-            CLN.questsQueue = {}
-            self:UpdateDisplayFrameState()
-        end })
-    end
-    table.insert(entries, { text = (CLN.db.profile.compactMode and "Disable" or "Enable") .. " compact mode", func = function()
-        CLN.db.profile.compactMode = not CLN.db.profile.compactMode
-        if self.ApplyCompactMode then self:ApplyCompactMode() end
-    end })
-    table.insert(entries, { text = "Options", func = function()
-        local Ace = LibStub and LibStub("AceAddon-3.0", true)
-        local Opts = Ace and Ace:GetAddon("Options", true) or nil
-        if Opts and Opts.OpenSettings then
-            Opts:OpenSettings(); return
-        end
-        local dlg = LibStub and LibStub("AceConfigDialog-3.0", true)
-        if dlg and dlg.Open then dlg:Open("ChattyLittleNpc") end
-    end })
-    return entries
-end
-
--- Open context menu on right-click (DISABLED)
-function ReplayFrame:OpenContextMenu(owner)
-    -- Right-click context menu functionality has been removed for cleaner interface
-    -- Users can access options via the options button and clear queue via the clear button
-end
---]]

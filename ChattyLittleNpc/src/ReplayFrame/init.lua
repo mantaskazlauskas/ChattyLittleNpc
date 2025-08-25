@@ -272,8 +272,8 @@ end
 -- =============================
 
 -- Centralized header builder (wraps pure version)
-function ReplayFrame:BuildHeaderText(playingTitle, npcId, isQuest, qcount, collapsed)
-    return ReplayFrame.Pure.BuildHeaderText(playingTitle, npcId, isQuest, qcount, collapsed)
+function ReplayFrame:BuildHeaderText(playingTitle, npcName, isQuest, qcount, collapsed)
+    return ReplayFrame.Pure.BuildHeaderText(playingTitle, npcName, isQuest, qcount, collapsed)
 end
 
 -- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue

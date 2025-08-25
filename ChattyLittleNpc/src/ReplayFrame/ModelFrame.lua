@@ -390,61 +390,6 @@ function ReplayFrame:SetIdleLoop()
     self:SetModelAnim(0)
 end
 
--- Play a one-shot wave at the start of a new sound handle
-function ReplayFrame:MaybePlayStartWave()
-    local m = self.NpcModelFrame
-    if not m then return end
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-    local handle = cur and cur.soundHandle or nil
-    if not handle then return end
-    -- Only trigger on a fresh start (new handle) and avoid late triggers
-    if self._lastSoundHandle == handle then return end
-    -- Skip wave for quest audio (often mid-sentence or UI-triggered)
-    if cur and cur.questId then
-        self._lastSoundHandle = handle
-    -- start the talk animation path directly for quests
-    self._talkPhase = "talk"
-        self:UpdateTalkAnimation()
-        return
-    end
-    -- Guard against delayed callbacks by checking how long since playback started
-    local tNow = GetTime and GetTime() or 0
-    local startedAt = (cur and cur.startTime) or (tNow)
-    local sinceStart = tNow - startedAt
-    -- If it's been a while (>2.0s), treat as already in-progress: don't wave
-    if sinceStart > 2.0 then
-        self._lastSoundHandle = handle
-        self._talkPhase = "talk"
-        self:UpdateTalkAnimation()
-        return
-    end
-    self._lastSoundHandle = handle
-    -- reset cadence timers for new handle
-    self._cadenceActive = false
-    self._playTime = 0
-    self._phaseTime = 0
-    self._talkPhase = nil
-
-    local title = cur and cur.title or nil
-    local shouldWave = self:HasGreetingInFirstWords(title, 10)
-    if shouldWave then
-        -- Use the new Wave emote module to orchestrate zoom-out, wave, and zoom-back
-        self:PlayEmote("wave", { duration = 1.5, waveZoom = 0.3, waveOutDur = 0.2, zoomBackDur = 0.5 })
-        -- Start emote loop after the initial wave; give it a small head start
-        if C_Timer and C_Timer.After then
-            C_Timer.After(1.6, function()
-                self:StartEmoteLoop()
-            end)
-        end
-    else
-        -- No greeting upfront: skip wave; start talking and zoom immediately
-        -- Do not perform any zoom when there is no greeting
-        self:PlayEmote("talk")
-        -- Start the emote loop immediately
-        self:StartEmoteLoop()
-    end
-end
-
 function ReplayFrame:UpdateTalkAnimation()
     local m = self.NpcModelFrame
     if not (m and m.SetAnimation) then return end
@@ -588,10 +533,3 @@ function ReplayFrame:SetModelAnim(animId)
 end
 
 -- Intent wrappers to keep FSM boundary clear (no-op if FSM not present)
-function ReplayFrame:OnPlaybackStart(cur)
-    if self.FSM_OnPlaybackStart then self:FSM_OnPlaybackStart(cur) end
-end
-
-function ReplayFrame:OnPlaybackStop(msg)
-    if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(msg) end
-end

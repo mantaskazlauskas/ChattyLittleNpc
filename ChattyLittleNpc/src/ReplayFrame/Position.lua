@@ -191,12 +191,3 @@ function ReplayFrame:IsDialogueUIFrameShow()
 end
 
 -- Decide if there's enough horizontal room to show the NPC talking head
-function ReplayFrame:ShouldShowNpcModel()
-    if self:IsCompactModeEnabled() then return false end
-    if not self.DisplayFrame then return false end
-    local w = self.DisplayFrame:GetWidth() or 0
-    -- model + gap + some content minimum (heuristic)
-    local minContent = 160
-    local need = (self.npcModelFrameWidth or 140) + (self.gap or 10) + minContent
-    return w >= need
-end

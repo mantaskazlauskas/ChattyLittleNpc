@@ -5,7 +5,6 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local ReplayFrame = CLN.ReplayFrame
 
 -- Emote registry and helpers
-ReplayFrame.Emotes = ReplayFrame.Emotes or {}
 
 -- Lightweight emote lifecycle events (optional):
 -- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via AceEvent if available.

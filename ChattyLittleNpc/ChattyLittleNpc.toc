@@ -14,7 +14,6 @@ src/ReplayFrame/init.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
 src/ReplayFrame/EditMode.lua
-src/ReplayFrame/TextAnalysis.lua
 src/ReplayFrame/ModelAnimation.lua
 src/ReplayFrame/ModelEmotes.lua
 src/ReplayFrame/StateMachine.lua

@@ -23,23 +23,14 @@ local GREETING_HEURISTIC_MAX_LEN = 80
 
 -- Wave logic
 local WAVE_COOLDOWN = 30 -- seconds, per-NPC
-local ALLOW_WAVE_LATE_START_SECONDS = 2.0
-local WAVE_HELLO_DURATION = 1.5
-local WAVE_ZOOM_AMOUNT = 0.3
-local WAVE_OUT_DURATION = 0.2
-local WAVE_ZOOM_BACK_DURATION = 0.5
+-- (Removed unused constants: ALLOW_WAVE_LATE_START_SECONDS, WAVE_HELLO_DURATION,
+--  WAVE_ZOOM_AMOUNT, WAVE_OUT_DURATION, WAVE_ZOOM_BACK_DURATION)
 
 -- Interaction gate
 local RECENT_INTERACT_TTL = 120 -- seconds
 
--- Farewell logic
 local BYE_COOLDOWN = 45 -- seconds, per-NPC
-local BYE_DURATION = 1.2
-local HELLO_DURATION = 1.5
-local STOP_HIDE_DELAY = 1.6
 
--- Playback start grace to avoid idle flash
-local RECENTLY_STARTED_WINDOW = 0.6
 
 -- Pattern-based greeting detection (lowercased, Lua patterns allowed)
 local GREETING_PATTERNS = {
@@ -162,11 +153,6 @@ function Director:MarkInteracted()
     lastInteractBy[key] = now
 end
 
-local function getSinceStart(cur)
-    local now = GetTime and GetTime() or 0
-    local startedAt = (cur and cur.startTime) or now
-    return now - startedAt
-end
 
 -- Farewell detection
 local FAREWELL_PATTERNS = {
