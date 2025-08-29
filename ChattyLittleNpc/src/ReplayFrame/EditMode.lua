@@ -8,11 +8,50 @@ local ReplayFrame = CLN.ReplayFrame
 -- EDIT MODE FUNCTIONALITY
 -- ============================================================================
 
+-- Central guards/wrappers for Blizzard Edit Mode availability
+function ReplayFrame:_DetectEditModeApis()
+    if self._editModeDetected then return end
+    local fr = type(EditModeManagerFrame) == "table" and EditModeManagerFrame or nil
+    local hasEnter = fr and type(fr.EnterEditMode) == "function" or false
+    local hasExit = fr and type(fr.ExitEditMode) == "function" or false
+    local hasIsIn = fr and type(fr.IsInEditMode) == "function" or false
+    self._editModeApi = { frame = fr, hasEnter = hasEnter, hasExit = hasExit, hasIsIn = hasIsIn }
+    self._editModeDetected = true
+end
+
+function ReplayFrame:HasBlizzardEditMode()
+    self:_DetectEditModeApis()
+    local a = self._editModeApi
+    return a and a.frame and a.hasEnter and a.hasExit or false
+end
+
+function ReplayFrame:IsBlizzardInEditMode()
+    self:_DetectEditModeApis()
+    local a = self._editModeApi
+    if a and a.frame and a.hasIsIn then
+        return a.frame:IsInEditMode()
+    end
+    return false
+end
+
+function ReplayFrame:SafeHook(obj, methodName, handler)
+    if not (hooksecurefunc and type(obj) == "table" and type(obj[methodName]) == "function" and type(handler) == "function") then
+        return false
+    end
+    hooksecurefunc(obj, methodName, handler)
+    return true
+end
+
 -- Bind our lightweight edit mode to Blizzard's Edit Mode (Retail)
 function ReplayFrame:BindBlizzardEditMode()
     if self._editModeBound then return end
     if type(EditModeManagerFrame) == "table" and hooksecurefunc then
-        hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
+        if not self:HasBlizzardEditMode() then
+            if self.Debug then self:Debug("Blizzard Edit Mode not available; skipping binding.") end
+            return
+        end
+
+        self:SafeHook(EditModeManagerFrame, "EnterEditMode", function()
             if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
             -- Ensure our frame exists and force-show while in Edit Mode
             self._forceShow = true
@@ -24,7 +63,7 @@ function ReplayFrame:BindBlizzardEditMode()
             self:SetEditMode(true)
             self:Relayout()
         end)
-        hooksecurefunc(EditModeManagerFrame, "ExitEditMode", function()
+        self:SafeHook(EditModeManagerFrame, "ExitEditMode", function()
             if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
             self:SetEditMode(false)
             self:SaveFramePosition()
@@ -37,7 +76,7 @@ function ReplayFrame:BindBlizzardEditMode()
             end
         end)
         -- If user enters Edit Mode before we initialize, sync state
-        if EditModeManagerFrame.IsInEditMode and EditModeManagerFrame:IsInEditMode() then
+        if self:IsBlizzardInEditMode() then
             if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
             self._forceShow = true
             if not self.DisplayFrame then self:GetDisplayFrame() end
@@ -49,6 +88,9 @@ function ReplayFrame:BindBlizzardEditMode()
             self:Relayout()
         end
         self._editModeBound = true
+    end
+    if type(EditModeManagerFrame) ~= "table" or not hooksecurefunc then
+        if self.Debug then self:Debug("EditModeManagerFrame or hooksecurefunc missing; skipping binding.") end
     end
 end
 
@@ -351,7 +393,7 @@ function ReplayFrame:EndManualEdit()
     self:SetEditMode(false)
     self:SaveFramePosition()
     -- Only clear forced show if Blizzard Edit Mode isn't still active
-    if not (EditModeManagerFrame and EditModeManagerFrame.IsInEditMode and EditModeManagerFrame:IsInEditMode()) then
+    if not self:IsBlizzardInEditMode() then
         self._forceShow = false
         if not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty() then
             if self.DisplayFrame then self.DisplayFrame:Hide() end
