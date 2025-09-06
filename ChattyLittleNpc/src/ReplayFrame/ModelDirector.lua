@@ -85,7 +85,8 @@ function Director:LooksLikeGreeting(msg)
                                          string.find(firstPart, "what") or
                                          string.find(firstPart, "how")
             if CLN.Utils and CLN.Utils.LogAnimDebug then 
-                CLN.Utils:LogAnimDebug("Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
+                local cat = CLN.Utils.LogCategories and CLN.Utils.LogCategories.fsm or "fsm"
+                CLN.Utils:LogAnimDebug(cat, "Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
             end
             if hasCommonGreetingWords and #firstPart < GREETING_HEURISTIC_MAX_LEN then
                 if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Heuristic detected greeting") end

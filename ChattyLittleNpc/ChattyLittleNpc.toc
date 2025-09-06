@@ -12,15 +12,26 @@ src/Options.lua
 Main.lua
 src/ReplayFrame/init.lua
 src/ReplayFrame/HostCamera.lua
+src/ReplayFrame/DebugWindow.lua
+src/ReplayFrame/LogsWindow.lua
 src/ReplayFrame/FramerScene.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
+src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditMode.lua
+src/ReplayFrame/EditPanel.lua
 src/ReplayFrame/ModelAnimation.lua
 src/ReplayFrame/ModelEmotes.lua
 src/ReplayFrame/StateMachine.lua
 src/ReplayFrame/ModelDirector.lua
-src/ReplayFrame/Renderers/ModelSceneRenderer.lua
+src/ReplayFrame/Renderers/ModelScene/Utils.lua
+src/ReplayFrame/Renderers/ModelScene/Diagnostics.lua
+src/ReplayFrame/Renderers/ModelScene/AnimationController.lua
+src/ReplayFrame/Renderers/ModelScene/Stabilizer.lua
+src/ReplayFrame/Renderers/ModelScene/Loader.lua
+src/ReplayFrame/Renderers/ModelScene/CameraController.lua
+src/ReplayFrame/Renderers/ModelScene/Framing.lua
+src/ReplayFrame/Renderers/ModelSceneHost.lua
 src/ReplayFrame/Renderers/PlayerModelRenderer.lua
 src/ReplayFrame/Renderers/ScenePresets.lua
 src/ReplayFrame/Renderers/PlayerPresets.lua
@@ -31,6 +42,7 @@ src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua
 src/Editor.lua
 
+utils/Logger.lua
 utils/Utils.lua
 utils/Base64.lua
 utils/Md5.lua

@@ -200,10 +200,12 @@ function EventHandler:ITEM_TEXT_READY()
     local unitType = "Item"
 
     if (CLN.db.profile.debugMode) then
-        CLN:Print("Item Name:", itemName)
-        CLN:Print("Item Text:", itemText)
-        CLN:Print("Item ID:", itemId)
-        CLN:Print("Unit GUID:", unitGuid)
+        if CLN and CLN.Logger then
+            CLN.Logger:debug("Item Name: " .. tostring(itemName), false, CLN.Utils.LogCategories.ui)
+            CLN.Logger:debug("Item Text: " .. tostring(itemText), false, CLN.Utils.LogCategories.ui)
+            CLN.Logger:debug("Item ID: " .. tostring(itemId), false, CLN.Utils.LogCategories.ui)
+            CLN.Logger:debug("Unit GUID: " .. tostring(unitGuid), false, CLN.Utils.LogCategories.ui)
+        end
     end
 
     if (_G["ItemTextFrame"]) then
@@ -282,7 +284,8 @@ end
 
 function EventHandler:QUEST_FINISHED()
     CLN.Utils:LogDebug("QUEST_FINISHED")
-    if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
+    local mode = CLN.db.profile.questPlaybackMode or "queue"
+    if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         CLN.Utils:LogDebug("Stopping currently playing voiceover on quest finished.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
@@ -292,7 +295,8 @@ function EventHandler:GOSSIP_CLOSED()
     CLN.Utils:LogDebug("GOSSIP_CLOSED")
     CLN.PlayButton:ClearButtons()
 
-    if (CLN.db.profile.stopVoiceoverAfterDialogWindowClose and CLN.VoiceoverPlayer.currentlyPlaying) then
+    local mode = CLN.db.profile.questPlaybackMode or "queue"
+    if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         CLN.Utils:LogDebug("Stopping currently playing voiceover on gossip closed.")
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end

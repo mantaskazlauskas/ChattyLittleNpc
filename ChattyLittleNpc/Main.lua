@@ -31,6 +31,8 @@ local defaults = {
         printMissingFiles = false,
         logNpcTexts = false,
         printNpcTexts = false,
+    -- Mirror addon logs to the chat frame (the Logs window always captures). Off by default to keep chat clean.
+    logToChat = false,
         overwriteExistingGossipValues = false,
         showGossipEditor = false,
         showReplayFrame = true,
@@ -39,6 +41,8 @@ local defaults = {
     hideInEditMode = false,
     compactMode = false,
     queueTextScale = 1.0,
+    frameScale = 1.0,
+    npcModelFrameHeight = 140,
     -- Last known window position/size
     framePos = { -- Default position
             point = "CENTER",
@@ -48,12 +52,10 @@ local defaults = {
             yOfs = 0
         },
     frameSize = { width = 310 + 165, height = 165 },
-        layoutPositions = {},
-        layoutSizes = {},
         buttonPosX = -15,
         buttonPosY = -30,
-        enableQuestPlaybackQueueing = true,
-        stopVoiceoverAfterDialogWindowClose = false,
+    -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"
+    questPlaybackMode = "queue",
         audioChannel = "MASTER",
     -- Rendering backend preference for the Replay Frame model host: 'auto' | 'scene' | 'player'
     renderBackend = "auto",
@@ -63,11 +65,20 @@ local defaults = {
     debugAnimations = false,
     debugNoAnim = false,
     disableCameraAnimations = false
+    ,
+    -- Per Edit Mode layout overrides (keyed by layoutName)
+    editModeLayouts = {}
     }
 }
 
 function CLN:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
+
+    -- Ensure questPlaybackMode always has a valid value
+    local m = self.db.profile.questPlaybackMode
+    if m ~= "queue" and m ~= "stopOnClose" and m ~= "manual" then
+        self.db.profile.questPlaybackMode = "queue"
+    end
 
     self.locale = GetLocale()
     self.gameVersion = select(4, GetBuildInfo())
@@ -75,10 +86,13 @@ function CLN:OnInitialize()
 
     if (self.db.profile.debugMode) then
         local version, build, date, tocVersion = GetBuildInfo()
-        self:Print("Game Version:", version)
-        self:Print("Build Number:", build)
-        self:Print("Build Date:", date)
-        self:Print("TOC Version:", tocVersion)
+        local C = self.Utils and self.Utils.LogCategories or { misc = 'misc' }
+        if self.Logger then
+            self.Logger:debug("Game Version: " .. tostring(version), false, C.misc)
+            self.Logger:debug("Build Number: " .. tostring(build), false, C.misc)
+            self.Logger:debug("Build Date: " .. tostring(date), false, C.misc)
+            self.Logger:debug("TOC Version: " .. tostring(tocVersion), false, C.misc)
+        end
     end
 end
 
@@ -143,6 +157,8 @@ function CLN:OnEnable()
                         if self.ReplayFrame._UpdateModelOnUpdateHook then
                             self.ReplayFrame:_UpdateModelOnUpdateHook()
                         end
+            elseif key == "questPlaybackMode" then
+                self:_SyncLegacyQuestPlaybackFlags()
             end
         end
         -- Use dot-notation per CallbackHandler: self is the addon receiving callbacks
@@ -162,6 +178,9 @@ function CLN:OnEnable()
         self._dbProfileHooked = true
     end
 end
+
+-- Internal: keep legacy flags in sync for existing code paths until fully refactored
+-- Legacy sync removed; flags fully deprecated.
 
 function CLN:OnDisable()
     CLN.EventHandler:UnregisterEvents()
@@ -224,8 +243,9 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
         local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
         if (isLoaded) then
             table.insert(self.loadedVoiceoverPacks, expansion)
-            if (self.db.profile.debugMode) then
-                self:Print("Loaded voiceover pack:", expansion)
+            if (self.db.profile.debugMode and self.Logger) then
+                local C = self.Utils and self.Utils.LogCategories or { loader = 'loader' }
+                self.Logger:debug("Loaded voiceover pack: " .. tostring(expansion), false, C.loader or 'misc')
             end
 
             local addon = LibStub("AceAddon-3.0"):GetAddon(voiceoverPackName, true)
@@ -235,19 +255,17 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
         end      
     end
 
-    if (self.db.profile.debugMode) then
-        self:PrintLoadedVoiceoverPacks()
-    end
+    if (self.db.profile.debugMode and self.Logger) then self:PrintLoadedVoiceoverPacks() end
 end
 
 function CLN:PrintLoadedVoiceoverPacks()
     for packName, packData in pairs(self.VoiceoverPacks) do
         if packData.Metadata then
-            self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
+            if self.Logger then self.Logger:info("Metadata for " .. tostring(packName), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
             self.Utils:PrintTable(packData.Metadata)
         end
         if packData.Voiceovers then
-            self:Print("VO count ", "|cffffd700" .. packName .. "|r", ":", #packData.Voiceovers)
+            if self.Logger then self.Logger:info("VO count for " .. tostring(packName) .. ": " .. tostring(#packData.Voiceovers), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
         end
     end
 end
@@ -288,13 +306,15 @@ end
 
 function CLN:GetLoadedAddonsForIntegrations()
     self.isDUIAddonLoaded = C_AddOns.IsAddOnLoaded("DialogueUI")
-    if (self.db.profile.debugMode) then
-        self:Print("DUI Addon Loaded:", self.isDUIAddonLoaded)
+    if (self.db.profile.debugMode and self.Logger) then
+        local C = self.Utils and self.Utils.LogCategories or { ui = 'ui' }
+        self.Logger:debug("DialogueUI Addon Loaded: " .. tostring(self.isDUIAddonLoaded), false, C.ui or 'misc')
     end
 
     self.isElvuiAddonLoaded = C_AddOns.IsAddOnLoaded("ElvUI")
-    if (self.db.profile.debugMode) then
-        self:Print("ElvUI Addon Loaded:", self.isElvuiAddonLoaded)
+    if (self.db.profile.debugMode and self.Logger) then
+        local C = self.Utils and self.Utils.LogCategories or { ui = 'ui' }
+        self.Logger:debug("ElvUI Addon Loaded: " .. tostring(self.isElvuiAddonLoaded), false, C.ui or 'misc')
     end
 
     if (self.isElvuiAddonLoaded) then

@@ -4,7 +4,7 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
--- Refactored ModelHost: delegates renderer-specific logic to Renderers/{ModelSceneRenderer,PlayerModelRenderer}
+-- Refactored ModelHost: delegates renderer-specific logic to Renderers/{ModelSceneHost,PlayerModelRenderer}
 
 -- Public factory: create a host frame inside parent and choose backend
 function ReplayFrame:CreateModelHost(parent)
@@ -14,7 +14,7 @@ function ReplayFrame:CreateModelHost(parent)
     host:SetHeight(140)
 
     local pref = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.renderBackend) or "auto"
-    local sceneR = ReplayFrame.ModelSceneRenderer
+    local sceneR = ReplayFrame.ModelSceneHost
     local playerR = ReplayFrame.PlayerModelRenderer
 
     local backend, attach
@@ -44,7 +44,7 @@ function ReplayFrame:CreateModelHost(parent)
         pm:SetAllPoints(host)
         backend = { kind = "player", frame = pm }
         -- minimal attach: only expose a few methods
-        host.ClearModel = function() pcall(pm.ClearModel, pm) end
+    host.ClearModel = function() pcall(pm.ClearModel, pm) end
         host.SetDisplayInfo = function(_, id) pcall(pm.SetDisplayInfo, pm, id) end
         host.SetPortraitZoom = function(_, v) pcall(pm.SetPortraitZoom, pm, tonumber(v) or 0.65) end
         host.GetPortraitZoom = function() return 0.65 end

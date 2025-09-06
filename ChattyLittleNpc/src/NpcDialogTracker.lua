@@ -7,7 +7,7 @@ CLN.NpcDialogTracker = NpcDialogTracker
 
 function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
     if (not NpcInfoDB) then
-        CLN:Print("Initializing NpcInfoDB")
+    if CLN and CLN.Logger then CLN.Logger:info("Initializing NpcInfoDB", false, CLN.Utils.LogCategories.misc) end
         NpcInfoDB = {}
     end
 
@@ -52,8 +52,8 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID)
     NpcInfoDB[npcID][CLN.locale].zone = GetZoneText()
     NpcInfoDB[npcID][CLN.locale].subzone = GetSubZoneText()
 
-    if (CLN.db.profile.printNpcTexts) then
-        CLN:Print("|cff00ff00Npc info collected: \r\n- Id: " .. npcID .. "\r\n- Name: " .. NpcInfoDB[npcID][CLN.locale].name .. "\r\n- Gender: " ..  NpcInfoDB[npcID][CLN.locale].sex)
+    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+        CLN.Logger:info("Npc info collected: Id=" .. npcID .. ", Name=" .. NpcInfoDB[npcID][CLN.locale].name .. ", Gender=" ..  NpcInfoDB[npcID][CLN.locale].sex, true, CLN.Utils.LogCategories.ui)
     end
 end
 
@@ -78,8 +78,10 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
         NpcInfoDB[npcID][CLN.locale].quest_greeting = text
     end
 
-    if (CLN.db.profile.printNpcTexts) then
-        CLN:Print("|cff00ff00Npc quest collected: \r\n- Npc ID: " .. npcID .. "\r\n- Quest ID: " .. questID .. "\r\n- Quest Detail: ".. NpcInfoDB[npcID][CLN.locale].quests[questID].quest_detail .. "\r\n- Quest Progress: ".. NpcInfoDB[npcID][CLN.locale].quests[questID].quest_progress .. "\r\n- Quest Completion: ".. NpcInfoDB[npcID][CLN.locale].quests[questID].quest_complete .. "\r\n- Quest Greeting: ".. NpcInfoDB[npcID][CLN.locale].quest_greeting)
+    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+        local s = NpcInfoDB[npcID][CLN.locale].quests[questID]
+        CLN.Logger:info("Npc quest collected: NpcID=" .. npcID .. ", QuestID=" .. questID ..
+            ", Detail=" .. s.quest_detail .. ", Progress=" .. s.quest_progress .. ", Complete=" .. s.quest_complete .. ", Greeting=" .. (NpcInfoDB[npcID][CLN.locale].quest_greeting or ""), true, CLN.Utils.LogCategories.ui)
     end
 end
 
@@ -112,15 +114,15 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
             NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash] = nil
         end
 
-        if (CLN.db.profile.printNpcTexts) then
-            CLN:Print("|cff00ff00Npc gossip option collected: \r\n- Npc ID: " .. npcID .. "\r\n- Gossip text: " .. text .. "\r\n- Hash: " .. gossip_id)
+        if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+            CLN.Logger:info("Npc gossip option collected: NpcID=" .. npcID .. ", Hash=" .. gossip_id .. ", Text=" .. text, true, CLN.Utils.LogCategories.ui)
         end
     end
 end
 
 function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
     if (not UnitInfoDB) then
-        CLN:Print("Initializing UnitInfoDB")
+    if CLN and CLN.Logger then CLN.Logger:info("Initializing UnitInfoDB", false, CLN.Utils.LogCategories.misc) end
         UnitInfoDB = {}
     end
     if (not UnitInfoDB[unitID]) then
@@ -175,14 +177,14 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
         end
     end
 
-    if (CLN.db.profile.printNpcTexts) then
-        CLN:Print("|cff00ff00Unit info collected: \r\n- Unit ID: " .. unitID .."\r\n- Unit Name: " .. UnitInfoDB[unitID][CLN.locale].unitName .. "\r\n- Unit Type: " .. UnitInfoDB[unitID][CLN.locale].unitType)
+    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+        CLN.Logger:info("Unit info collected: UnitID=" .. unitID .. ", Name=" .. UnitInfoDB[unitID][CLN.locale].unitName .. ", Type=" .. UnitInfoDB[unitID][CLN.locale].unitType, true, CLN.Utils.LogCategories.ui)
         if (textHash) then
-            CLN:Print("|cff00ff00Unit info collected: \r\n- Unit Text: " .. UnitInfoDB[unitID][CLN.locale].unitTexts[textHash] .. "\r\n- Unit Text Hash: " .. textHash)
+            CLN.Logger:info("Unit text collected: Text=" .. UnitInfoDB[unitID][CLN.locale].unitTexts[textHash] .. ", Hash=" .. textHash, true, CLN.Utils.LogCategories.ui)
         end
-
         if (questId) then
-            CLN:Print("|cff00ff00" .. unitType .. " Quests: \r\n- Quest ID: " .. questId .. "\r\n- Quest Detail: " .. UnitInfoDB[unitID][CLN.locale].quests[questId].quest_detail .. "\r\n- Quest Progress: " .. UnitInfoDB[unitID][CLN.locale].quests[questId].quest_progress .. "\r\n- Quest Completion: " .. UnitInfoDB[unitID][CLN.locale].quests[questId].quest_complete)
+            local q = UnitInfoDB[unitID][CLN.locale].quests[questId]
+            CLN.Logger:info(unitType .. " Quest: ID=" .. questId .. ", Detail=" .. q.quest_detail .. ", Progress=" .. q.quest_progress .. ", Complete=" .. q.quest_complete, true, CLN.Utils.LogCategories.ui)
         end
     end
 end

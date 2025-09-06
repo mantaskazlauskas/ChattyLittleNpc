@@ -61,7 +61,7 @@ function ReplayFrame:Debug(...)
     for i, arg in ipairs(args) do
         strs[i] = tostring(arg)
     end
-    CLN:Print("|cff87CEEb[DEBUG]|r |cff87CEEb" .. table.concat(strs, " "))
+    if CLN and CLN.Logger then CLN.Logger:debug(table.concat(strs, " "), false, CLN.Utils.LogCategories.ui) end
 end
 
 -- ============================================================================
@@ -73,7 +73,11 @@ ReplayFrame.userHidden = false
 
 -- Defer binding to after addon init to ensure globals exist
 local function CLN_InitEditModeBinding()
-    if ReplayFrame and ReplayFrame.BindBlizzardEditMode then
+    -- Legacy BindBlizzardEditMode now a thin adapter; prefer direct integration init
+    if ReplayFrame and ReplayFrame.InitEditModeIntegration then
+        ReplayFrame:InitEditModeIntegration()
+    elseif ReplayFrame and ReplayFrame.BindBlizzardEditMode then
+        -- Fallback (should not be needed after deprecation)
         ReplayFrame:BindBlizzardEditMode()
     end
 end
@@ -154,6 +158,162 @@ function ReplayFrame.Framer.PercentRange(meta, p0, p1, D, margin)
     local s = math.min(sRange, sH)
     return zCenter, math.max(0.05, math.min(10, s))
 end
+
+-- =============================================================
+-- Standardized model-relative animation helpers (backend-agnostic)
+-- =============================================================
+
+-- Internal: get current displayID (if any)
+function ReplayFrame:_GetCurrentDisplayID()
+    local m = self.NpcModelFrame
+    return m and m._currentDisplayID or nil
+end
+
+-- Internal: fetch or synthesize minimal bounds from cached meta
+local function _getBoundsFromMeta(meta)
+    if not (meta and meta.bottomZ and meta.size and meta.size.h) then return nil end
+    local h = tonumber(meta.size.h) or 2.0
+    local bottom = tonumber(meta.bottomZ) or 0
+    return {
+        bottomZ = bottom,
+        topZ = bottom + h,
+        height = h,
+        centerZ = bottom + h * 0.5,
+    }
+end
+
+-- Convert model-relative vertical coordinate p∈[0,1] (0=feet,1=head) to world Z
+function ReplayFrame:WorldZFromPercent(p)
+    local pn = math.max(0, math.min(1, tonumber(p) or 0.5))
+    local displayID = self:_GetCurrentDisplayID()
+    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local npcId = cur and cur.npcId or nil
+    local meta = self:GetModelMeta(displayID, npcId, false)
+    local b = _getBoundsFromMeta(meta)
+    if b then
+        return b.bottomZ + pn * b.height
+    end
+    -- Fallback: base on current offset if meta is missing
+    local base = (self.modelZOffset ~= nil) and self.modelZOffset or (self._currentZOffset or 0)
+    -- Assume ~2.0m humanoid if unknown
+    return base + (pn - 0.5) * 2.0
+end
+
+-- Compute camera target (zoom numeric and centerZ) to show vertical range [p0,p1]
+-- Uses PercentRange + a unified mapping from scale->portrait zoom.
+function ReplayFrame:ZoomForRangePercent(p0, p1, opts)
+    opts = opts or {}
+    local displayID = self:_GetCurrentDisplayID()
+    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local npcId = cur and cur.npcId or nil
+    local meta = self:GetModelMeta(displayID, npcId, false)
+    if not meta then return nil end
+    local D = tonumber(opts.distance) or (meta.distance or 10)
+    local margin = tonumber(opts.margin) or 0.10
+    local zCenter, scale = ReplayFrame.Framer.PercentRange(meta, p0, p1, D, margin)
+    if not (zCenter and scale) then return nil end
+    -- Map scale to portrait zoom via the standard shim mapping: zoom = base / scale
+    local baseZoom = 0.65
+    local targetZoom = math.max(0.01, math.min(1.5, baseZoom / math.max(0.05, scale)))
+    return { zoom = targetZoom, centerZ = zCenter, scale = scale }
+end
+
+-- Instant: show a vertical range in percent via renderer projection (works on both backends)
+function ReplayFrame:ShowRangePercent(p0, p1, opts)
+    opts = opts or {}
+    local p0n = math.max(0, math.min(1, tonumber(p0) or 0))
+    local p1n = math.max(0, math.min(1, tonumber(p1) or 1))
+    if p1n <= p0n then p1n = math.min(1, p0n + 0.01) end
+    local m = self.NpcModelFrame
+    if not m then return false end
+    local z = self:WorldZFromPercent((p0n + p1n) * 0.5)
+    local zt = { z = z }
+    local zData = self:ZoomForRangePercent(p0n, p1n, opts)
+    if zData and m.ProjectFit then
+        pcall(m.ProjectFit, m, zData.scale, zt)
+        self._currentZOffset = z
+        -- Best-effort keep zoom cache in sync if our animation system references it
+        self._currentZoom = zData.zoom
+        return true
+    end
+    -- Fallback: set zoom/pan directly if projection not available
+    if zData and m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, zData.zoom) end
+    if m.SetPosition then pcall(m.SetPosition, m, 0, 0, z) end
+    self._currentZOffset = z
+    return true
+end
+
+-- Animated: pan to a model-relative focus point p in [0,1]
+function ReplayFrame:AnimPanToPercent(p, duration, options)
+    local z = self:WorldZFromPercent(p)
+    if not z then return false end
+    if self.AnimPanTo then return self:AnimPanTo(z, duration or 0.25, options) end
+    local m = self.NpcModelFrame
+    if m and m.SetPosition then pcall(m.SetPosition, m, 0, 0, z) end
+    self._currentZOffset = z
+    return true
+end
+
+-- Animated: zoom to show vertical range [p0,p1] consistently across backends
+function ReplayFrame:AnimZoomToRangePercent(p0, p1, duration, options)
+    local data = self:ZoomForRangePercent(p0, p1, options)
+    if not data then return false end
+    if self.AnimZoomTo then return self:AnimZoomTo(data.zoom, duration or 0.5, options) end
+    local m = self.NpcModelFrame
+    if m and m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, data.zoom) end
+    self._currentZoom = data.zoom
+    return true
+end
+
+-- Presets expressed in model-relative ranges
+ReplayFrame.ModelPresets = ReplayFrame.ModelPresets or {
+    FullBody = { p0 = 0.0, p1 = 1.0, padding = 0.12 },
+    UpperBody = { p0 = 0.50, p1 = 1.0, padding = 0.10 },
+    HeadShoulders = { p0 = 0.65, p1 = 1.0, padding = 0.10 },
+    FaceCloseup = { p0 = 0.80, p1 = 1.0, padding = 0.08 },
+    Torso = { p0 = 0.20, p1 = 0.80, padding = 0.10 },
+    HandGesture = { p0 = 0.30, p1 = 0.60, padding = 0.15 },
+}
+
+-- Convenience: apply a preset instantly
+function ReplayFrame:ShowPreset(name)
+    local p = self.ModelPresets and self.ModelPresets[name]
+    if not p then return false end
+    return self:ShowRangePercent(p.p0, p.p1, { margin = p.padding })
+end
+
+-- Emote-named presets for readability; include a focus point for panPercent
+ReplayFrame.EmotePresets = ReplayFrame.EmotePresets or {
+    Talk = { p0 = 0.50, p1 = 1.00, focus = 0.75, padding = 0.10 },
+    Wave = { p0 = 0.30, p1 = 0.60, focus = 0.40, padding = 0.15 },
+    Idle = { p0 = 0.00, p1 = 1.00, focus = 0.50, padding = 0.12 },
+}
+
+function ReplayFrame:GetEmotePreset(name)
+    if not name then return nil end
+    local p = self.EmotePresets and self.EmotePresets[name]
+    return p
+end
+
+-- Apply an emote preset instantly or animated (duration>0 animates zoom)
+function ReplayFrame:ApplyEmotePreset(name, duration, opts)
+    local p = self:GetEmotePreset(name)
+    if not p then return false end
+    opts = opts or {}
+    local ok
+    if duration and duration > 0 and self.AnimZoomToRangePercent then
+        ok = self:AnimZoomToRangePercent(p.p0, p.p1, duration, { easing = opts.easing or "easeOutCubic", margin = p.padding }) ~= false
+    else
+        ok = self:ShowRangePercent(p.p0, p.p1, { margin = p.padding }) ~= false
+    end
+    -- Focus pan (animated if panDur provided)
+    local panDur = opts.panDur or 0.25
+    if self.AnimPanToPercent and p.focus then
+        self:AnimPanToPercent(p.focus, panDur, { easing = opts.easing or "easeOutCubic" })
+    end
+    return ok
+end
+
 
 -- Pure: choose header text given state
 function ReplayFrame.Pure.BuildHeaderText(playingTitle, npcName, isQuest, qcount, collapsed)
@@ -367,25 +527,26 @@ end
 
 -- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue
 function ReplayFrame:UpdateVisibility()
-    if (not self._forceShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
+    local forced = self._forceShow
+    if (not forced) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         return false
     end
 
-    if (not self._forceShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
+    if (not forced) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         self.userHidden = false
         return false
     end
 
-    if (not self._forceShow) and (self:IsDisplayFrameHideNeeded()) then
+    if (not forced) and (self:IsDisplayFrameHideNeeded()) then
         if self.DisplayFrame then self.DisplayFrame:Hide() end
         return false
     end
 
     -- Respect user-hidden during playback: keep minimized indicator instead of reopening
-    if (not self._forceShow) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then
+    if (not forced) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then
         self:EnsureMinimizedButton()
         if self.MinButton then self.MinButton:Show() end
         return false
@@ -438,10 +599,10 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         inGrace = dt >= 0 and dt < 0.6
     end
     if (playing or inGrace) and shown and self.UpdateConversationAnimation then
-        CLN.Utils:LogAnimDebug(string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
         self:UpdateConversationAnimation()
     else
-        CLN.Utils:LogAnimDebug(string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
         -- If we are playing but not yet visible, schedule a short deferred retry
         if (playing or inGrace) and (not shown) and (not self._deferAnimTimer) and C_Timer and C_Timer.After then
             self._deferAnimTimer = true

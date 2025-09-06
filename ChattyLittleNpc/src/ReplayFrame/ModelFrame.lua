@@ -185,8 +185,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
 
     local displayID = NpcDisplayIdDB[npcId]
     if (displayID) then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug(string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))
         end
         -- If model changed, reset animation state to avoid stale loops from previous model
         if self._lastDisplayID ~= displayID then
@@ -194,8 +194,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             self._lastDisplayID = displayID
         end
     self.NpcModelFrame:ClearModel()
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug("UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
         end
     self.NpcModelFrame:SetDisplayInfo(displayID)
         -- For ModelScene actors, model load can be async; poll briefly to apply fit/anim
@@ -242,8 +242,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     -- Do not call old auto-fit here; default fit applied above
     else
         -- Fallback: when we don't have a mapping, try using the live unit to display the model
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug(string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
         end
         local canUseUnit = UnitExists and UnitExists("npc")
         if canUseUnit and self.NpcModelFrame and self.NpcModelFrame.SetUnit then
@@ -259,8 +259,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             -- Mark as having a model so animation path can proceed
             self._hasValidModel = true
         else
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-                CLN.Utils:LogAnimDebug("UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
             end
             self.NpcModelFrame:ClearModel()
             self.NpcModelFrame:Hide()
@@ -285,26 +285,26 @@ function ReplayFrame:CheckAndShowModel()
     if self.ModelContainer then self.ModelContainer:Show() end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then 
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
             local c = self.ModelContainer
             local m = self.NpcModelFrame
             local cShown = c and c.IsShown and c:IsShown() or false
             local cVis = c and c.IsVisible and c:IsVisible() or false
             local mShown = m and m.IsShown and m:IsShown() or false
             local mVis = m and m.IsVisible and m:IsVisible() or false
-            CLN.Utils:LogAnimDebug(string.format("CheckAndShowModel - showing (cShown=%s,cVis=%s,mShown=%s,mVis=%s) - letting OnShow hook handle animation", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("CheckAndShowModel - showing (cShown=%s,cVis=%s,mShown=%s,mVis=%s) - letting OnShow hook handle animation", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
         end
     else
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             local c = self.ModelContainer
             local m = self.NpcModelFrame
             local cShown = c and c.IsShown and c:IsShown() or false
             local cVis = c and c.IsVisible and c:IsVisible() or false
             local mShown = m and m.IsShown and m:IsShown() or false
             local mVis = m and m.IsVisible and m:IsVisible() or false
-            CLN.Utils:LogAnimDebug(string.format("CheckAndShowModel - hiding (cShown=%s,cVis=%s,mShown=%s,mVis=%s)", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("CheckAndShowModel - hiding (cShown=%s,cVis=%s,mShown=%s,mVis=%s)", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
         end
     end
 end
@@ -346,8 +346,8 @@ function ReplayFrame:BuildModelMetadataOnce(displayID)
     meta._built = true
     self:SetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, meta)
     -- Log once
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug("framing") then
-        CLN.Utils:LogAnimDebug("framing", string.format("Meta built dID=%s H=%.2f W=%.2f fovV=%.3f aspect=%.2f scaleD10=%.3f",
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing") then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing", string.format("Meta built dID=%s H=%.2f W=%.2f fovV=%.3f aspect=%.2f scaleD10=%.3f",
             tostring(displayID or "unit"), meta.size.h or -1, meta.size.w or -1, meta.fovV or -1, meta.aspect or -1, meta.scaleD10 or -1))
     end
 end
@@ -479,8 +479,8 @@ function ReplayFrame:SetupModelAnimations()
             end
 
             -- Let the Director refine (wave vs talk) as needed
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-                CLN.Utils:LogAnimDebug("ModelFrame OnShow hook - calling UpdateConversationAnimation")
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame OnShow hook - calling UpdateConversationAnimation")
             end
             if r and r.UpdateConversationAnimation and not (r._NoAnimDebugEnabled and r:_NoAnimDebugEnabled()) then
                 r:UpdateConversationAnimation()
@@ -500,8 +500,8 @@ function ReplayFrame:SetupModelAnimations()
     if m:IsShown() then
         if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
     if self.UpdateConversationAnimation and not (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-                CLN.Utils:LogAnimDebug("ModelFrame already shown - calling UpdateConversationAnimation immediately")
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame already shown - calling UpdateConversationAnimation immediately")
             end
             self:UpdateConversationAnimation()
         end
@@ -612,8 +612,8 @@ function ReplayFrame:UpdateConversationAnimation()
     if cur and cur.startTime and GetTime then
         local dt = nowT - (cur.startTime or 0)
         recentlyStarted = dt >= 0 and dt < 0.6
-        if CLN.Utils:ShouldLogAnimDebug() then 
-            CLN.Utils:LogAnimDebug("UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then 
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
         end
     end
     

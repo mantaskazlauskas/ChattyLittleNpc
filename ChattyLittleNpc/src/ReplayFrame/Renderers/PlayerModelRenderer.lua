@@ -14,18 +14,22 @@ local function safeCall(obj, method, ...)
     return nil
 end
 
-local function debugf(fmt, ...)
+local function debugf(category, fmt, ...)
     local U = CLN and CLN.Utils
-    if not (U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug() and U.LogAnimDebug) then return end
+    local cat = (CLN and CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories[category]) or category or (CLN and CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame) or "modelFrame"
+    if not (U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug(cat) and U.LogAnimDebug) then return end
     local ok, msg = pcall(string.format, tostring(fmt), ...)
     if not ok then msg = tostring(fmt) end
-    pcall(U.LogAnimDebug, U, msg)
+    pcall(U.LogAnimDebug, U, cat, msg)
 end
 
 -- Create a PlayerModel backend (frame)
 function M.Create(parent)
     local pm = CreateFrame("PlayerModel", nil, parent)
     pm:SetAllPoints(parent)
+    -- Don't intercept mouse clicks; keep background click-through
+    if pm.EnableMouse then pcall(pm.EnableMouse, pm, false) end
+    debugf("host", "PlayerModelRenderer.Create: frame=%s parent=%s", tostring(pm), tostring(parent))
     return { kind = "player", frame = pm }
 end
 
@@ -42,11 +46,13 @@ function M.Attach(host, backend)
     host._yaw = host._yaw or 0
 
     function host:ClearModel()
-        safeCall(backend.frame, "ClearModel")
+    debugf("host", "PlayerModel.ClearModel()")
+    safeCall(backend.frame, "ClearModel")
     end
 
     function host:SetDisplayInfo(displayID)
     host._currentDisplayID = displayID
+        debugf("loader", "PlayerModel.SetDisplayInfo(%s)", tostring(displayID))
         safeCall(backend.frame, "SetDisplayInfo", displayID)
     end
 
@@ -88,7 +94,8 @@ function M.Attach(host, backend)
     end
 
     function host:SetUnit(unit)
-        safeCall(backend.frame, "SetUnit", unit)
+    debugf("loader", "PlayerModel.SetUnit(%s)", tostring(unit))
+    safeCall(backend.frame, "SetUnit", unit)
     end
 
     -- Compatibility stubs used by presets/code calling scene-style helpers

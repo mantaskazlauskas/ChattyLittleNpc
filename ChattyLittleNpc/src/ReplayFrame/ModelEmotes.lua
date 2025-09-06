@@ -64,14 +64,7 @@ end
 -- Global camera default (kept consistent across modules)
 ReplayFrame.Config = ReplayFrame.Config or {
     DEFAULT_ZOOM = 0.65,
-    Camera = {
-        TALK_ZOOM = 0.60, -- slightly more zoomed out for talk
-        IDLE_ZOOM = 0.60, -- slightly more zoomed out for idle
-        WAVE_ZOOM = 0.3,
-        HAND_FOCUS_DELTA = -0.25, -- legacy/fallback delta
-    TALK_PAN_Z = -0.12,       -- absolute Z for talk pan (higher)
-    IDLE_PAN_Z = -0.12,       -- absolute Z for idle pan (higher)
-    },
+    Camera = { },
     Timings = {
         recentlyStartedWindow = 0.6,
         stopHideDelay = 0.6,
@@ -111,13 +104,7 @@ local function clamp01(v)
 end
 
 -- Camera targets per state (can be overridden on the frame)
-local function getTalkZoom(self)
-    return clamp01((self.talkZoom ~= nil) and self.talkZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.TALK_ZOOM) or (ReplayFrame.Config and ReplayFrame.Config.DEFAULT_ZOOM) or 0.65)
-end
-
-local function getIdleZoom(self)
-    return clamp01((self.idleZoom ~= nil) and self.idleZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.IDLE_ZOOM) or (ReplayFrame.Config and ReplayFrame.Config.DEFAULT_ZOOM) or 0.65)
-end
+-- Deprecated helpers for absolute zoom removed; percent-based APIs are used throughout
 
 -- Cancel any running emote
 function ReplayFrame:CancelEmote()
@@ -166,23 +153,23 @@ end
 -- Note: completion is emitted via EMOTE_COMPLETE; external callbacks are deprecated.
 function ReplayFrame:_StartEmoteSequence(steps, opts)
     if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug("_StartEmoteSequence skipped due to debug no-op")
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence skipped due to debug no-op")
         end
         return false
     end
     if not (steps and type(steps) == "table" and #steps > 0) then 
-        CLN.Utils:LogAnimDebug("_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
+    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
         return false 
     end
     local m = self.NpcModelFrame
     if not m then 
-        CLN.Utils:LogAnimDebug("_StartEmoteSequence failed - no NpcModelFrame")
+    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - no NpcModelFrame")
         return false 
     end
 
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-        CLN.Utils:LogAnimDebug("Emote sequence start: steps=" .. tostring(#steps))
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "Emote sequence start: steps=" .. tostring(#steps))
     end
 
     -- Cancel any prior running emote to avoid overlapping sequences
@@ -203,7 +190,25 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
         if step.zoom ~= nil and self.AnimZoomTo then
             self:AnimZoomTo(step.zoom, step.zoomDur or 0.4, { easing = step.zoomEase or "easeOutCubic" })
         end
-        if step.panZ ~= nil and self.AnimPanTo then
+        -- Named emote preset (Talk/Wave/Idle)
+        if step.preset and step.preset ~= "" and self.ApplyEmotePreset then
+            local dur = step.zoomDur
+            self:ApplyEmotePreset(step.preset, dur or 0, { easing = step.zoomEase or "easeOutCubic", panDur = step.panDur })
+        end
+        -- Model-relative range zoom (takes precedence over raw zoom when provided)
+        if step.rangeP0 ~= nil and step.rangeP1 ~= nil then
+            local p0, p1 = step.rangeP0, step.rangeP1
+            local dur = step.zoomDur
+            if dur and dur > 0 and self.AnimZoomToRangePercent then
+                self:AnimZoomToRangePercent(p0, p1, dur, { easing = step.zoomEase or "easeOutCubic" })
+            elseif self.ShowRangePercent then
+                self:ShowRangePercent(p0, p1, {})
+            end
+        end
+        -- Pan: prefer model-relative percent when provided
+        if step.panPercent ~= nil and self.AnimPanToPercent then
+            self:AnimPanToPercent(step.panPercent, step.panDur or 0.25, { easing = step.panEase or "easeOutCubic" })
+        elseif step.panZ ~= nil and self.AnimPanTo then
             self:AnimPanTo(step.panZ, step.panDur or 0.25, { easing = step.panEase or "easeOutCubic" })
         end
         -- Model animation - apply immediately for instant response
@@ -280,7 +285,10 @@ end
 function ReplayFrame:PlayWaveEmote(opts)
     if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
     local m = self.NpcModelFrame
-    if not (m and self.AnimZoomTo and self.AnimPanTo) then 
+    -- Accept either absolute or percent-based animation helpers
+    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil) or (self.ShowRangePercent ~= nil)
+    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+    if not (m and hasZoom and hasPan) then 
         return false 
     end
     -- Skip entirely if the model isn't visible
@@ -289,30 +297,19 @@ function ReplayFrame:PlayWaveEmote(opts)
     end
 
     local duration = tonumber(opts.duration) or 1.5
-    local waveZoom = (opts.waveZoom ~= nil) and opts.waveZoom or (ReplayFrame.Config and ReplayFrame.Config.Camera and ReplayFrame.Config.Camera.WAVE_ZOOM) or 0.3
     local waveOutDur = (opts.waveOutDur ~= nil) and opts.waveOutDur or 0.2
     local zoomBackDur = (opts.zoomBackDur ~= nil) and opts.zoomBackDur or 0.5
-    local lowerDelta = (opts.lowerDelta ~= nil) and opts.lowerDelta or (self.waveLowerDelta or 0.05)
-    -- After waving, transition to the defined talk zoom, not merely the original zoom
-    local targetAfterWave = getTalkZoom(self)
-    local baseZ = getBaseZ(self)
-    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
-    local handDelta = cam.HAND_FOCUS_DELTA or 0
-    local wavePanZ = baseZ + handDelta - lowerDelta
-    local afterPanZ = (cam and cam.TALK_PAN_Z) or baseZ
     -- Use EmoteBuilder's standardized completion chaining
     local emoteName = tostring(opts.emoteName or "wave")
 
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name(emoteName)
-        :zoom(waveZoom, waveOutDur)
-    :pan(wavePanZ, 0.15)
+        :preset("Wave", { duration = waveOutDur, panDur = 0.15 })
         :anim(67)
         :hold(duration)
-        :zoom(targetAfterWave, zoomBackDur)
-    :pan(afterPanZ, 0.25)
+        :preset("Talk", { duration = zoomBackDur, panDur = 0.25 })
         :hold(0.05)
-    :onComplete(function()
+        :onComplete(function()
         -- Defer to FSM's EMOTE_COMPLETE handler to enter TALK and start loop.
         -- Avoid starting loop here to prevent duplicate PlayTalkEmote calls.
     end)
@@ -338,25 +335,22 @@ end
 function ReplayFrame:PlayNodEmote(opts)
     if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
     local m = self.NpcModelFrame
-    if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
+    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
+    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+    if not (m and hasZoom and hasPan) then return false end
     if not m:IsShown() then return false end
     opts = opts or {}
     local duration = tonumber(opts.duration) or 0.9
-    local zoomIn = (opts.zoomIn ~= nil) and opts.zoomIn or 0.08
-    local lowerDelta = (opts.lowerDelta ~= nil) and opts.lowerDelta or 0.02
-
-    local baseZoom = getCurrentZoom(self)
-    local targetZoom = math.min(1, math.max(0, baseZoom + zoomIn))
-    local baseZ = getBaseZ(self)
-
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name("nod")
-        :zoom(targetZoom, 0.2)
-        :pan(baseZ - lowerDelta, 0.15)
-    :anim(185)
+        -- Quick zoom to head/shoulders, slight up focus for the head
+        :range(0.65, 1.00, 0.2)
+        :panPercent(0.85, 0.15)
+        :anim(185)
         :hold(duration)
-        :zoom(baseZoom, 0.25)
-        :pan(baseZ, 0.15)
+        -- Return to upper body talk view
+        :range(0.50, 1.00, 0.25)
+        :panPercent(0.75, 0.15)
         :onComplete(function()
             -- Let animation system handle next steps after nod
             local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -372,25 +366,22 @@ end
 function ReplayFrame:PlayHeadShakeEmote(opts)
     if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
     local m = self.NpcModelFrame
-    if not (m and self.AnimZoomTo and self.AnimPanTo) then return false end
+    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
+    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+    if not (m and hasZoom and hasPan) then return false end
     if not m:IsShown() then return false end
     opts = opts or {}
     local duration = tonumber(opts.duration) or 1.1
-    local zoomIn = (opts.zoomIn ~= nil) and opts.zoomIn or 0.08
-    local lowerDelta = (opts.lowerDelta ~= nil) and opts.lowerDelta or 0.02
-
-    local baseZoom = getCurrentZoom(self)
-    local targetZoom = math.min(1, math.max(0, baseZoom + zoomIn))
-    local baseZ = getBaseZ(self)
-
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name("headshake")
-        :zoom(targetZoom, 0.2)
-        :pan(baseZ - lowerDelta, 0.15)
-    :anim(186)
+        -- Quick zoom to head/shoulders, slight up focus for the head
+        :range(0.65, 1.00, 0.2)
+        :panPercent(0.85, 0.15)
+        :anim(186)
         :hold(duration)
-        :zoom(baseZoom, 0.25)
-        :pan(baseZ, 0.15)
+        -- Return to upper body talk view
+        :range(0.50, 1.00, 0.25)
+        :panPercent(0.75, 0.15)
         :onComplete(function()
             -- Let animation system handle next steps after head shake
             local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -452,6 +443,32 @@ function ReplayFrame.EmoteBuilder:pan(targetZ, duration, easing)
     return self
 end
 
+-- Pan using model-relative vertical coordinate p∈[0,1]
+function ReplayFrame.EmoteBuilder:panPercent(p, duration, easing)
+    self.cur.panPercent = p
+    if duration ~= nil then self.cur.panDur = duration end
+    if easing ~= nil then self.cur.panEase = easing end
+    return self
+end
+
+-- Specify a model-relative vertical coverage [p0,p1]; if duration>0 we animate zoom
+function ReplayFrame.EmoteBuilder:range(p0, p1, duration, easing)
+    self.cur.rangeP0 = p0
+    self.cur.rangeP1 = p1
+    if duration ~= nil then self.cur.zoomDur = duration end
+    if easing ~= nil then self.cur.zoomEase = easing end
+    return self
+end
+
+-- Apply a named preset (e.g., "Talk", "Wave", "Idle"); options may carry duration/easing
+function ReplayFrame.EmoteBuilder:preset(name, options)
+    self.cur.preset = tostring(name or "")
+    if options and options.duration ~= nil then self.cur.zoomDur = options.duration end
+    if options and options.easing ~= nil then self.cur.zoomEase = options.easing end
+    if options and options.panDur ~= nil then self.cur.panDur = options.panDur end
+    return self
+end
+
 -- Set animation by id or name ("talk", "idle")
 function ReplayFrame.EmoteBuilder:anim(idOrName)
     if type(idOrName) == "number" then
@@ -489,8 +506,8 @@ end
 function ReplayFrame.EmoteBuilder:run(opts)
     local r = self.r
     if r and r._NoAnimDebugEnabled and r:_NoAnimDebugEnabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug("EmoteBuilder run skipped due to debug no-op")
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run skipped due to debug no-op")
         end
         return false
     end
@@ -500,8 +517,8 @@ function ReplayFrame.EmoteBuilder:run(opts)
     end
     
     -- Minimal logging only when debug is explicitly enabled
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-        CLN.Utils:LogAnimDebug("EmoteBuilder run: steps=" .. tostring(#self.steps) .. ", name=" .. tostring(self._name))
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run: steps=" .. tostring(#self.steps) .. ", name=" .. tostring(self._name))
     end
     
     if self._name and self._name ~= "" then
@@ -531,10 +548,8 @@ function ReplayFrame:PlayTalkEmote(opts)
     local m = self.NpcModelFrame
     if not m then return false end
     opts = opts or {}
-    -- Absolute camera targets for TALK
-    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
-    local talkPanZ = (cam and cam.TALK_PAN_Z) or getBaseZ(self)
-    local talkZoom = getTalkZoom(self)
+    -- Percent-based camera targets for TALK: upper body
+    local talkRange = { p0 = 0.50, p1 = 1.00 }
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local talkId = 60
     if self.ChooseTalkAnimIdForText and cur and cur.title then
@@ -556,7 +571,7 @@ function ReplayFrame:PlayTalkEmote(opts)
             -- Fallback: animation already set above
             return true
         end
-        builder:name("talk"):zoom(talkZoom, 0.5):pan(talkPanZ, 0.25):anim(talkId)
+        builder:name("talk"):preset("Talk", { duration = 0.5, panDur = 0.25 }):anim(talkId)
         -- Avoid passing variant unless explicitly requested; many models don't support it
         if variant then builder:animVariant(variant) end
         if duration > 0 then builder:hold(duration) end
@@ -564,9 +579,8 @@ function ReplayFrame:PlayTalkEmote(opts)
         return ok
     else
         -- For zero or no duration, just use the direct animation we already set
-        -- Move camera absolutely to TALK targets
-        if self.AnimZoomTo then self:AnimZoomTo(talkZoom, 0.5, { easing = "easeOutCubic" }) end
-        if self.AnimPanTo then self:AnimPanTo(talkPanZ, 0.25, { easing = "easeOutCubic" }) end
+    -- Move camera to TALK targets using preset helper
+    if self.ApplyEmotePreset then self:ApplyEmotePreset("Talk", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
         return true
     end
 end
@@ -577,17 +591,15 @@ function ReplayFrame:PlayIdleEmote(opts)
     local m = self.NpcModelFrame
     if not m then return false end
     opts = opts or {}
-    -- Absolute camera targets for IDLE
-    local cam = ReplayFrame.Config and ReplayFrame.Config.Camera or {}
-    local idlePanZ = (cam and cam.IDLE_PAN_Z) or getBaseZ(self)
-    local idleZoom = getIdleZoom(self)
+    -- Percent-based camera targets for IDLE: full body
+    local idleRange = { p0 = 0.00, p1 = 1.00 }
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
 
     local duration = tonumber(opts.duration) or 0
     if duration > 0 then
-        local builder = self.EmoteBuilder and self.EmoteBuilder:new()
-        if not builder then return false end
-        builder:name("idle"):zoom(idleZoom, 0.5):pan(idlePanZ, 0.25):anim(0)
+    local builder = self.EmoteBuilder and self.EmoteBuilder:new()
+    if not builder then return false end
+    builder:name("idle"):preset("Idle", { duration = 0.5, panDur = 0.25 }):anim(0)
         builder:hold(duration)
         local ok = builder:run() or false
         -- State writes removed; FSM owns state
@@ -595,9 +607,8 @@ function ReplayFrame:PlayIdleEmote(opts)
     else
         -- Direct idle animation, let system handle what comes next
         if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
-        -- Move camera absolutely to IDLE targets
-        if self.AnimZoomTo then self:AnimZoomTo(idleZoom, 0.5, { easing = "easeOutCubic" }) end
-        if self.AnimPanTo then self:AnimPanTo(idlePanZ, 0.25, { easing = "easeOutCubic" }) end
+    -- Move camera to IDLE targets using preset helper
+    if self.ApplyEmotePreset then self:ApplyEmotePreset("Idle", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
         return true
     end
 end

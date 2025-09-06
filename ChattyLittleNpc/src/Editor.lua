@@ -236,7 +236,7 @@ Editor.Frame.generateIdButton:SetScript("OnClick", function()
     local generatedID = CLN.MD5:GenerateHash(Editor.NpcId .. Editor.GossipText)
     local ngramSizes = {2, 3}
     local simhash = CLN.SimHash64:GenerateHash(Editor.GossipText, ngramSizes, true)
-    CLN:Print("Generated ID: " .. generatedID .. " Simhash: " .. simhash)
+    if CLN and CLN.Logger then CLN.Logger:info("Generated ID: " .. tostring(generatedID) .. " Simhash: " .. tostring(simhash), false, CLN.Utils.LogCategories.misc) end
     Editor.Frame.generatedIDLabel:SetText("Generated ID: " .. generatedID)
 end)
 

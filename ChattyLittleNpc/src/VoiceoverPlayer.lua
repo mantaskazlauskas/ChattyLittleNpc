@@ -28,6 +28,7 @@ VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 VoiceoverPlayer.queueProcessed = false
 
 -- Clear the queue from quests and stop current audio.
+---@param clearQueue boolean|nil If true, clears queued quests
 function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
     CLN.Utils:LogDebug("Force stopping current sound")
     if (clearQueue) then
@@ -46,6 +47,8 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
 end
 
 -- Stop current audio.
+---Stop the current sound if playing and reset state
+---@return nil
 function VoiceoverPlayer:StopCurrentSound()
     CLN.Utils:LogDebug("Stopping current sound")
     if (VoiceoverPlayer.currentlyPlaying
@@ -59,11 +62,17 @@ function VoiceoverPlayer:StopCurrentSound()
     CLN.ReplayFrame:UpdateDisplayFrameState()
 end
 
+---@param questId number The quest ID to play audio for
+---@param phase string The quest phase ("Desc"|"Prog"|"Comp")
+---@param npcId number|nil Optional NPC ID for context
+---@return nil
 function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
     if (not questId or not phase) then
-        CLN:Print("Missing required arguments")
-        CLN:Print("QuestId: ", questId)
-        CLN:Print("QuestPhase: ", phase)
+        if CLN and CLN.Logger then
+            CLN.Logger:error("Missing required arguments for PlayQuestSound", true, CLN.Utils.LogCategories.loader)
+            CLN.Logger:error("QuestId: " .. tostring(questId), false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:error("QuestPhase: " .. tostring(phase), false, CLN.Utils.LogCategories.loader)
+        end
         return -- fail fast if no quest ID
     end
 
@@ -82,15 +91,15 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
     local success, newSoundHandle
 
     if (VoiceoverPlayer.currentlyPlaying
-        and CLN.db.profile.enableQuestPlaybackQueueing
+        and (CLN.db.profile.questPlaybackMode == 'queue')
         and VoiceoverPlayer.currentlyPlaying:isPlaying()
         and VoiceoverPlayer.currentlyPlaying.soundHandle
         and VoiceoverPlayer.currentlyPlaying.cantBeInterrupted) then
 
         for _, queuedAudio in ipairs(CLN.questsQueue) do
             if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
-                if (CLN.db.profile.debugMode) then
-                    CLN:Print("Found a quest match in queue: ", queuedAudio.questId, "Quest Title: ", queuedAudio.title)
+                if (CLN.db.profile.debugMode) and CLN.Logger then
+                    CLN.Logger:debug("Found a quest match in queue: " .. tostring(queuedAudio.questId) .. " Title: " .. tostring(queuedAudio.title), false, CLN.Utils.LogCategories.loader)
                 end
                 return
             end
@@ -104,8 +113,8 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
             audioFileInfo.cantBeInterrupted = true
             audioFileInfo.npcId = npcId
 
-        if (CLN.db.profile.debugMode) then
-            CLN:Print("Queued quest: ", audioFileInfo.questId, "Quest Title: ", audioFileInfo.title)
+        if (CLN.db.profile.debugMode) and CLN.Logger then
+            CLN.Logger:info("Queued quest: " .. tostring(audioFileInfo.questId) .. " Title: " .. tostring(audioFileInfo.title), false, CLN.Utils.LogCategories.loader)
         end
 
     table.insert(CLN.questsQueue, audioFileInfo)
@@ -120,8 +129,8 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
         local fileNameFound = CLN.Utils:ContainsString(packData.Voiceovers, fileName)
         if (fileNameFound) then
             local voiceoverPath = addonsFolderPath .. packName .. fileLocation
-            if (CLN.db.profile.debugMode) then
-                CLN:Print("FileNameFound: ", fileNameFound, " in : ", voiceoverPath)
+            if (CLN.db.profile.debugMode) and CLN.Logger then
+                CLN.Logger:debug("FileNameFound in: " .. tostring(voiceoverPath), false, CLN.Utils.LogCategories.loader)
             end
 
             success, newSoundHandle = PlaySoundFile(voiceoverPath, CLN.db.profile.audioChannel)
@@ -133,7 +142,8 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
                 VoiceoverPlayer.currentlyPlaying.questId = questId
                 VoiceoverPlayer.currentlyPlaying.npcId = npcId
                 VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
-                VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = true
+                -- Non-interruptible only when in queue mode
+                VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = (CLN.db.profile.questPlaybackMode == 'queue')
                 -- Mark playback start time for animation gating
                 if GetTime then
                     VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
@@ -160,8 +170,8 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
     end
 
     if (not success) then
-        if (CLN.db.profile.printMissingFiles) then
-            CLN:Print("Missing voiceover file: ", fileName)
+        if (CLN.db.profile.printMissingFiles) and CLN.Logger then
+            CLN.Logger:warn("Missing voiceover file: " .. tostring(fileName), true, CLN.Utils.LogCategories.loader)
         end
         for _, queuedAudio in ipairs(CLN.questsQueue) do
             if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
@@ -182,17 +192,19 @@ end
 
 function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
     if (not npcId or not soundType or not text) then
-        CLN:Print("Arguments missing to play non quest sound.")
-        CLN:Print("NpcId: ", npcId)
-        CLN:Print("SoundType: ", soundType)
-        CLN:Print("Text: ", text)
+        if CLN and CLN.Logger then
+            CLN.Logger:error("Arguments missing to play non quest sound.", true, CLN.Utils.LogCategories.loader)
+            CLN.Logger:error("NpcId: " .. tostring(npcId), false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:error("SoundType: " .. tostring(soundType), false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:error("Text: " .. tostring(text), false, CLN.Utils.LogCategories.loader)
+        end
         return
     end
 
     if (VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle) then
         if (VoiceoverPlayer.currentlyPlaying.cantBeInterrupted
             and VoiceoverPlayer.currentlyPlaying:isPlaying()
-            and CLN.db.profile.enableQuestPlaybackQueueing) then
+            and CLN.db.profile.questPlaybackMode == 'queue') then
             return -- skip if a quest audio is playing
         end
         StopSound(VoiceoverPlayer.currentlyPlaying.soundHandle, 0.5)
@@ -208,6 +220,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
             VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
+            -- Non-quest lines are never queue-locked
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
             VoiceoverPlayer.currentlyPlaying.title = text
             -- Mark playback start time for animation gating
@@ -230,10 +243,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
     end
 
     if (not success) then
-        if (CLN.db.profile.printMissingFiles) then
+        if (CLN.db.profile.printMissingFiles) and CLN.Logger then
             if hashes then
                 for index, hash in ipairs(hashes) do
-                    CLN:Print("Missing voiceover file: " .. npcId .. "_".. soundType .. "_" .. hash .. ".ogg")
+                    CLN.Logger:warn("Missing voiceover file: " .. tostring(npcId) .. "_".. tostring(soundType) .. "_" .. tostring(hash) .. ".ogg", true, CLN.Utils.LogCategories.loader)
                 end
             end
         end

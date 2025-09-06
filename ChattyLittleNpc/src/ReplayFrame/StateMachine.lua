@@ -202,7 +202,8 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
         local visWnd = (self.Timings and self.Timings.waveAfterModelVisible) or 1.2
         modelGrace = visDt >= 0 and visDt < visWnd
         if CLN.Utils and CLN.Utils.LogAnimDebug then 
-            CLN.Utils:LogAnimDebug("Visibility timing - visDt: " .. tostring(visDt) .. ", visWnd: " .. tostring(visWnd) .. ", modelGrace: " .. tostring(modelGrace))
+            local cat = CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing"
+            CLN.Utils:LogAnimDebug(cat, "Visibility timing - visDt: " .. tostring(visDt) .. ", visWnd: " .. tostring(visWnd) .. ", modelGrace: " .. tostring(modelGrace))
         end
     end
     if self.Debug then self:Debug("Timing check - dt:", dt, "window:", wnd, "recentlyStarted:", recentlyStarted) end

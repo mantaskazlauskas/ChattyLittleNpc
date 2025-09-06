@@ -14,59 +14,44 @@ local options = {
     handler = CLN,
     type = 'group',
     args = {
-        DebuggingImprovements = {
+        Debugging = {
             order = 100,
             type = 'group',
-            name = 'Debugging and Improvements',
+            name = 'Debugging',
             inline = true,
             args = {
-                printMissingFiles = {
-                    type = 'toggle',
-                    name = 'Print Missing Files',
-                    desc = 'Toggle to print missing voiceover files.',
-                    get = function(info) return CLN.db.profile.printMissingFiles end,
-                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
-                },
-                logNpcTexts = {
-                    type = 'toggle',
-                    name = 'Track NPC data',
-                    desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
-                    get = function(info) return CLN.db.profile.logNpcTexts end,
-                    set = function(info, value)
-                        CLN.db.profile.logNpcTexts = value
-                        if (not value) then
-                            CLN.db.profile.printNpcTexts = false
-                        end
-                    end,
-                },
-                overwriteExistingGossipValues = {
-                    type = 'toggle',
-                    name = 'Overwrite existing values.',
-                    desc = 'Overwrite existing values of gathered npc texts when interacting not the first time.',
-                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
-                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
-                },
-                printNpcTexts = {
-                    type = 'toggle',
-                    name = 'Print NPC data (if tracking enabled)',
-                    desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
-                    get = function(info) return CLN.db.profile.printNpcTexts end,
-                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
-                },
                 debugMode = {
                     type = 'toggle',
-                    name = 'Print Debug Messages',
-                    desc = 'Toggle to print debug messages.',
+                    name = 'Enable Debug Logging',
+                    desc = 'Enable debug messages. Use the Logs window (/clnlogs) to view; enable Chat Mirroring to see in chat.',
                     get = function(info) return CLN.db.profile.debugMode end,
                     set = function(info, value) 
                         CLN.db.profile.debugMode = value 
-                        -- no additional action required; gates read dynamically
                     end,
+                },
+                logToChat = {
+                    type = 'toggle',
+                    name = 'Mirror logs to chat',
+                    desc = 'Also print logs in chat. Off keeps chat clean while Logs window captures everything.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.logToChat end,
+                    set = function(info, value)
+                        CLN.db.profile.logToChat = value
+                    end,
+                },
+                printMissingFiles = {
+                    type = 'toggle',
+                    name = 'Show Missing Files',
+                    desc = 'Log missing voiceover files as warnings. Requires debug mode.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.printMissingFiles end,
+                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
                 },
                 debugNoAnim = {
                     type = 'toggle',
-                    name = 'Disable Animations (Debug Camera)',
+                    name = 'Freeze Animations (Debug Camera)',
                     desc = 'Freeze all model/emote animations to debug camera framing. Camera logs remain active.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
                     get = function(info) return CLN.db.profile.debugNoAnim end,
                     set = function(info, value)
                         CLN.db.profile.debugNoAnim = value
@@ -80,106 +65,116 @@ local options = {
                 },
                 debugAnimations = {
                     type = 'toggle',
-                    name = 'Animation Debug',
-                    desc = 'Reduce noise: only print animation-related debug when enabled.',
+                    name = 'Animation Debug Logs',
+                    desc = 'Enable detailed animation/camera debug logs. Use category filter below to reduce noise.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
                     get = function(info) return CLN.db.profile.debugAnimations end,
                     set = function(info, value) CLN.db.profile.debugAnimations = value end,
                 },
-                debugAnimCategoriesAll = {
-                    type = 'toggle',
-                    name = 'Animation Categories: All',
-                    desc = 'When enabled, all animation debug categories are printed. Disable to pick specific categories below.',
-                    disabled = function()
-                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations)
-                    end,
-                    get = function(info)
-                        return CLN.db.profile.debugAnimCategories == 'all'
-                    end,
-                    set = function(info, value)
-                        if value then
-                            CLN.db.profile.debugAnimCategories = 'all'
-                        else
-                            CLN.db.profile.debugAnimCategories = {}
-                        end
-                    end,
-                },
                 debugAnimCategories = {
-                    type = 'multiselect',
-                    name = 'Animation Categories',
-                    desc = 'Choose which categories of animation debug logs to print. Applies only when Debug Mode and Animation Debug are enabled.',
+                    type = 'select',
+                    name = 'Animation Log Filter',
+                    desc = 'Choose which animation debug categories to show. "All" shows everything, "None" disables all animation logs.',
                     values = function()
-                        return {
-                            camera = 'Camera',
-                            framing = 'Framing',
-                            projection = 'Projection',
-                            host = 'Host/Backend',
-                            modelFrame = 'Model Frame',
-                            fsm = 'State Machine',
+                        local C = CLN and CLN.Utils and CLN.Utils.LogCategories
+                        local values = { 
+                            all = 'All Categories',
+                            none = 'None (Disable All)'
                         }
+                        if C then
+                            values[C.camera] = 'Camera Only'
+                            values[C.framing] = 'Framing Only'  
+                            values[C.projection] = 'Projection Only'
+                            values[C.host] = 'Host/Backend Only'
+                            values[C.loader] = 'Loader Only'
+                            values[C.animation] = 'Animation Only'
+                            values[C.emotes] = 'Emotes Only'
+                        end
+                        return values
                     end,
-                    disabled = function()
-                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations) or CLN.db.profile.debugAnimCategories == 'all'
+                    disabled = function() 
+                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations) 
                     end,
-                    get = function(info, key)
+                    get = function()
                         local cats = CLN.db.profile.debugAnimCategories
-                        if cats == 'all' then return true end
-                        if cats == nil then return true end -- treat nil as all selected
-                        if type(cats) == 'table' then return cats[key] == true end
-                        if type(cats) == 'string' then
-                            local s = string.lower(cats)
-                            if s == 'all' then return true end
-                            for token in s:gmatch('[^,%s]+') do
-                                if token == string.lower(key) then return true end
+                        if cats == 'all' or not cats then return 'all' end
+                        if type(cats) == 'table' then
+                            -- Count enabled categories
+                            local count = 0
+                            local lastCat = nil
+                            for k, v in pairs(cats) do
+                                if v then 
+                                    count = count + 1
+                                    lastCat = k
+                                end
                             end
+                            if count == 0 then return 'none' end
+                            if count == 1 then return lastCat end
+                            return 'all' -- multiple selected, show as "all"
                         end
-                        return false
+                        return 'all'
                     end,
-                    set = function(info, key, state)
-                        local function allKeys()
-                            return { 'camera', 'framing', 'projection', 'host', 'modelFrame', 'fsm' }
-                        end
-                        local cats = CLN.db.profile.debugAnimCategories
-                        if cats == 'all' or cats == nil or type(cats) ~= 'table' then
-                            -- Start from "all selected" baseline
-                            local map = {}
-                            for _, k in ipairs(allKeys()) do map[k] = true end
-                            cats = map
-                        end
-                        cats[key] = state and true or nil
-                        -- If all keys are true, collapse to 'all'; if none, keep empty table
-                        local any, all = false, true
-                        local present = {}
-                        for _, k in ipairs(allKeys()) do
-                            if cats[k] then any = true else all = false end
-                            present[k] = true
-                        end
-                        -- remove any unknown keys
-                        for k, _ in pairs(cats) do
-                            if not present[k] then cats[k] = nil end
-                        end
-                        if all then
+                    set = function(_, value)
+                        if value == 'all' then
                             CLN.db.profile.debugAnimCategories = 'all'
+                        elseif value == 'none' then
+                            CLN.db.profile.debugAnimCategories = {}
                         else
-                            -- keep map (possibly empty => logs disabled for all categories)
+                            -- Single category selection
+                            local cats = {}
+                            cats[value] = true
                             CLN.db.profile.debugAnimCategories = cats
                         end
                     end,
                 },
-                debugAnimCategoriesNone = {
-                    type = 'execute',
-                    name = 'Disable All Categories',
-                    desc = 'Quickly disable all animation debug categories (nothing will print).',
-                    disabled = function()
-                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations)
-                    end,
-                    func = function()
-                        CLN.db.profile.debugAnimCategories = {}
+            },
+        },
+        DataCollection = {
+            order = 110,
+            type = 'group',
+            name = 'Data Collection',
+            inline = true,
+            args = {
+                logNpcTexts = {
+                    type = 'toggle',
+                    name = 'Track NPC Data',
+                    desc = 'Save all NPC texts to saved variables for voiceover generation. Contact us on Discord if you want to help contribute data.',
+                    get = function(info) return CLN.db.profile.logNpcTexts end,
+                    set = function(info, value)
+                        CLN.db.profile.logNpcTexts = value
+                        if (not value) then
+                            CLN.db.profile.printNpcTexts = false
+                        end
                     end,
                 },
+                printNpcTexts = {
+                    type = 'toggle',
+                    name = 'Log Collected Data',
+                    desc = 'Print the NPC data being collected (if tracking is enabled).',
+                    disabled = function() return not CLN.db.profile.logNpcTexts end,
+                    get = function(info) return CLN.db.profile.printNpcTexts end,
+                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
+                },
+                overwriteExistingGossipValues = {
+                    type = 'toggle',
+                    name = 'Overwrite Existing Data',
+                    desc = 'Overwrite existing NPC text data when interacting again.',
+                    disabled = function() return not CLN.db.profile.logNpcTexts end,
+                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
+                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
+                },
+            },
+        },
+        DeveloperTools = {
+            order = 120,
+            type = 'group',
+            name = 'Developer Tools',
+            inline = true,
+            args = {
                 showGossipEditor = {
                     type = 'toggle',
                     name = 'Show Gossip Editor',
-                    desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
+                    desc = 'Toggle the Gossip Editor window for editing/fixing collected NPC gossip lines.',
                     get = function(info) return CLN.Editor.Frame:IsShown() end,
                     set = function(info, value)
                         if value then
@@ -191,8 +186,8 @@ local options = {
                 },
                 printLoadedVoiceoverPackMetadata = {
                     type = 'execute',
-                    name = 'Print VO Pack metadata',
-                    desc = 'Print what VO packs were loaded, what kind of voiceovers they support and how many voiceovers they have.',
+                    name = 'Print VO Pack Info',
+                    desc = 'Print loaded voiceover pack metadata and statistics.',
                     func = function() CLN:PrintLoadedVoiceoverPacks() end,
                 },
             },
@@ -301,13 +296,25 @@ local options = {
                     desc = 'Reset the replay frame position to its default values.',
                     func = function() CLN.ReplayFrame:ResetFramePosition() end,
                 },
-                openEditMode = {
-                    type = 'execute',
-                    name = 'Open Edit Mode (show frame)',
-                    desc = 'Show the replay frame and enter Edit Mode so you can move/resize it, even if nothing is playing.',
-                    func = function()
-                        if CLN and CLN.ReplayFrame and CLN.ReplayFrame.ShowForEdit then
+                editMode = {
+                    type = 'toggle',
+                    name = 'Edit Mode',
+                    desc = 'Toggle edit mode for the replay frame. When enabled, you can move and resize the frame.',
+                    get = function(info) 
+                        return CLN.ReplayFrame and CLN.ReplayFrame._editMode or false
+                    end,
+                    set = function(info, value)
+                        if not CLN.ReplayFrame then return end
+                        if value then
+                            -- Enter edit mode
                             CLN.ReplayFrame:ShowForEdit()
+                        else
+                            -- Exit edit mode
+                            CLN.ReplayFrame:SetEditMode(false)
+                            CLN.ReplayFrame._forceShow = false
+                            if CLN.ReplayFrame.UpdateDisplayFrameState then
+                                CLN.ReplayFrame:UpdateDisplayFrameState()
+                            end
                         end
                     end,
                 },
@@ -336,29 +343,20 @@ local options = {
                     get = function(info) return CLN.db.profile.autoPlayVoiceovers end,
                     set = function(info, value) CLN.db.profile.autoPlayVoiceovers = value end,
                 },
-                stopVoiceoverAfterDialogWindowClose = {
-                    type = 'toggle',
-                    name = 'Stop on dialog window close',
-                    desc = 'Only play voiceover while the npc dialog window is open, and auto stop voiceover after the dialog window is closed. (Quest queueing will be disabled)',
-                    get = function(info) return CLN.db.profile.stopVoiceoverAfterDialogWindowClose end,
-                    set = function(info, value)
-                        CLN.db.profile.stopVoiceoverAfterDialogWindowClose = value
-                        if (value) then
-                            CLN.db.profile.enableQuestPlaybackQueueing = false
-                        end
-                    end
-                },
-                enableQuestPlaybackQueueing = {
-                    type = 'toggle',
-                    name = 'Enable Quest Playback Queueing',
-                    desc = 'Toggle to enable or disable quest playback queueing. (Stop on dialog window close will be disabled)',
-                    get = function(info) return CLN.db.profile.enableQuestPlaybackQueueing end,
-                    set = function(info, value)
-                        CLN.db.profile.enableQuestPlaybackQueueing = value
-                        if (value) then
-                            CLN.db.profile.stopVoiceoverAfterDialogWindowClose = false
-                        end
-                    end
+                questPlaybackMode = {
+                    type = 'select',
+                    name = 'Quest Playback Mode',
+                    desc = 'How quest voiceovers behave: Queue (play sequentially), Stop On Close (interrupt when window closes), or Manual (only on button press).',
+                    values = {
+                        queue = 'Queue (sequential, uninterrupted)',
+                        stopOnClose = 'Stop On Close (interrupt when dialog closes)',
+                        manual = 'Manual (never auto queue, only play button)'
+                    },
+                    get = function() return CLN.db.profile.questPlaybackMode or 'queue' end,
+                    set = function(_, value)
+                        CLN.db.profile.questPlaybackMode = value
+                        if CLN._SyncLegacyQuestPlaybackFlags then CLN:_SyncLegacyQuestPlaybackFlags() end
+                    end,
                 },
                 playVoiceoverAfterDelay = {
                     type = 'range',

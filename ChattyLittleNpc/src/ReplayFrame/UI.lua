@@ -15,7 +15,8 @@ function ReplayFrame:GetDisplayFrame()
     local frame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent)
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
-    frame:EnableMouse(true)
+    -- Background should be click-through outside Edit Mode; interactive children handle their own mouse
+    frame:EnableMouse(false)
     frame:SetMovable(true)
     -- Resize only allowed in Edit Mode (will be enabled there)
     frame:SetResizable(false)
@@ -30,6 +31,19 @@ function ReplayFrame:GetDisplayFrame()
 
     self.DisplayFrame = frame
 
+    -- Tooltip on hover: addon name + click to edit hint
+    frame:HookScript("OnEnter", function(f)
+        if not GameTooltip or not GameTooltip.SetOwner then return end
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine("Chatty Little NPC", 1,1,1)
+        GameTooltip:AddLine("Click to Edit", 0.9, 0.9, 0.9)
+        GameTooltip:Show()
+    end)
+    frame:HookScript("OnLeave", function()
+        if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
+    end)
+
     -- Build UI parts
     self:CreateContentFrame()
     self:InitializeModelContainer()
@@ -41,6 +55,11 @@ function ReplayFrame:GetDisplayFrame()
 
     -- Position after components exist
     if self.LoadFramePosition then self:LoadFramePosition() end
+    
+    -- Apply frame scale if set
+    if CLN.db and CLN.db.profile and CLN.db.profile.frameScale then
+        frame:SetScale(CLN.db.profile.frameScale)
+    end
 
     return frame
 end
@@ -87,7 +106,7 @@ end
 -- Initialize the model container (delegate to ModelFrame if available)
 function ReplayFrame:InitializeModelContainer()
     self.npcModelFrameWidth = 220
-    self.npcModelFrameHeight = 140
+    self.npcModelFrameHeight = (CLN.db and CLN.db.profile and CLN.db.profile.npcModelFrameHeight) or 140
 
     -- Initialize the model container and model frame via extracted module (idempotent)
     if self.CreateModelUI and not (self.ModelContainer or self.NpcModelFrame) then
@@ -371,9 +390,18 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     editBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     editBtn:SetScript("OnClick", function()
         if not ReplayFrame._editMode then
-            if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
+            -- Enter lightweight edit overlay mode
+            ReplayFrame._editMode = true
+            if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowOverlay() end
+            if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
+            -- Enable resizing via grip
+            if ReplayFrame.ResizeGrip then ReplayFrame.ResizeGrip:Show() end
         else
-            if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
+            -- Exit overlay mode
+            ReplayFrame._editMode = false
+            if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:HideOverlay() end
+            if ReplayFrame.HideEditPanel then ReplayFrame:HideEditPanel() end
+            if ReplayFrame.ResizeGrip then ReplayFrame.ResizeGrip:Hide() end
         end
     end)
     self.EditModeButton = editBtn
