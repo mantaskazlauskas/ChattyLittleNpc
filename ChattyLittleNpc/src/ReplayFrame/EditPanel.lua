@@ -188,8 +188,16 @@ function ReplayFrame:CreateEditPanel()
             y = yOffset,
             rowSpacing = opts.rowSpacing or spacing,
             rows = {},
-            sliderWidth = 150,
-            layout = { labelX = 34, sliderGap = 15, valueGap = 6, excludeX = 14, inputGap = 4, resetRightPad = 20 },
+            sliderWidth = 155, -- slightly wider for precision and readability
+            layout = {
+                labelX = 34,
+                labelWidth = 118,  -- fixed width so subsequent sliders align vertically
+                sliderGap = 12,
+                valueGap = 6,
+                excludeX = 14,
+                inputGap = 4,
+                resetRightPad = 20,
+            },
         }
         -- Bulk tooltip applier
         function self:ApplyTooltips(map)
@@ -232,7 +240,13 @@ function ReplayFrame:CreateEditPanel()
             btn:SetSize(16,16)
             btn:SetPoint("RIGHT", panelRef, "RIGHT", -self.layout.resetRightPad, 0)
             local tex = btn:CreateTexture(nil, "ARTWORK")
-            tex:SetAllPoints(); tex:SetTexture("Interface/Buttons/UI-RefreshButton")
+            tex:SetAllPoints();
+            local IconAtlas = CLN and CLN.IconAtlas
+            if IconAtlas then
+                tex:SetTexture(IconAtlas:Get(IconAtlas.keys.refresh))
+            else
+                tex:SetTexture("Interface/Buttons/UI-RefreshButton")
+            end
             btn.tex = tex
             btn:SetScript("OnClick", function()
                 if not panelRef._orig then return end
@@ -244,16 +258,34 @@ function ReplayFrame:CreateEditPanel()
         end
         local function makeInput(row, minV, maxV)
             local eb = CreateFrame("EditBox", nil, panelRef, "InputBoxTemplate")
-            eb:SetSize(46,18); eb:SetAutoFocus(false)
+            eb:SetSize(50,18)
+            eb:SetAutoFocus(false)
             eb:SetPoint("LEFT", row.value, "RIGHT", self.layout.inputGap, 0)
-            eb:SetNumeric(true); eb:SetMaxLetters(5)
+            eb:SetNumeric(true)
+            eb:SetMaxLetters(5)
             eb:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
             eb:SetScript("OnEnterPressed", function(s)
                 local v = tonumber(s:GetText())
-                if v then v = math.max(minV, math.min(maxV, v)); row.slider:SetValue(v); s:SetText(string.format("%d", v)) end
+                if v then
+                    v = math.max(minV, math.min(maxV, v))
+                    row.slider:SetValue(v)
+                    s:SetText(string.format("%d", v))
+                end
                 s:ClearFocus()
             end)
-            row.slider:HookScript("OnValueChanged", function(_, v) if eb:HasFocus() then return end eb:SetText(string.format("%d", v)) end)
+            -- Real-time clamping while typing provides immediate preview
+            eb:SetScript("OnTextChanged", function(s)
+                if not s:HasFocus() then return end
+                local v = tonumber(s:GetText())
+                if v then
+                    if v < minV then v = minV elseif v > maxV then v = maxV end
+                    row.slider:SetValue(v)
+                end
+            end)
+            row.slider:HookScript("OnValueChanged", function(_, v)
+                if eb:HasFocus() then return end
+                eb:SetText(string.format("%d", v))
+            end)
             row.input = eb
         end
         function self:AddSlider(def)
@@ -266,6 +298,10 @@ function ReplayFrame:CreateEditPanel()
             end
             local label = panelRef:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             label:SetPoint("TOPLEFT", self.layout.labelX, self.y)
+            if self.layout.labelWidth then
+                label:SetWidth(self.layout.labelWidth)
+                label:SetJustifyH("LEFT")
+            end
             label:SetText(def.label or def.key)
             local slider = CreateFrame("Slider", nil, panelRef, "OptionsSliderTemplate")
             slider:SetPoint("LEFT", label, "RIGHT", self.layout.sliderGap, 0)

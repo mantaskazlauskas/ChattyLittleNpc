@@ -127,6 +127,14 @@ local options = {
                         end
                     end,
                 },
+                allowKeyPropagation = {
+                    type = 'toggle',
+                    name = 'Allow Key Propagation (Advanced)',
+                    desc = 'Enable usage of SetPropagateKeyboardInput on internal debug/overlay frames. This can reduce stuck-focus issues but may trigger Blizzard taint errors. Leave OFF unless you understand the risk.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function() return CLN.db.profile.allowKeyPropagation end,
+                    set = function(_, v) CLN.db.profile.allowKeyPropagation = v and true or false end,
+                },
             },
         },
         DataCollection = {

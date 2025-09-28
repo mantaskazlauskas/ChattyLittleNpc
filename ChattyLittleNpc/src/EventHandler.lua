@@ -61,8 +61,8 @@ function EventHandler:StartWatcher()
 
         -- If a new handle starts playing, clear the latch
         if handle and isPlaying and self._stopLatchHandle and self._stopLatchHandle ~= handle then
-            if CLN and CLN.Utils and CLN.Utils.LogDebug then
-                CLN.Utils:LogDebug("Watcher: clearing stop latch for new handle " .. tostring(handle))
+            if CLN and CLN.Logger then
+                CLN.Logger:debug("Watcher: clearing stop latch for new handle " .. tostring(handle), false, CLN.Utils.LogCategories.loader)
             end
             self._stopLatchHandle = nil
         end
@@ -70,8 +70,8 @@ function EventHandler:StartWatcher()
         -- Only emit stop once per handle, and only when we have a valid handle
         if handle and not isPlaying then
             if self._stopLatchHandle ~= handle then
-                if CLN and CLN.Utils and CLN.Utils.LogDebug then
-                    CLN.Utils:LogDebug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle))
+                if CLN and CLN.Logger then
+                    CLN.Logger:debug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle), false, CLN.Utils.LogCategories.loader)
                 end
                 self._stopLatchHandle = handle
                 self:SendMessage("VOICEOVER_STOP", cp)
@@ -83,19 +83,19 @@ end
 
 -- EVENT HANDLERS
 function EventHandler:ADDON_LOADED()
-    CLN.Utils:LogDebug("ADDON_LOADED")
+    if CLN and CLN.Logger then CLN.Logger:debug("ADDON_LOADED", false, CLN.Utils.LogCategories.loader) end
 
     CLN.NpcDialogTracker:InitializeTables()
 end
 
 function EventHandler:GOSSIP_SHOW()
-    CLN.Utils:LogDebug("GOSSIP_SHOW")
+    if CLN and CLN.Logger then CLN.Logger:debug("GOSSIP_SHOW", false, CLN.Utils.LogCategories.loader) end
 
     local parentFrame = _G["DUIQuestFrame"] or GossipFrame
     local _, gender, _, _, unitType, unitId = CLN:GetUnitInfo("npc")
     local text = C_GossipInfo.GetText()
     if (not unitId or not unitType or not text) then
-        CLN.Utils:LogDebug("No unitId, unitType or text found for gossip.")
+    if CLN and CLN.Logger then CLN.Logger:debug("No unitId, unitType or text found for gossip.", false, CLN.Utils.LogCategories.loader) end
         return
     end
 
@@ -106,7 +106,7 @@ function EventHandler:GOSSIP_SHOW()
     local hashes = CLN.Utils:GetHashes(unitId, text)
     local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, "Gossip", hashes, gender)
     if not filePath or CLN.Utils:IsNilOrEmpty(filePath) then
-        CLN.Utils:LogDebug("No file path found for gossip voiceover.")
+    if CLN and CLN.Logger then CLN.Logger:debug("No file path found for gossip voiceover.", false, CLN.Utils.LogCategories.loader) end
         return
     end
 
@@ -126,7 +126,7 @@ function EventHandler:GOSSIP_SHOW()
 end
 
 function EventHandler:QUEST_GREETING()
-    CLN.Utils:LogDebug("QUEST_GREETING")
+    if CLN and CLN.Logger then CLN.Logger:debug("QUEST_GREETING", false, CLN.Utils.LogCategories.loader) end
 
     if (CLN.db.profile.logNpcTexts) then
         CLN.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
@@ -134,17 +134,17 @@ function EventHandler:QUEST_GREETING()
 end
 
 function EventHandler:QUEST_DETAIL()
-    CLN.Utils:LogDebug("QUEST_DETAIL")
+    if CLN and CLN.Logger then CLN.Logger:debug("QUEST_DETAIL", false, CLN.Utils.LogCategories.loader) end
 
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), "Desc", select(6, CLN:GetUnitInfo("npc")))
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, select(6, CLN:GetUnitInfo("npc")))
         end)
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-        CLN:HandlePlaybackStart("Desc")
+    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -153,17 +153,17 @@ function EventHandler:QUEST_DETAIL()
 end
 
 function EventHandler:QUEST_PROGRESS()
-    CLN.Utils:LogDebug("QUEST_PROGRESS")
+    if CLN and CLN.Logger then CLN.Logger:debug("QUEST_PROGRESS", false, CLN.Utils.LogCategories.loader) end
 
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), "Prog", select(6, CLN:GetUnitInfo("npc")))
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, select(6, CLN:GetUnitInfo("npc")))
         end)
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-        CLN:HandlePlaybackStart("Prog")
+    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -172,17 +172,17 @@ function EventHandler:QUEST_PROGRESS()
 end
 
 function EventHandler:QUEST_COMPLETE()
-    CLN.Utils:LogDebug("QUEST_COMPLETE")
+    if CLN and CLN.Logger then CLN.Logger:debug("QUEST_COMPLETE", false, CLN.Utils.LogCategories.loader) end
 
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), "Comp", select(6, CLN:GetUnitInfo("npc")))
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, select(6, CLN:GetUnitInfo("npc")))
         end)
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-        CLN:HandlePlaybackStart("Comp")
+    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -191,7 +191,7 @@ function EventHandler:QUEST_COMPLETE()
 end
 
 function EventHandler:ITEM_TEXT_READY()
-    CLN.Utils:LogDebug("ITEM_TEXT_READY")
+    if CLN and CLN.Logger then CLN.Logger:debug("ITEM_TEXT_READY", false, CLN.Utils.LogCategories.loader) end
 
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
@@ -235,8 +235,8 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     local now = (type(GetTime) == "function") and GetTime() or 0
     if stoppedHandle then
         if self._lastStoppedHandle == stoppedHandle and self._lastStoppedTime and (now - self._lastStoppedTime) < 1.0 then
-            if CLN and CLN.Utils and CLN.Utils.LogDebug then
-                CLN.Utils:LogDebug("OnVoiceoverStop: deduped for handle " .. tostring(stoppedHandle))
+            if CLN and CLN.Logger then
+                CLN.Logger:debug("OnVoiceoverStop: deduped for handle " .. tostring(stoppedHandle), false, CLN.Utils.LogCategories.loader)
             end
             return
         end
@@ -246,7 +246,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 
     for i, quest in ipairs(CLN.questsQueue) do
         if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
-            CLN.Utils:LogDebug("Removing quest from queue:" .. quest.questId)
+            if CLN and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
             table.remove(CLN.questsQueue, i)
             if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
             break
@@ -254,10 +254,13 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     end
 
     if (#CLN.questsQueue > 0) then
-        CLN.Utils:LogDebug("Playing next quest in queue.")
+    if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
         -- Ensure previous emote/animation state is clean before starting next
         if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
-            CLN.ReplayFrame:ResetAnimationState()
+            local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+            if (not ok) and CLN and CLN.Logger then
+                CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
+            end
         end
         local nextQuest = CLN.questsQueue[1]
         CLN.VoiceoverPlayer.queueProcessed = false
@@ -268,7 +271,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         local currHandle = curr and curr.soundHandle or nil
         local stillPlaying = curr and curr.isPlaying and curr:isPlaying() or false
         if not stillPlaying or (stoppedHandle and currHandle == stoppedHandle) then
-            CLN.Utils:LogDebug("No more quests in queue, clearing currentlyPlaying and closing UI.")
+            if CLN and CLN.Logger then CLN.Logger:debug("No more quests in queue, clearing currentlyPlaying and closing UI.", false, CLN.Utils.LogCategories.loader) end
 	        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
             CLN.VoiceoverPlayer.queueProcessed = true
         end
@@ -283,37 +286,37 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 end
 
 function EventHandler:QUEST_FINISHED()
-    CLN.Utils:LogDebug("QUEST_FINISHED")
+    if CLN and CLN.Logger then CLN.Logger:debug("QUEST_FINISHED", false, CLN.Utils.LogCategories.loader) end
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
-        CLN.Utils:LogDebug("Stopping currently playing voiceover on quest finished.")
+    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
 function EventHandler:GOSSIP_CLOSED()
-    CLN.Utils:LogDebug("GOSSIP_CLOSED")
+    if CLN and CLN.Logger then CLN.Logger:debug("GOSSIP_CLOSED", false, CLN.Utils.LogCategories.loader) end
     CLN.PlayButton:ClearButtons()
 
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
-        CLN.Utils:LogDebug("Stopping currently playing voiceover on gossip closed.")
+    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
 function EventHandler:CINEMATIC_START()
-    CLN.Utils:LogDebug("CINEMATIC_START")
+    if CLN and CLN.Logger then CLN.Logger:debug("CINEMATIC_START", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
-        CLN.Utils:LogDebug("Stopping currently playing voiceover on cinematic start.")
+    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on cinematic start.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
 
 function EventHandler:PLAY_MOVIE()
-    CLN.Utils:LogDebug("PLAY_MOVIE")
+    if CLN and CLN.Logger then CLN.Logger:debug("PLAY_MOVIE", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
-        CLN.Utils:LogDebug("Stopping currently playing voiceover on movie play.")
+    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on movie play.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end

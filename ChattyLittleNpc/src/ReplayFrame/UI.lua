@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local IconAtlas = CLN.IconAtlas
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -81,7 +82,12 @@ function ReplayFrame:EnsureMinimizedButton()
     -- circular masked icon
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints()
-    tex:SetTexture("Interface/Icons/Ability_Warrior_BattleShout")
+    -- Portrait / brand icon placeholder via atlas
+    if IconAtlas then
+        tex:SetTexture(IconAtlas:Get(IconAtlas.keys.portrait))
+    else
+        tex:SetTexture("Interface/Icons/Ability_Warrior_BattleShout")
+    end
     local mask = btn:CreateMaskTexture(nil, "ARTWORK")
     mask:SetTexture("Interface/CharacterFrame/TempPortraitAlphaMask")
     mask:SetAllPoints(tex)
@@ -178,6 +184,29 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -10, -4)
     divider:SetHeight(1)
     self.HeaderDivider = divider
+
+    -- Queue count badge (hidden when <=1 queued)
+    local badge = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    badge:SetPoint("LEFT", header, "RIGHT", 8, -1)
+    badge:SetTextColor(0.9, 0.9, 0.9)
+    badge:Hide()
+    self.QueueBadge = badge
+    badge:SetText("[0]")
+    badge:SetScript("OnEnter", function(f)
+        if not GameTooltip or not GameTooltip.SetOwner then return end
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        local q = CLN.questsQueue and #CLN.questsQueue or 0
+        GameTooltip:AddLine("Queued Quests", 1,1,1)
+        GameTooltip:AddLine("Total queued quest phases: " .. q, 0.85,0.85,0.85)
+        if q == 0 then
+            GameTooltip:AddLine("No pending quest audio.", 0.7,0.7,0.7)
+        end
+        GameTooltip:Show()
+    end)
+    badge:SetScript("OnLeave", function()
+        if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
+    end)
 end
 -- Return the real available width (in pixels) that a row's text can use
 function ReplayFrame:GetRowTextAvailableWidth(row)
@@ -248,6 +277,28 @@ function ReplayFrame:AnchorHeaderToButtons()
     end
 end
 
+-- Update queue badge reflecting total queued quests (excluding currently playing)
+function ReplayFrame:UpdateQueueBadge()
+    if not self.QueueBadge then return end
+    local q = CLN.questsQueue and #CLN.questsQueue or 0
+    if q > 1 then
+        self.QueueBadge:SetText("[" .. tostring(q) .. "]")
+        self.QueueBadge:Show()
+    elseif q == 1 then
+        -- Show only if the single item is not the one currently playing (rare race condition)
+        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local queued = CLN.questsQueue[1]
+        if queued and cp and (queued.questId ~= cp.questId or queued.phase ~= cp.phase) then
+            self.QueueBadge:SetText("[1]")
+            self.QueueBadge:Show()
+        else
+            self.QueueBadge:Hide()
+        end
+    else
+        self.QueueBadge:Hide()
+    end
+end
+
 -- Truncate a fontstring's text to fit a given pixel width using "..."
 function ReplayFrame:TruncateToWidth(fs, text, maxWidth)
     if not (fs and text and maxWidth and maxWidth > 0) then return end
@@ -283,9 +334,9 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     
     local function SetChevron(expanded)
         if expanded then
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-ExpandButton-Up") -- down chevron (expanded)
+            collapseBtn.tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.expand) or "Interface/Buttons/UI-Panel-ExpandButton-Up") -- down chevron (expanded)
         else
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-CollapseButton-Up") -- right chevron (collapsed)
+            collapseBtn.tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.collapse) or "Interface/Buttons/UI-Panel-CollapseButton-Up") -- right chevron (collapsed)
         end
     end
     
@@ -336,7 +387,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     clearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -6, 0)
     local clearTex = clearBtn:CreateTexture(nil, "ARTWORK")
     clearTex:SetAllPoints()
-    clearTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
+    clearTex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.clear) or "Interface/Buttons/UI-GroupLoot-Pass-Up")
     clearBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("Clear all queued voiceovers")
@@ -356,20 +407,14 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     optionsBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
     local optionsTex = optionsBtn:CreateTexture(nil, "ARTWORK")
     optionsTex:SetAllPoints()
-    optionsTex:SetTexture("Interface/Buttons/UI-OptionsButton")
+    optionsTex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.options) or "Interface/Buttons/UI-OptionsButton")
     optionsBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Open Chatty Little Npc options")
+        GameTooltip:SetText("Open Chatty Little NPC options")
         GameTooltip:Show()
     end)
     optionsBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     optionsBtn:SetScript("OnClick", function()
-        local Ace = LibStub and LibStub("AceAddon-3.0", true)
-        local Opts = Ace and Ace:GetAddon("Options", true) or nil
-        if Opts and Opts.OpenSettings then
-            Opts:OpenSettings()
-            return
-        end
         local dlg = LibStub and LibStub("AceConfigDialog-3.0", true)
         if dlg and dlg.Open then dlg:Open("ChattyLittleNpc") end
     end)
@@ -384,24 +429,15 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     editTex:SetTexture("Interface/CURSOR/UI-Cursor-Move")
     editBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Toggle Edit Mode (move/resize)")
+        GameTooltip:SetText(ReplayFrame._editMode and "Exit Edit Mode" or "Enter Edit Mode (move/resize)")
         GameTooltip:Show()
     end)
     editBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     editBtn:SetScript("OnClick", function()
         if not ReplayFrame._editMode then
-            -- Enter lightweight edit overlay mode
-            ReplayFrame._editMode = true
-            if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowOverlay() end
-            if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
-            -- Enable resizing via grip
-            if ReplayFrame.ResizeGrip then ReplayFrame.ResizeGrip:Show() end
+            if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
         else
-            -- Exit overlay mode
-            ReplayFrame._editMode = false
-            if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:HideOverlay() end
-            if ReplayFrame.HideEditPanel then ReplayFrame:HideEditPanel() end
-            if ReplayFrame.ResizeGrip then ReplayFrame.ResizeGrip:Hide() end
+            if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
         end
     end)
     self.EditModeButton = editBtn
@@ -433,6 +469,220 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
 
     -- Re-anchor the header now that all buttons exist
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+end
+
+-- =============================================
+-- Compact Badge (Collapsed Mode) Implementation
+-- =============================================
+function ReplayFrame:EnsureCompactBadge()
+    if self.CompactBadge then return end
+    if not self.DisplayFrame then return end
+    local badge = CreateFrame("Frame", nil, self.DisplayFrame, "BackdropTemplate")
+    badge:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 6, -6)
+    badge:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -30, -6) -- leave space for collapse button
+    badge:SetHeight(44)
+    badge:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 10, insets={left=3,right=3,top=3,bottom=3} })
+    badge:SetBackdropColor(0,0,0,0.55)
+    badge:SetBackdropBorderColor(0.9,0.7,0.2,0.85)
+    badge:Hide()
+
+    -- Row 1: status icon + title
+    local icon = badge:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("LEFT", badge, "LEFT", 6, 0)
+    icon:SetSize(18,18)
+    icon:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.speaker) or "Interface/COMMON/VOICECHAT-SPEAKER")
+    badge.Icon = icon
+    local titleFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    titleFS:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    titleFS:SetPoint("RIGHT", badge, "RIGHT", -6, 0)
+    titleFS:SetJustifyH("LEFT")
+    if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
+    titleFS:SetTextColor(1.0, 0.95, 0.7)
+    badge.Title = titleFS
+
+    -- Row 2: controls container
+    local controls = CreateFrame("Frame", nil, badge)
+    controls:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -2)
+    controls:SetPoint("TOPRIGHT", badge, "BOTTOMRIGHT", 0, -2)
+    controls:SetHeight(20)
+    badge.Controls = controls
+
+    local function makeBtn(texPath, tooltip, onClick)
+        local b = CreateFrame("Button", nil, controls)
+        b:SetSize(18,18)
+        local t = b:CreateTexture(nil, "ARTWORK")
+        t:SetAllPoints()
+        t:SetTexture(texPath)
+        b.tex = t
+        b:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:ClearLines(); GameTooltip:AddLine(tooltip,1,1,1); GameTooltip:Show()
+        end)
+        b:SetScript("OnLeave", function() GameTooltip_Hide() end)
+        b:SetScript("OnClick", onClick)
+        return b
+    end
+
+    -- Play/Stop button
+    local playBtn = makeBtn("Interface/Buttons/UI-SpellbookIcon-NextPage-Up", "Stop current playback", function()
+        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false) end
+        if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
+    end)
+    playBtn:SetPoint("LEFT", controls, "LEFT", 4, 0)
+    badge.PlayBtn = playBtn
+
+    -- Clear queue button
+    local clearBtn = makeBtn("Interface/Buttons/UI-GroupLoot-Pass-Up", "Clear queued quests", function()
+        CLN.questsQueue = {}
+        if self.MarkQueueDirty then self:MarkQueueDirty() end
+        if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
+    end)
+    clearBtn:SetPoint("LEFT", playBtn, "RIGHT", 6, 0)
+    badge.ClearBtn = clearBtn
+
+    -- Expand button (mirrors collapse button state toggle)
+    local expandBtn = makeBtn("Interface/Buttons/UI-Panel-ExpandButton-Up", "Expand full panel", function()
+        if self.CollapseButton then self.CollapseButton:Click() end
+    end)
+    expandBtn:SetPoint("LEFT", clearBtn, "RIGHT", 6, 0)
+    badge.ExpandBtn = expandBtn
+
+    -- Queue count display
+    local qfs = controls:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    qfs:SetPoint("LEFT", expandBtn, "RIGHT", 10, 0)
+    qfs:SetPoint("RIGHT", controls, "RIGHT", -6, 0)
+    qfs:SetJustifyH("RIGHT")
+    badge.QueueCount = qfs
+
+    self.CompactBadge = badge
+end
+
+function ReplayFrame:UpdateCompactBadge(force)
+    if not (self.CollapseButton and self.CollapseButton._collapsed) then return end
+    if not self.CompactBadge then return end
+    local badge = self.CompactBadge
+    -- Ensure text reflects currently playing or first queued
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    local playing = cur and cur.isPlaying and cur:isPlaying() or false
+    local title = cur and cur.title or nil
+    if (not title or title == "") and CLN.questsQueue and #CLN.questsQueue > 0 then
+        local q = CLN.questsQueue[1]
+        title = q and q.title or "Queued Quest"
+    end
+    if not title then title = "Idle" end
+    -- Truncate to ~32 chars
+    if #title > 32 then title = string.sub(title,1,29).."..." end
+    badge.Title:SetText(title)
+    -- Icon state (speaker vs mute)
+    if playing then
+        badge.Icon:SetVertexColor(1,1,1,1)
+    else
+        badge.Icon:SetVertexColor(0.5,0.5,0.5,0.8)
+    end
+    local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
+    if qcount > 0 then
+        badge.QueueCount:SetText("Queue: "..qcount)
+    else
+        badge.QueueCount:SetText("")
+    end
+end
+
+-- =============================================================
+-- Animated collapse / expand (fade + subtle scale) for badge UI
+-- =============================================================
+function ReplayFrame:ApplyImmediateCollapseState(collapsed)
+    -- Fallback non-animated logic (mirrors prior behavior but refactored)
+    if not self.DisplayFrame then return end
+    self:EnsureCompactBadge()
+    local frame = self.DisplayFrame
+    if collapsed then
+        if frame and frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
+        if self.HeaderText then self.HeaderText:Hide() end
+        if self.HeaderDivider then self.HeaderDivider:Hide() end
+        if self.QueueScrollBox then self.QueueScrollBox:Hide() end
+        if self.ModelContainer then self.ModelContainer:Hide() end
+        if self.NpcModelFrame then self.NpcModelFrame:Hide() end
+        if self.ContentFrame then self.ContentFrame:Hide() end
+        if self.CompactBadge then self.CompactBadge:Show() end
+        if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
+        if frame and frame.SetHeight then frame:SetHeight(56) end
+    else
+        if self.HeaderText then self.HeaderText:Show() end
+        if self.HeaderDivider then self.HeaderDivider:Show() end
+        if self.ContentFrame then self.ContentFrame:Show() end
+        if self.QueueScrollBox then self.QueueScrollBox:Show() end
+        if self.ModelContainer and self._hasValidModel then self.ModelContainer:Show() end
+        if self.CompactBadge then self.CompactBadge:Hide() end
+        if frame and frame.SetHeight and self._preCollapseHeight then frame:SetHeight(self._preCollapseHeight) end
+    end
+    if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
+    if self.Relayout then self:Relayout() end
+end
+
+function ReplayFrame:AnimateCollapseTransition(collapsed)
+    if self._animatingCollapse then return end
+    self:EnsureCompactBadge()
+    if not self.DisplayFrame then return end
+    -- Cancel any prior OnUpdate
+    -- NOTE: Use dot when checking for method existence; colon would attempt a call.
+    if self._collapseAnimFrame and self._collapseAnimFrame.SetScript then
+        self._collapseAnimFrame:SetScript("OnUpdate", nil)
+    end
+    local frame = self.DisplayFrame
+    local dur = 0.18
+    local elapsed = 0
+    local startH = frame:GetHeight() or 0
+    if collapsed and frame.GetHeight then self._preCollapseHeight = startH end
+    local endH = collapsed and 56 or (self._preCollapseHeight or startH)
+    local contentFrames = { self.HeaderText, self.HeaderDivider, self.QueueScrollBox, (self.ModelContainer or self.NpcModelFrame) }
+    local badge = self.CompactBadge
+    if collapsed then
+        -- Prepare badge
+        if badge then
+            badge:Show(); badge:SetAlpha(0); badge:SetScale(0.90)
+            if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
+        end
+    else
+        -- Prepare content to fade back in
+        for _, f in ipairs(contentFrames) do if f and f.Show then f:Show(); if f.SetAlpha then f:SetAlpha(0) end end end
+        if badge then badge:SetAlpha(1); badge:SetScale(1.0) end
+    end
+    self._animatingCollapse = true
+    local animFrame = self._collapseAnimFrame or CreateFrame("Frame")
+    self._collapseAnimFrame = animFrame
+    animFrame:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        local t = math.min(1, elapsed / dur)
+        -- Ease (smoothstep)
+        local ease = t * t * (3 - 2 * t)
+        local inv = 1 - ease
+        -- Height interpolation
+        local h = startH + (endH - startH) * ease
+        if frame and frame.SetHeight then frame:SetHeight(h) end
+        if collapsed then
+            -- Fade out content, fade/scale in badge
+            for _, f in ipairs(contentFrames) do if f and f.SetAlpha then f:SetAlpha(inv) end end
+            if badge then badge:SetAlpha(ease); badge:SetScale(0.90 + 0.10 * ease) end
+        else
+            -- Expanding
+            for _, f in ipairs(contentFrames) do if f and f.SetAlpha then f:SetAlpha(ease) end end
+            if badge then badge:SetAlpha(inv); badge:SetScale(0.90 + 0.10 * inv) end
+        end
+        if t >= 1 then
+            animFrame:SetScript("OnUpdate", nil)
+            -- Finalize visibility
+            if collapsed then
+                for _, f in ipairs(contentFrames) do if f and f.Hide then f:Hide() end end
+                if badge then badge:SetAlpha(1); badge:SetScale(1.0) end
+            else
+                if badge then badge:Hide() end
+                for _, f in ipairs(contentFrames) do if f and f.Show then f:Show(); if f.SetAlpha then f:SetAlpha(1) end end end
+            end
+            self._animatingCollapse = false
+            if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
+            if self.Relayout then self:Relayout() end
+        end
+    end)
 end
 
 -- Tooltip helpers: width and smart sentence splitting
@@ -518,9 +768,9 @@ function ReplayFrame:UpdateLockUI()
     if not self.LockButton then return end
     local locked = self:IsFrameLocked()
     if locked then
-        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Locked")
+    self.LockButton._tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.lock) or "Interface/Buttons/LockButton-Locked")
     else
-        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Unlocked")
+    self.LockButton._tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.unlock) or "Interface/Buttons/LockButton-Unlocked")
     end
 end
 
@@ -660,7 +910,19 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         end
                         CLN.questsQueue = {}
                         if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        for _, q in ipairs(toPlay) do CLN:PlayQuestTTS(q) end
+                        -- Play each queued quest entry directly using VoiceoverPlayer
+                        for _, q in ipairs(toPlay) do
+                            if q and q.questId and q.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                                if CLN.Logger then
+                                    CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                                end
+                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
+                            else
+                                if CLN.Logger then
+                                    CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                                end
+                            end
+                        end
                     end
                 end
             end)

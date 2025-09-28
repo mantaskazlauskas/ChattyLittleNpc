@@ -39,7 +39,7 @@ function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
 end
 
 function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID)
-    CLN.Utils:LogDebug("Storing npc info for NPC ID: " .. npcID)
+    if CLN and CLN.Logger then CLN.Logger:debug("Storing npc info NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader) end
     self:EnsureNpcInfoInitialized(npcID)
     NpcInfoDB[npcID][CLN.locale].name = unitName
 
@@ -86,7 +86,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
 end
 
 function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, oldHash, gender)
-    CLN.Utils:LogDebug("Storing gossip options for Npc ID: " .. npcID)
+    if CLN and CLN.Logger then CLN.Logger:debug("Storing gossip options NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader) end
     self:EnsureNpcInfoInitialized(npcID)
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions) then
@@ -102,15 +102,15 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions[gossip_id] or overwrite) then
         if (overwrite) then
-            CLN.Utils:LogDebug("Overwriting gossip option for Npc ID: " .. npcID .. " with hash: " .. gossip_id)
+            if CLN and CLN.Logger then CLN.Logger:debug("Overwriting gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader) end
         else
-            CLN.Utils:LogDebug("Storing new gossip option for Npc ID: " .. npcID .. " with hash: " .. gossip_id)
+            if CLN and CLN.Logger then CLN.Logger:debug("Storing new gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader) end
         end
 
         local text = CLN.Utils:CleanTextV2(gossipText)
         NpcInfoDB[npcID][CLN.locale].gossipOptions[gossip_id] = text
         if (oldHash and not hashRemainedTheSame and NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash]) then
-            CLN.Utils:LogDebug("Removing old gossip option with hash: " .. oldHash .. " for Npc ID: " .. npcID)
+            if CLN and CLN.Logger then CLN.Logger:debug("Removing old gossip option NPC ID=" .. tostring(npcID) .. " oldHash=" .. tostring(oldHash), false, CLN.Utils.LogCategories.loader) end
             NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash] = nil
         end
 
@@ -140,7 +140,7 @@ function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
 end
 
 function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, params)
-    CLN.Utils:LogDebug("Storing unit info for Unit ID: " .. unitID)
+    if CLN and CLN.Logger then CLN.Logger:debug("Storing unit info UnitID=" .. tostring(unitID), false, CLN.Utils.LogCategories.loader) end
     params = params or {}
     local questId = params.questId
     local questText = params.questText or ""

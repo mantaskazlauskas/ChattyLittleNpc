@@ -20,6 +20,59 @@ Utils.LogCategories = {
     misc = "misc",
 }
 
+-- Canonical quest phase constants (file-name safe short codes)
+Utils.QuestPhases = {
+    DESC = "Desc",      -- Quest description / detail
+    PROG = "Prog",      -- Quest progress / in-progress
+    COMP = "Comp",      -- Quest completion / turn-in
+}
+
+-- Fast lookup set for canonical values
+local _phaseSet = {
+    ["Desc"] = true,
+    ["Prog"] = true,
+    ["Comp"] = true,
+}
+
+-- Mapping of legacy / verbose inputs to canonical short codes
+local _phaseAliases = {
+    DESCRIPTION = "Desc", DETAIL = "Desc", DETAILS = "Desc", DESC = "Desc",
+    PROGRESS = "Prog", PROG = "Prog",
+    COMPLETE = "Comp", COMPLETION = "Comp", COMP = "Comp",
+}
+
+--- Normalize an arbitrary quest phase string to canonical short code.
+---@param phase string|nil
+---@return string canonicalPhase Normalized (Desc|Prog|Comp) or original if unknown
+function Utils:NormalizeQuestPhase(phase)
+    if not phase or type(phase) ~= "string" then return phase end
+    -- Preserve existing canonical inputs quickly
+    if _phaseSet[phase] then return phase end
+    local up = string.upper(phase)
+    local mapped = _phaseAliases[up]
+    if mapped then return mapped end
+    return phase -- unknown; caller may still attempt playback (will likely miss file)
+end
+
+--- Determine if a phase is one of the canonical short codes.
+---@param phase string|nil
+---@return boolean
+function Utils:IsCanonicalQuestPhase(phase)
+    return _phaseSet[phase] == true
+end
+
+--- Validate & optionally warn for a phase string.
+---@param phase string|nil
+---@param original string|nil Original before normalization (for context)
+function Utils:ValidateQuestPhase(phase, original)
+    if _phaseSet[phase] then return true end
+    if CLN and CLN.Logger then
+        local msg = "Unexpected quest phase '" .. tostring(original or phase) .. "' (normalized='" .. tostring(phase) .. "')."
+        CLN.Logger:warn(msg, false, self.LogCategories.loader)
+    end
+    return false
+end
+
 local function isValidCategory(cat)
     if not cat or cat == "" then return false end
     for k, v in pairs(Utils.LogCategories) do
@@ -276,4 +329,37 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
     end
 
     return nil
+end
+
+--- Safely call SetPropagateKeyboardInput on a frame, avoiding protected/taint scenarios.
+--- This guards against the ADDON_ACTION_BLOCKED errors when Blizzard marks the API
+--- protected for certain frames (e.g., chat edit boxes) or during combat.
+---@param frame Frame|nil The frame to modify
+---@param propagate boolean|nil Whether to propagate keyboard input (defaults false)
+---@return boolean success True if the call succeeded
+function Utils:SafeSetPropagateKeyboardInput(frame, propagate)
+    if not frame or type(frame) ~= "table" then return false end
+    -- Hard opt-in flag; default OFF to avoid tainting the API at all.
+    local allowed = CLN and CLN.db and CLN.db.profile and CLN.db.profile.allowKeyPropagation
+    if not allowed then
+        if CLN and CLN.Logger and CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
+            local fname = (frame.GetName and frame:GetName()) or "<unnamed>"
+            CLN.Logger:debug("SafeSetPropagateKeyboardInput suppressed (allowKeyPropagation not enabled) on "..fname, false, self.LogCategories.ui)
+        end
+        return false
+    end
+    local fn = frame.SetPropagateKeyboardInput
+    if type(fn) ~= "function" then return false end
+    local want = propagate and true or false
+    local fname = (frame.GetName and frame:GetName()) or ""
+    -- Skip dangerous frames regardless of opt-in
+    if fname:find("^ChatFrame%d+EditBox") then return false end
+    local ok, err = pcall(fn, frame, want)
+    if not ok then
+        if CLN and CLN.Logger then
+            CLN.Logger:warn("SetPropagateKeyboardInput failed: " .. tostring(err), false, self.LogCategories.ui)
+        end
+        return false
+    end
+    return true
 end

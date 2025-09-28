@@ -396,7 +396,9 @@ function Integration:EnsureOverlay()
     end
 
     ov:EnableKeyboard(true)
-    ov:SetPropagateKeyboardInput(true)
+    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
+        CLN.Utils:SafeSetPropagateKeyboardInput(ov, true)
+    end
     ov:SetScript("OnKeyDown", function(frame, key)
         -- Keyboard nudging (only when not dragging/resizing)
         if frame._dragging or frame._resizing then return end
@@ -425,7 +427,9 @@ function Integration:ShowOverlay()
     if self.overlay then
         self.overlay:Show()
         -- Auto focus overlay for arrow key nudging
-        self.overlay:SetPropagateKeyboardInput(false)
+        if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
+            CLN.Utils:SafeSetPropagateKeyboardInput(self.overlay, false)
+        end
         -- Some Frame types (non-EditBox) lack SetFocus; safeguard to avoid Lua error
         if self.overlay.SetFocus then
             self.overlay:SetFocus()

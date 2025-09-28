@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local IconAtlas = CLN.IconAtlas
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -53,16 +54,16 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
             local questFileName =  questID .. "_Desc.ogg"
             local fileNameFound = CLN.Utils:ContainsString(packData.Voiceovers, questFileName)
             if (CLN.isElvuiAddonLoaded) then
-                PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
-                    CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
-                end)
+                    PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                        CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
+                    end)
                 if not fileNameFound then
                     _G[buttonName]:Hide()
                 end
                 return
             else
                 PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
-                    CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                        CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
                 end)
                 if not fileNameFound then
                     _G[buttonName]:Hide()
@@ -84,14 +85,14 @@ function PlayButton:AttachPlayButtonForQuestLog(parentFrame, offsetX, offsetY, b
         PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
             local questID = PlayButton:GetSelectedQuest()
             if (questID) then
-                CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                    CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
             end
         end)
     else
         PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
             local questID = PlayButton:GetSelectedQuest()
             if (questID) then
-                CLN.VoiceoverPlayer:PlayQuestSound(questID, "Desc")
+                    CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
             end
         end)
     end
@@ -201,12 +202,15 @@ function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offse
 
     local texture = button:CreateTexture(nil, "BACKGROUND")
     texture:SetAllPoints()
-    texture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png")
+    -- Use central atlas (fallback to existing speech bubble if placeholder missing)
+    local playTex = (IconAtlas and IconAtlas:Get(IconAtlas.keys.play)) or "Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border.png"
+    texture:SetTexture(playTex)
 
     -- Create a glow texture
     local glowTexture = button:CreateTexture(nil, "OVERLAY")
     glowTexture:SetAllPoints()
-    glowTexture:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png")
+    local glowTex = (IconAtlas and IconAtlas:Get(IconAtlas.keys.glow)) or "Interface\\AddOns\\ChattyLittleNpc\\Icons\\speech-bubble-border-glow.png"
+    glowTexture:SetTexture(glowTex)
     glowTexture:Hide()
 
     button:SetScript("OnEnter", function()

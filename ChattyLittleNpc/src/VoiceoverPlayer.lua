@@ -5,6 +5,25 @@ local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
 local VoiceoverPlayer = {}
 CLN.VoiceoverPlayer = VoiceoverPlayer
 
+-- ============================================================================
+-- Queue Integrity Helpers
+-- ============================================================================
+--- Check if a quest/phase combo is already queued.
+---@param questId number
+---@param phase string
+---@return boolean isQueued, number index
+function VoiceoverPlayer:IsQuestPhaseQueued(questId, phase)
+    if not (questId and phase) then return false end
+    for i, q in ipairs(CLN.questsQueue) do
+        if q.questId == questId and q.phase == phase then
+            return true, i
+        end
+    end
+    return false
+end
+
+--- Remove duplicate quest-phase entries keeping the first occurrence.
+
 function VoiceoverPlayer:GetCurrentlyPlayingObject()
     if VoiceoverPlayer.currentlyPlaying then
         return VoiceoverPlayer.currentlyPlaying
@@ -30,7 +49,7 @@ VoiceoverPlayer.queueProcessed = false
 -- Clear the queue from quests and stop current audio.
 ---@param clearQueue boolean|nil If true, clears queued quests
 function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
-    CLN.Utils:LogDebug("Force stopping current sound")
+    if CLN and CLN.Logger then CLN.Logger:debug("Force stopping current sound", false, CLN.Utils.LogCategories.loader) end
     if (clearQueue) then
         CLN.questsQueue = {}
         if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
@@ -43,14 +62,18 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN and CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+            CLN.ReplayFrame:UpdateDisplayFrameState()
+        end
+    end
 end
 
 -- Stop current audio.
 ---Stop the current sound if playing and reset state
 ---@return nil
 function VoiceoverPlayer:StopCurrentSound()
-    CLN.Utils:LogDebug("Stopping current sound")
+    if CLN and CLN.Logger then CLN.Logger:debug("Stopping current sound", false, CLN.Utils.LogCategories.loader) end
     if (VoiceoverPlayer.currentlyPlaying
         and VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         StopSound(VoiceoverPlayer.currentlyPlaying.soundHandle)
@@ -59,7 +82,9 @@ function VoiceoverPlayer:StopCurrentSound()
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN and CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
+    end
 end
 
 ---@param questId number The quest ID to play audio for
@@ -76,11 +101,24 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
         return -- fail fast if no quest ID
     end
 
+    -- Normalize & validate phase early; keep both original and normalized for logging
+    local originalPhase = phase
+    if CLN and CLN.Utils and CLN.Utils.NormalizeQuestPhase then
+        phase = CLN.Utils:NormalizeQuestPhase(phase)
+        local valid = (CLN.Utils.IsCanonicalQuestPhase and CLN.Utils:IsCanonicalQuestPhase(phase)) or false
+        if not valid then
+            if CLN.Logger then
+                CLN.Logger:warn("Rejected unknown quest phase '" .. tostring(originalPhase) .. "'", false, CLN.Utils.LogCategories.loader)
+            end
+            return
+        end
+    end
+
     if (VoiceoverPlayer.currentlyPlaying
         and VoiceoverPlayer.currentlyPlaying.questId == questId
         and VoiceoverPlayer.currentlyPlaying.phase == phase) then
         if (VoiceoverPlayer.currentlyPlaying:isPlaying()) then
-            CLN.Utils:LogDebug("Quest audio is already playing: " .. questId)
+            if CLN and CLN.Logger then CLN.Logger:debug("Quest audio already playing: " .. tostring(questId), false, CLN.Utils.LogCategories.loader) end
             return
         end
     end
@@ -96,29 +134,29 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
         and VoiceoverPlayer.currentlyPlaying.soundHandle
         and VoiceoverPlayer.currentlyPlaying.cantBeInterrupted) then
 
-        for _, queuedAudio in ipairs(CLN.questsQueue) do
-            if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
-                if (CLN.db.profile.debugMode) and CLN.Logger then
-                    CLN.Logger:debug("Found a quest match in queue: " .. tostring(queuedAudio.questId) .. " Title: " .. tostring(queuedAudio.title), false, CLN.Utils.LogCategories.loader)
-                end
-                return
+        local alreadyQueued = self:IsQuestPhaseQueued(questId, phase)
+        if alreadyQueued then
+            if (CLN.db.profile.debugMode) and CLN.Logger then
+                CLN.Logger:debug("Skipped enqueue (duplicate) quest=" .. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
             end
+            return
         end
 
-        -- queue the sound and exit if last on is still playing and is a quest
-        local audioFileInfo = {}
-            audioFileInfo.questId = questId
-            audioFileInfo.phase = phase
-            audioFileInfo.title = CLN:GetTitleForQuestID(questId)
-            audioFileInfo.cantBeInterrupted = true
-            audioFileInfo.npcId = npcId
+        -- queue the sound and exit if last one is still playing and is a quest
+        local audioFileInfo = {
+            questId = questId,
+            phase = phase,
+            title = CLN:GetTitleForQuestID(questId),
+            cantBeInterrupted = true,
+            npcId = npcId,
+        }
 
         if (CLN.db.profile.debugMode) and CLN.Logger then
             CLN.Logger:info("Queued quest: " .. tostring(audioFileInfo.questId) .. " Title: " .. tostring(audioFileInfo.title), false, CLN.Utils.LogCategories.loader)
         end
 
     table.insert(CLN.questsQueue, audioFileInfo)
-    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
         CLN.ReplayFrame:UpdateDisplayFrameState()
         return
     end
@@ -151,13 +189,18 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
 
                 -- Always start fresh for new playback to avoid stale state
                 if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
-                    CLN.ReplayFrame:ResetAnimationState()
+                    local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+                    if (not ok) and CLN and CLN.Logger then
+                        CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
+                    end
                 end
 
                 if (VoiceoverPlayer.currentlyPlaying.title) then
                     table.remove(CLN.questsQueue, 1)
                     if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-                    CLN.ReplayFrame:UpdateDisplayFrameState()
+                    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+                        CLN.ReplayFrame:UpdateDisplayFrameState()
+                    end
                     -- Only trigger animation update if model is already visible; otherwise OnShow will handle it
                     if CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown() 
                         and CLN.ReplayFrame.UpdateConversationAnimation then
@@ -182,7 +225,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
         end
     end
 
-    CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
+    end
     -- Only trigger animation update if playback didn't start successfully
     -- (successful playback already triggered it above)
     if not success and CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
@@ -230,7 +275,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
 
             -- Always start fresh for new playback to avoid stale state
             if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
-                CLN.ReplayFrame:ResetAnimationState()
+                local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+                if (not ok) and CLN and CLN.Logger then
+                    CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
+                end
             end
 
             -- Trigger animation pipeline immediately for non-quest lines
@@ -252,7 +300,9 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
         end
     end
 
-    CLN.ReplayFrame:UpdateDisplayFrameState()
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
+    end
     -- Only trigger animation update if playback didn't start successfully
     -- (successful playback already triggered it above)
     if not success and CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown()

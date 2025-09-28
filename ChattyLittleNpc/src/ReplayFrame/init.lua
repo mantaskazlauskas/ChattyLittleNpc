@@ -499,20 +499,27 @@ end
 
 -- Mark queue data dirty; coalesce refreshes to avoid churn during bursts
 function ReplayFrame:MarkQueueDirty()
+    -- Debounce: if already scheduled, just mark dirty and exit
     self._queueDirty = true
-    local nowT = (type(GetTime) == "function") and GetTime() or 0
-    self._queueDirtyAt = nowT
-    -- Optionally schedule a near-future refresh if frame is visible
+    if self._queueDirtyPending then return end
+    self._queueDirtyPending = true
+    local delay = 0.12 -- slightly higher than old 0.05 to absorb bursts
     if C_Timer and C_Timer.After then
-        -- Use a very short delay to coalesce multiple marks in the same frame
-        C_Timer.After(0.05, function()
-            -- Only refresh if still dirty and frame exists
-            if self._queueDirty then
-                self._queueDirty = false
-                self:RefreshQueueDataProvider()
-                if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-            end
+        C_Timer.After(delay, function()
+            self._queueDirtyPending = nil
+            if not self._queueDirty then return end
+            self._queueDirty = false
+            self:RefreshQueueDataProvider()
+            if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+            if self.UpdateQueueBadge then self:UpdateQueueBadge() end
         end)
+    else
+        -- Fallback: immediate
+        self._queueDirtyPending = nil
+        self._queueDirty = false
+        self:RefreshQueueDataProvider()
+        if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+        if self.UpdateQueueBadge then self:UpdateQueueBadge() end
     end
 end
 
@@ -652,7 +659,16 @@ end
 -- Update display frame state
 function ReplayFrame:UpdateDisplayFrameState()
     if self._editMode or self._isDragging then return end
-    self:GetDisplayFrame()
+    -- Defensive: In rare cases (load-order issues or earlier UI.lua load failure) GetDisplayFrame may be nil.
+    -- Avoid throwing here; log once per session if missing and continue so other logic can still run.
+    if self.GetDisplayFrame then
+        self:GetDisplayFrame()
+    else
+        if (not self._loggedMissingGetDisplayFrame) and CLN and CLN.Logger then
+            self._loggedMissingGetDisplayFrame = true
+            CLN.Logger:warn("ReplayFrame:GetDisplayFrame missing when UpdateDisplayFrameState invoked; skipping lazy frame creation", false, (CLN.Utils and CLN.Utils.LogCategories.ui) or 'ui')
+        end
+    end
     self:UpdateDisplayFrame()
 end
 

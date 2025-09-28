@@ -115,8 +115,8 @@ function M.Attach(host, backend)
     host._frontYaw = host._frontYaw or 0
     host._autoFaceCamera = host._autoFaceCamera ~= false
     host._lastCamSnapshot = nil
-    host._userControlledCamera = false
-    host._sessionId = string.format("init@%.3f", now())
+    -- _userControlledCamera deprecated; always scripted camera (debug may still set it)
+    -- Legacy session/version tracking removed; simplified host uses direct framing
     
     local MS = getModules()
     
@@ -144,87 +144,12 @@ function M.Attach(host, backend)
                 end
             end
         end
-        if not s.sessionId then s.sessionId = self._sessionId end
+    -- sessionId retained only for debug display; not used for version invalidation anymore
+    if not s.sessionId and self._sessionId then s.sessionId = self._sessionId end
         self._lastCamSnapshot = s
     end
 
-    -- Model versioning to cancel stale pending frames/callbacks
-    function host:_BumpModelVersion()
-        self._modelVersion = (self._modelVersion or 0) + 1
-        self:_DebugLog("framing", "model version -> %d (session=%s)", self._modelVersion, tostring(self._sessionId))
-        if self._frameTimer and self._frameTimer.Cancel then pcall(self._frameTimer.Cancel, self._frameTimer) end
-        self._frameTimer = nil
-        self._framePendingPad = nil
-        self._framePendingReason = nil
-    end
-
-    -- Debounced/coalesced auto-framing coordinator
-    function host:_RequestAutoFrame(paddingFrac, opts)
-        opts = opts or {}
-        local force = opts.force and true or false
-        local reason = tostring(opts.reason or "auto")
-        if (not force) and self._userControlledCamera then
-            self:_DebugLog("framing", "skip auto-frame (user-controlled) reason=%s", reason)
-            return
-        end
-        self._framePendingPad = tonumber(paddingFrac) or self._framePendingPad or 0.12
-        self._framePendingReason = reason
-        local versionAtRequest = self._modelVersion or 0
-        if self._frameTimer then return end
-        local tries, stable, lastSig = 0, 0, nil
-        local step
-        local function scheduleNext(delay)
-            if not (C_Timer and (C_Timer.After or C_Timer.NewTimer)) then return false end
-            if C_Timer.After then
-                self._frameTimer = true
-                C_Timer.After(delay, function()
-                    self._frameTimer = nil
-                    step()
-                end)
-                return true
-            else
-                local t = C_Timer.NewTimer(delay, function() self._frameTimer = nil; step() end)
-                self._frameTimer = t
-                return true
-            end
-        end
-        step = function()
-            if (self._modelVersion or 0) ~= versionAtRequest then
-                self:_DebugLog("framing", "abort pending frame (version changed) reason=%s", reason)
-                return
-            end
-            local a = backend and backend.actor
-            if not a then return end
-            local isLoaded = true
-            if a.IsLoaded then
-                local okL, l = pcall(a.IsLoaded, a)
-                isLoaded = okL and l or false
-            end
-            local b = self:GetBounds()
-            local sig = b and string.format("%.3f|%.3f|%.3f|%.3f|%.3f|%.3f", b.center.x or 0, b.center.y or 0, b.center.z or 0, b.size.x or 0, b.size.y or 0, b.size.z or 0) or "nil"
-            if not isLoaded or not b then
-                tries = tries + 1
-                if tries >= 20 and b then
-                    self:_DebugLog("framing", "proceed without full stability (tries=%d) reason=%s", tries, reason)
-                    self:FrameFullBodyFront_Immediate(self._framePendingPad)
-                    return
-                end
-                if scheduleNext(0.05) then return end
-                self:FrameFullBodyFront_Immediate(self._framePendingPad)
-                return
-            end
-            if lastSig == sig then stable = stable + 1 else stable = 0; lastSig = sig end
-            if stable >= 1 or tries >= 10 then
-                self:_DebugLog("framing", "perform frame (stable=%d tries=%d) reason=%s", stable, tries, reason)
-                self:FrameFullBodyFront_Immediate(self._framePendingPad)
-                return
-            end
-            tries = tries + 1
-            if scheduleNext(0.05) then return end
-            self:FrameFullBodyFront_Immediate(self._framePendingPad)
-        end
-        if not scheduleNext(0) then step() end
-    end
+    -- Removed debounced auto-framing + versioning; simplified direct framing is used.
     
     -- Basic model operations
     ---Clear current model from the actor
@@ -239,7 +164,11 @@ function M.Attach(host, backend)
     function host:SetDisplayInfo(displayID)
         if not (backend.actor and backend.actor.SetModelByCreatureDisplayID) then
             if CLN and CLN.Logger then
-                CLN.Logger:error("ModelSceneHost: actor lacks SetModelByCreatureDisplayID", false, CLN.Utils.LogCategories.host)
+                CLN.Logger:error("ModelSceneHost: actor lacks SetModelByCreatureDisplayID (falling back)", false, CLN.Utils.LogCategories.host)
+            end
+            -- Attempt dynamic fallback to PlayerModel renderer if host provides helper
+            if self.FallbackToPlayer then
+                self:FallbackToPlayer("missing-SetModelByCreatureDisplayID", { displayID = displayID })
             end
             return
         end
@@ -265,9 +194,7 @@ function M.Attach(host, backend)
         end
     -- Reset camera state for fresh model
     self._lastCamSnapshot = nil
-    self._userControlledCamera = false
-        self._sessionId = string.format("displayID:%s@%.3f", tostring(displayID), now())
-        self:_BumpModelVersion()
+    -- Reset any transient legacy state (versioning removed)
         
         -- Delegate to Loader module
         if MS and MS.Loader and MS.Loader.loadByDisplayID then
@@ -319,22 +246,35 @@ function M.Attach(host, backend)
             local token = {}
             self._loadWatchdogToken = token
             local arg = displayID
-            C_Timer.After(3.2, function()
+            local timeoutSec = self._loadTimeoutSec or 3.2
+            C_Timer.After(timeoutSec, function()
                 if self._loadWatchdogToken ~= token then return end
+                -- If backend already changed (e.g., fallback) abort
+                if self._backend and self._backend.kind ~= "scene" then return end
                 local loadedFlag = "err"
+                local isLoaded = false
                 if backend.actor and backend.actor.IsLoaded then
                     local okL, v = pcall(backend.actor.IsLoaded, backend.actor)
-                    loadedFlag = okL and v or "err"
+                    if okL then
+                        loadedFlag = v
+                        isLoaded = (v == true)
+                    end
                 end
                 local sk = self._lastLoadSession and self._lastLoadSession.kind or "?"
                 local sa = self._lastLoadSession and self._lastLoadSession.arg or "?"
-                self:_DebugLog("host", "watchdog[displayID] 3.2s loaded=%s session=%s %s", tostring(loadedFlag), tostring(sk), tostring(sa))
+                self:_DebugLog("host", string.format("watchdog[displayID] %.1fs loaded=%s session=%s %s", timeoutSec, tostring(loadedFlag), tostring(sk), tostring(sa)))
+                if (not isLoaded) and self.FallbackToPlayer then
+                    if CLN and CLN.Logger then
+                        CLN.Logger:warn("ModelSceneHost watchdog timeout: falling back to PlayerModel backend", false, CLN.Utils.LogCategories.host)
+                    end
+                    self:FallbackToPlayer("load-timeout-displayID", { displayID = displayID })
+                end
                 if self._DumpState then self:_DumpState("watchdog/displayID") end
             end)
         end
         
-    -- Schedule auto-frame (debounced/stable)
-        self:_RequestAutoFrame(0.12, { reason = "setDisplay" })
+        -- Direct frame (simplified)
+        self:FrameFullBodyFront(0.12)
         
         -- Post-load callback
         if self.OnModelLoadedOnce then
@@ -343,7 +283,7 @@ function M.Attach(host, backend)
                 if h and h._animCtrl and h._animCtrl.apply then
                     h._animCtrl:apply(backend.actor)
                 end
-                h:_RequestAutoFrame(0.12, { reason = "onLoad" })
+                h:FrameFullBodyFront(0.12)
                 if C_Timer and C_Timer.After then
                     C_Timer.After(0.15, function()
                         if h._DumpState then h:_DumpState("post-load/displayID") end
@@ -363,9 +303,7 @@ function M.Attach(host, backend)
         end
     -- Reset camera state for fresh unit
     self._lastCamSnapshot = nil
-    self._userControlledCamera = false
-        self._sessionId = string.format("unit:%s@%.3f", tostring(unit), now())
-        self:_BumpModelVersion()
+    self._sessionId = string.format("unit:%s@%.3f", tostring(unit), now())
         
         local isPlayer = UnitIsPlayer and UnitIsPlayer(unit) or false
     self:_DebugLog("host", "SetUnit called unit=%s isPlayer=%s", tostring(unit), tostring(isPlayer))
@@ -440,22 +378,34 @@ function M.Attach(host, backend)
             local token = {}
             self._loadWatchdogToken = token
             local arg = unit
-            C_Timer.After(3.2, function()
+            local timeoutSec = self._loadTimeoutSec or 3.2
+            C_Timer.After(timeoutSec, function()
                 if self._loadWatchdogToken ~= token then return end
+                if self._backend and self._backend.kind ~= "scene" then return end
                 local loadedFlag = "err"
+                local isLoaded = false
                 if backend.actor and backend.actor.IsLoaded then
                     local okL, v = pcall(backend.actor.IsLoaded, backend.actor)
-                    loadedFlag = okL and v or "err"
+                    if okL then
+                        loadedFlag = v
+                        isLoaded = (v == true)
+                    end
                 end
                 local sk = self._lastLoadSession and self._lastLoadSession.kind or "?"
                 local sa = self._lastLoadSession and self._lastLoadSession.arg or "?"
-                self:_DebugLog("host", "watchdog[unit] 3.2s loaded=%s session=%s %s", tostring(loadedFlag), tostring(sk), tostring(sa))
+                self:_DebugLog("host", string.format("watchdog[unit] %.1fs loaded=%s session=%s %s", timeoutSec, tostring(loadedFlag), tostring(sk), tostring(sa)))
+                if (not isLoaded) and self.FallbackToPlayer then
+                    if CLN and CLN.Logger then
+                        CLN.Logger:warn("ModelSceneHost watchdog timeout (unit): falling back to PlayerModel backend", false, CLN.Utils.LogCategories.host)
+                    end
+                    self:FallbackToPlayer("load-timeout-unit", { unit = unit })
+                end
                 if self._DumpState then self:_DumpState("watchdog/unit") end
             end)
         end
         
-    -- Schedule auto-frame; will coalesce with load callback
-    self:_RequestAutoFrame(0.12, { reason = "setUnit" })
+        -- Immediate direct framing (legacy auto-frame/debounce removed)
+        self:FrameFullBodyFront(0.12)
         
         -- Post-load: ensure animation controller and camera are applied once content is ready
         if self.OnModelLoadedOnce then
@@ -465,7 +415,7 @@ function M.Attach(host, backend)
                     h._animCtrl:apply(backend.actor)
                 end
                 if h and h.FaceCamera then h:FaceCamera() end
-                h:_RequestAutoFrame(0.12, { reason = "onLoad" })
+                h:FrameFullBodyFront(0.12)
                 if C_Timer and C_Timer.After then
                     C_Timer.After(0.15, function()
                         if h._DumpState then h:_DumpState("post-load/unit") end
@@ -503,7 +453,6 @@ function M.Attach(host, backend)
         self._zoom = tonumber(v) or self._zoom or 0.65
         local d = math.max(1.2, 3.2 - (self._zoom * 2.6))
         self._camDist = d
-    self._userControlledCamera = true
     self:PointCameraAtHead()
     end
     
@@ -539,7 +488,7 @@ function M.Attach(host, backend)
     function host:SetTarget(vec3)
         if backend.kind ~= "scene" or not backend.frame then return end
         vec3 = vec3 or {}
-        self._userControlledCamera = true
+    -- target adjustment (debug/manual)
         -- Current camera pos/target (from last basis if getters missing)
         local px, py, pz = 0, (self._camDist or 2.5), (self._camBaseZ or 1.0)
         if backend.frame.GetCameraPosition then
@@ -636,83 +585,40 @@ function M.Attach(host, backend)
     end
 
     -- Refit distance only, preserving current target; used on resize
-    function host:FitDistanceForCurrentTarget(paddingFrac)
-        local b = self:GetBounds()
-        if not b then return end
-        local fov = self:GetFovV()
-        local aspect = self:GetAspect()
-        local padZ = (b.size.z or 0) * (tonumber(paddingFrac) or 0.12)
-        local padX = (b.size.x or 0) * (tonumber(paddingFrac) or 0.12)
-        local tanHalfV = math.tan((fov / 2))
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
-        local needDistV = ((b.size.z + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((b.size.x + 2 * padX) * 0.5)
-        if aspect and aspect > 0.01 then
-            needDistH = needDistH / (tanHalfV * aspect)
-        else
-            needDistH = 0
-        end
-        local d = math.max(needDistV, needDistH)
-        d = math.max(d, 1.0)
-        self._camDist = d
-        -- Preserve last target center if available
-        local s = self._lastCamSnapshot or {}
-        local tx = s.tx or b.center.x or 0
-        local ty = s.ty or b.center.y or 0
-        local tz = s.tz or b.center.z or (self._camBaseZ or 1.0)
-        local px, py, pz = tx, ty + d, tz
-        self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-        self:_UpdateClipPlanesForFit(d, b, paddingFrac)
-        -- Persist
-        self._lastCamSnapshot = self._lastCamSnapshot or {}
-        if not self._lastCamSnapshot.sessionId then self._lastCamSnapshot.sessionId = self._sessionId end
-        self._lastCamSnapshot.tx, self._lastCamSnapshot.ty, self._lastCamSnapshot.tz = tx, ty, tz
-        self._lastCamSnapshot.px, self._lastCamSnapshot.py, self._lastCamSnapshot.pz = px, py, pz
-    end
+    -- Removed FitDistanceForCurrentTarget (legacy); direct framing recomputes fully.
     
     -- Immediate framing implementation (called by coordinator)
-    function host:FrameFullBodyFront_Immediate(paddingFrac)
-        paddingFrac = tonumber(paddingFrac) or 0.12
+    -- Simplified direct framing (mirrors minimal renderer logic)
+    function host:FrameFullBodyFront(paddingFrac)
+        local pad = tonumber(paddingFrac) or 0.12
         local b = self:GetBounds()
-    self._lastBounds = b or self._lastBounds
         if not b then
-            self:_DebugLog("framing", "No bounds yet; falling back to head framing")
-            return self:PointCameraAtHead()
+            self:_DebugLog("framing", "No bounds yet for direct frame; skipping")
+            return
         end
-        local fov = self:GetFovV()
+        local vfov = self:GetFovV()
         local aspect = self:GetAspect()
-    self:_DebugLog("framing", "Bounds c=(%.2f,%.2f,%.2f) min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)", b.center.x or 0, b.center.y or 0, b.center.z or 0, b.min.x or 0, b.min.y or 0, b.min.z or 0, b.max.x or 0, b.max.y or 0, b.max.z or 0)
-        local padZ = (b.size.z or 0) * paddingFrac
-        local padX = (b.size.x or 0) * paddingFrac
-        local tanHalfV = math.tan((fov / 2))
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end -- ~23 degrees fallback if FOV is tiny/invalid
-        local needDistV = ((b.size.z + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((b.size.x + 2 * padX) * 0.5)
-        if aspect and aspect > 0.01 then
-            needDistH = needDistH / (tanHalfV * aspect)
-        else
-            needDistH = 0
-        end
-        local d = math.max(needDistV, needDistH)
-        d = math.max(d, 1.0)
-        self._camDist = d
-        self._camBaseZ = b.center.z or self._camBaseZ or 1.0
-        local px, py, pz = (b.center.x or 0), (b.center.y or 0) + d, (b.center.z or 0)
-        local tx, ty, tz = (b.center.x or 0), (b.center.y or 0), (b.center.z or 0)
-    self:_DebugLog("framing", "Fit dist=%.2f fov=%.2f aspect=%.2f size=(%.2f,%.2f,%.2f)", d, fov, aspect, b.size.x or 0, b.size.y or 0, b.size.z or 0)
+        local hfov = 2 * math.atan(math.tan(vfov * 0.5) * math.max(1e-3, aspect))
+        local halfH = (b.size.z * 0.5) * (1 + pad)
+        local halfW = (b.size.x * 0.5) * (1 + pad)
+        local distV = halfH / math.max(1e-5, math.tan(vfov * 0.5))
+        local distH = halfW / math.max(1e-5, math.tan(hfov * 0.5))
+        local dist = math.max(0.5, distV, distH)
+        local compBias = self._compBias or 0.25
+        local halfView = dist * math.tan(vfov * 0.5)
+        local slack = math.max(0, halfView - (b.size.z * 0.5))
+        local tz = b.center.z + compBias * slack
+        local px, py, pz = b.center.x, b.center.y + dist, tz
+        local tx, ty = b.center.x, b.center.y
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-    self:_UpdateClipPlanesForFit(d, b, paddingFrac)
+        self._camDist = dist
+        self._camBaseZ = b.center.z
+        self:_UpdateSnapshot({ px = px, py = py, pz = pz, tx = tx, ty = ty, tz = tz, dist = dist })
+        self._lastBounds = b
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
             pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or 0)
         end
-    -- Persist snapshot so subsequent head-point/zoom keep this base
-    self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
-    if self._DumpState then self:_DumpState("after-framing") end
-    end
-
-    -- Public entry point routed through coordinator
-    function host:FrameFullBodyFront(paddingFrac)
-        return self:_RequestAutoFrame(paddingFrac, { force = true, reason = "explicit" })
+        self:_DebugLog("framing", "Direct frame dist=%.2f pad=%.2f size=(%.2f,%.2f,%.2f)", dist, pad, b.size.x, b.size.y, b.size.z)
     end
     
     -- Utility methods
@@ -834,17 +740,14 @@ function M.Attach(host, backend)
                 local sF = host.GetEffectiveScale and host:GetEffectiveScale() or 1
                 local sU = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
                 local aspect = (h and h > 0) and ((tonumber(w) or 0) / (tonumber(h) or 1)) or 1
-                host:_DebugLog("framing", "[Trigger] OnShow (autoFace=%s userControlled=%s)", tostring(host._autoFaceCamera ~= false), tostring(host._userControlledCamera or false))
+                host:_DebugLog("framing", string.format("[Trigger] OnShow (autoFace=%s)", tostring(host._autoFaceCamera ~= false)))
                 host:_DebugLog("framing", string.format("[Size] frame=%.1fx%.1f aspect=%.6f scale(frame)=%.4f scale(UI)=%.4f", tonumber(w) or -1, tonumber(h) or -1, aspect or -1, tonumber(sF) or 1, tonumber(sU) or 1))
             end
             if a and a.IsLoaded then
                 local okL, v = pcall(a.IsLoaded, a)
                 if okL and v then
-                    if host._userControlledCamera then
-                        host:FitDistanceForCurrentTarget(0.12)
-                    else
-                        host:FrameFullBodyFront(0.12)
-                    end
+                    -- Even if user had previously controlled camera, we now standardize framing
+                    host:FrameFullBodyFront(0.12)
                 end
             end
             if host._DumpState then host:_DumpState("OnShow") end
@@ -861,17 +764,13 @@ function M.Attach(host, backend)
             local sF = host.GetEffectiveScale and host:GetEffectiveScale() or 1
             local sU = UIParent and UIParent.GetEffectiveScale and UIParent:GetEffectiveScale() or 1
             local aspect = (h and h > 0) and ((tonumber(w) or 0) / (tonumber(h) or 1)) or 1
-            host:_DebugLog("framing", "[Trigger] OnSizeChanged (autoFace=%s userControlled=%s)", tostring(host._autoFaceCamera ~= false), tostring(host._userControlledCamera or false))
+            host:_DebugLog("framing", string.format("[Trigger] OnSizeChanged (autoFace=%s)", tostring(host._autoFaceCamera ~= false)))
             host:_DebugLog("framing", string.format("[Size] frame=%.1fx%.1f aspect=%.6f scale(frame)=%.4f scale(UI)=%.4f", tonumber(w) or -1, tonumber(h) or -1, aspect or -1, tonumber(sF) or 1, tonumber(sU) or 1))
             -- If something is loaded, re-frame to fit
             if backend.actor and backend.actor.IsLoaded then
                 local okL, v = pcall(backend.actor.IsLoaded, backend.actor)
                 if okL and v then
-                    if host._userControlledCamera then
-                        host:FitDistanceForCurrentTarget(0.12)
-                    else
-                        host:FrameFullBodyFront(0.12)
-                    end
+                    host:FrameFullBodyFront(0.12)
                 end
             end
             if host._DumpState then host:_DumpState("OnSizeChanged") end

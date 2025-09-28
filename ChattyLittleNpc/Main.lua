@@ -67,12 +67,20 @@ local defaults = {
     disableCameraAnimations = false
     ,
     -- Per Edit Mode layout overrides (keyed by layoutName)
-    editModeLayouts = {}
+    editModeLayouts = {},
+    -- Opt-in for using SetPropagateKeyboardInput (can cause taint). Disabled by default.
+    allowKeyPropagation = false
     }
 }
 
 function CLN:OnInitialize()
     self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
+
+    -- Attach deferred IconAtlas if file loaded before addon existed
+    if not self.IconAtlas and _G.ChattyLittleNpc_PendingAtlas then
+        self.IconAtlas = _G.ChattyLittleNpc_PendingAtlas
+        _G.ChattyLittleNpc_PendingAtlas = nil
+    end
 
     -- Ensure questPlaybackMode always has a valid value
     local m = self.db.profile.questPlaybackMode
