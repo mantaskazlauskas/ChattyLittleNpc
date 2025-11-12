@@ -1,13 +1,10 @@
----@class ChattyLittleNpc: table, AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local CLN = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
+---@class ChattyLittleNpc
+local CLN = _G.ChattyLittleNpc or {}
+_G.ChattyLittleNpc = CLN
 
----@class EventHandler
-CLN.EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
-CLN.EventHandler:SetChattyLittleNpcReference(CLN)
-
----@class Options
-CLN.Options = LibStub("AceAddon-3.0"):GetAddon("Options")
-CLN.Options:SetChattyLittleNpcReference(CLN)
+-- Module references (will be populated by each module file)
+CLN.EventHandler = nil
+CLN.Options = nil
 
 CLN.locale = nil
 CLN.gameVersion = nil
@@ -23,6 +20,32 @@ CLN.currentItemInfo = {
     ItemName = nil,
     ItemText = nil
 }
+
+-- Diagnostic function to check voiceover pack status
+function CLN:CheckVoiceoverPacks()
+    self:Print("Checking for voiceover packs...")
+    local foundCount = 0
+    for _, expansion in ipairs(self.expansions) do
+        local packName = "ChattyLittleNpc_" .. expansion
+        local isLoaded = C_AddOns.IsAddOnLoaded(packName)
+        if isLoaded then
+            foundCount = foundCount + 1
+            local addon = _G[packName]
+            local voCount = (addon and addon.Voiceovers and #addon.Voiceovers) or 0
+            self:Print("|cff00ff00✓|r " .. packName .. " - " .. voCount .. " voiceovers")
+        else
+            self:Print("|cffff0000✗|r " .. packName .. " - Not loaded")
+        end
+    end
+    
+    if foundCount == 0 then
+        self:Print("|cffff0000No voiceover packs found!|r")
+        self:Print("You need to install voiceover pack addons separately.")
+        self:Print("Example: ChattyLittleNpc_The_War_Within_voiceovers")
+    else
+        self:Print("|cff00ff00Found " .. foundCount .. " voiceover pack(s)|r")
+    end
+end
 
 local defaults = {
     profile = {
@@ -61,7 +84,8 @@ local defaults = {
 }
 
 function CLN:OnInitialize()
-    self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
+    -- Initialize database using our custom Database system
+    self.db = ChattyLittleNpc.Database:New("ChattyLittleNpcDB", defaults, true)
 
     self.locale = GetLocale()
     self.gameVersion = select(4, GetBuildInfo())
@@ -78,6 +102,7 @@ end
 
 function CLN:OnEnable()
     CLN.EventHandler:RegisterEvents()
+    CLN.EventHandler:StartWatcher()
 
     if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
@@ -114,17 +139,17 @@ function CLN:OnEnable()
                 -- no-op: toggles just affect logging gates
             end
         end
-        -- Use dot-notation per CallbackHandler: self is the addon receiving callbacks
-        self.db.RegisterCallback(self, "OnProfileChanged", function()
+        -- Register database callbacks
+        self.db:RegisterCallback("OnProfileChanged", function()
             -- Rebuild UI scaling and visibility on profile switch
             applyKey("queueTextScale")
             applyKey("compactMode")
             applyKey("showReplayFrame")
         end)
-        self.db.RegisterCallback(self, "OnProfileCopied", function()
+        self.db:RegisterCallback("OnProfileCopied", function()
             applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
         end)
-        self.db.RegisterCallback(self, "OnProfileReset", function()
+        self.db:RegisterCallback("OnProfileReset", function()
             applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
         end)
         self._dbProfileHooked = true
@@ -132,7 +157,9 @@ function CLN:OnEnable()
 end
 
 function CLN:OnDisable()
-    CLN.EventHandler:UnregisterEvents()
+    if CLN.EventHandler then
+        CLN.EventHandler:UnregisterEvents()
+    end
 end
 
 --[[
@@ -196,27 +223,12 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
                 self:Print("Loaded voiceover pack:", expansion)
             end
 
-            local addon = LibStub("AceAddon-3.0"):GetAddon(voiceoverPackName, true)
+            -- Try to get the voiceover pack addon
+            local addon = _G[voiceoverPackName]
             if addon then
                 self.VoiceoverPacks[voiceoverPackName] = addon
             end
         end      
-    end
-
-    if (self.db.profile.debugMode) then
-        self:PrintLoadedVoiceoverPacks()
-    end
-end
-
-function CLN:PrintLoadedVoiceoverPacks()
-    for packName, packData in pairs(self.VoiceoverPacks) do
-        if packData.Metadata then
-            self:Print("Metadata for", "|cffffd700" .. packName .. "|r", ":")
-            self.Utils:PrintTable(packData.Metadata)
-        end
-        if packData.Voiceovers then
-            self:Print("VO count ", "|cffffd700" .. packName .. "|r", ":", #packData.Voiceovers)
-        end
     end
 end
 
@@ -270,4 +282,7 @@ function CLN:GetLoadedAddonsForIntegrations()
     end
 end
 
-CLN:OnInitialize()
+-- Create Print method as an alias for Print utility from Print.lua
+function CLN:Print(...)
+    return ChattyLittleNpc.PrintUtil:Print(...)
+end

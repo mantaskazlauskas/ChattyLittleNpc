@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 -- Base64 Encoding in Pure Lua
 ---@class Base64
