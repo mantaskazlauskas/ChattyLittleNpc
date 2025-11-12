@@ -22,6 +22,15 @@
 ---@field optionsTable table
 ---@field category table
 ---@field panel table
+---@field New fun(self: ConfigSystem): ConfigSystem
+---@field CreateCheckbox fun(self: ConfigSystem, parent: table, info: table): table
+---@field CreateSlider fun(self: ConfigSystem, parent: table, info: table): table
+---@field CreateDropdown fun(self: ConfigSystem, parent: table, info: table): table
+---@field CreateButton fun(self: ConfigSystem, parent: table, info: table): table
+---@field CreateHeader fun(self: ConfigSystem, parent: table, text: string): table
+---@field RegisterOptions fun(self: ConfigSystem, addonName: string, options: table, db: table): table
+---@field CreateControl fun(self: ConfigSystem, parent: table, opt: table): table|nil
+---@field Open fun(self: ConfigSystem)
 
 ---@class EventHandler
 

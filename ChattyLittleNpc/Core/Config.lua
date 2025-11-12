@@ -175,9 +175,17 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
     local yOffset = -40
     local contentHeight = 60 -- Start with title space
     
-    -- Process option groups
+    -- Process option groups in sorted order (respects numeric prefixes)
     if options.args then
-        for groupKey, group in pairs(options.args) do
+        -- Get sorted keys
+        local sortedKeys = {}
+        for key in pairs(options.args) do
+            table.insert(sortedKeys, key)
+        end
+        table.sort(sortedKeys)
+        
+        for _, groupKey in ipairs(sortedKeys) do
+            local group = options.args[groupKey]
             if group.type == "group" then
                 -- Create group header
                 local header = self:CreateHeader(content, group.name)
@@ -187,7 +195,15 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                 
                 -- Process group args
                 if group.args then
-                    for key, opt in pairs(group.args) do
+                    -- Get sorted keys for controls within the group
+                    local sortedControlKeys = {}
+                    for key in pairs(group.args) do
+                        table.insert(sortedControlKeys, key)
+                    end
+                    table.sort(sortedControlKeys)
+                    
+                    for _, key in ipairs(sortedControlKeys) do
+                        local opt = group.args[key]
                         local control = self:CreateControl(content, opt)
                         if control then
                             control:SetPoint("TOPLEFT", 6, yOffset)

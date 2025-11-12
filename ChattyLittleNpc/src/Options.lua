@@ -15,148 +15,7 @@ local options = {
     handler = CLN,
     type = 'group',
     args = {
-        DebuggingImprovements = {
-            type = 'group',
-            name = 'Debugging and Improvements',
-            inline = true,
-            args = {
-                printMissingFiles = {
-                    type = 'toggle',
-                    name = 'Print Missing Files',
-                    desc = 'Toggle to print missing voiceover files.',
-                    get = function(info) return CLN.db.profile.printMissingFiles end,
-                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
-                },
-                logNpcTexts = {
-                    type = 'toggle',
-                    name = 'Track NPC data',
-                    desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
-                    get = function(info) return CLN.db.profile.logNpcTexts end,
-                    set = function(info, value)
-                        CLN.db.profile.logNpcTexts = value
-                        if (not value) then
-                            CLN.db.profile.printNpcTexts = false
-                        end
-                    end,
-                },
-                overwriteExistingGossipValues = {
-                    type = 'toggle',
-                    name = 'Overwrite existing values.',
-                    desc = 'Overwrite existing values of gathered npc texts when interacting not the first time.',
-                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
-                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
-                },
-                printNpcTexts = {
-                    type = 'toggle',
-                    name = 'Print NPC data (if tracking enabled)',
-                    desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
-                    get = function(info) return CLN.db.profile.printNpcTexts end,
-                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
-                },
-                debugMode = {
-                    type = 'toggle',
-                    name = 'Print Debug Messages',
-                    desc = 'Toggle to print debug messages.',
-                    get = function(info) return CLN.db.profile.debugMode end,
-                    set = function(info, value) 
-                        CLN.db.profile.debugMode = value 
-                        -- no additional action required; gates read dynamically
-                    end,
-                },
-                debugAnimations = {
-                    type = 'toggle',
-                    name = 'Animation Debug',
-                    desc = 'Reduce noise: only print animation-related debug when enabled.',
-                    get = function(info) return CLN.db.profile.debugAnimations end,
-                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
-                },
-                showGossipEditor = {
-                    type = 'toggle',
-                    name = 'Show Gossip Editor',
-                    desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
-                    get = function(info) return CLN.Editor.Frame:IsShown() end,
-                    set = function(info, value)
-                        if value then
-                            CLN.Editor.Frame:Show()
-                        else
-                            CLN.Editor.Frame:Hide()
-                        end
-                    end,
-                },
-                printLoadedVoiceoverPackMetadata = {
-                    type = 'execute',
-                    name = 'Print VO Pack metadata',
-                    desc = 'Print what VO packs were loaded, what kind of voiceovers they support and how many voiceovers they have.',
-                    func = function() CLN:PrintLoadedVoiceoverPacks() end,
-                },
-                checkVoiceoverPacks = {
-                    type = 'execute',
-                    name = 'Check Voiceover Packs',
-                    desc = 'Check which voiceover pack addons are installed and loaded.',
-                    func = function() CLN:CheckVoiceoverPacks() end,
-                },
-            },
-        },
-        ReplayFrame = {
-            type = 'group',
-            name = 'Replay Frame',
-            inline = true,
-            args = {
-                -- Edit Mode specific settings removed
-                queueTextScale = {
-                    type = 'range',
-                    name = 'Queue Text Scale',
-                    desc = 'Scale the header and queue row text size.',
-                    min = 0.75,
-                    max = 1.5,
-                    step = 0.05,
-                    get = function(info)
-                        return CLN.db.profile.queueTextScale or 1.0
-                    end,
-                    set = function(info, value)
-                        CLN.db.profile.queueTextScale = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
-                    end,
-                },
-                compactMode = {
-                    type = 'toggle',
-                    name = 'Compact Mode (hide NPC model)',
-                    desc = 'Hide the NPC model and shrink the queue frame width.',
-                    get = function(info) return CLN.db.profile.compactMode end,
-                    set = function(info, value)
-                        CLN.db.profile.compactMode = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
-                    end,
-                },
-                resetFramePos = {
-                    type = 'execute',
-                    name = 'Reset Replay Frame Position',
-                    desc = 'Reset the replay frame position to its default values.',
-                    func = function() CLN.ReplayFrame:ResetFramePosition() end,
-                },
-                openEditMode = {
-                    type = 'execute',
-                    name = 'Open Edit Mode (show frame)',
-                    desc = 'Show the replay frame and enter Edit Mode so you can move/resize it, even if nothing is playing.',
-                    func = function()
-                        if CLN and CLN.ReplayFrame and CLN.ReplayFrame.ShowForEdit then
-                            CLN.ReplayFrame:ShowForEdit()
-                        end
-                    end,
-                },
-                showReplayFrame = {
-                    type = 'toggle',
-                    name = 'Show Floating Head Frame (voiceover queue)',
-                    desc = 'Toggle to show the floating head frame (voiceover queue)',
-                    get = function(info) return CLN.db.profile.showReplayFrame end,
-                    set = function(info, value)
-                        CLN.db.profile.showReplayFrame = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
-                    end,
-                },
-            },
-        },
-        PlaybackOptions = {
+        ["1_PlaybackOptions"] = {
             type = 'group',
             name = 'Playback Options',
             inline = true,
@@ -225,7 +84,7 @@ local options = {
                 },
             },
         },
-        QuestFrameButtonOptions = {
+        ["2_QuestFrameButtonOptions"] = {
             type = 'group',
             name = 'Quest And Gossip Frame Button Options',
             inline = true,
@@ -267,7 +126,141 @@ local options = {
                     end,
                 },
             },
-        }
+        },
+        ["3_ReplayFrame"] = {
+            type = 'group',
+            name = 'Replay Frame',
+            inline = true,
+            args = {
+                showReplayFrame = {
+                    type = 'toggle',
+                    name = 'Show Floating Head Frame (voiceover queue)',
+                    desc = 'Toggle to show the floating head frame (voiceover queue)',
+                    get = function(info) return CLN.db.profile.showReplayFrame end,
+                    set = function(info, value)
+                        CLN.db.profile.showReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
+                queueTextScale = {
+                    type = 'range',
+                    name = 'Queue Text Scale',
+                    desc = 'Scale the header and queue row text size.',
+                    min = 0.75,
+                    max = 1.5,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.queueTextScale or 1.0
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.queueTextScale = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
+                    end,
+                },
+                compactMode = {
+                    type = 'toggle',
+                    name = 'Compact Mode (hide NPC model)',
+                    desc = 'Hide the NPC model and shrink the queue frame width.',
+                    get = function(info) return CLN.db.profile.compactMode end,
+                    set = function(info, value)
+                        CLN.db.profile.compactMode = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
+                resetFramePos = {
+                    type = 'execute',
+                    name = 'Reset Replay Frame Position',
+                    desc = 'Reset the replay frame position to its default values.',
+                    func = function() CLN.ReplayFrame:ResetFramePosition() end,
+                },
+                openEditMode = {
+                    type = 'execute',
+                    name = 'Open Edit Mode (show frame)',
+                    desc = 'Show the replay frame and enter Edit Mode so you can move/resize it, even if nothing is playing.',
+                    func = function()
+                        if CLN and CLN.ReplayFrame and CLN.ReplayFrame.ShowForEdit then
+                            CLN.ReplayFrame:ShowForEdit()
+                        end
+                    end,
+                },
+            },
+        },
+        ["4_DebuggingImprovements"] = {
+            type = 'group',
+            name = 'Debugging and Improvements',
+            inline = true,
+            args = {
+                printMissingFiles = {
+                    type = 'toggle',
+                    name = 'Print Missing Files',
+                    desc = 'Toggle to print missing voiceover files.',
+                    get = function(info) return CLN.db.profile.printMissingFiles end,
+                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
+                },
+                logNpcTexts = {
+                    type = 'toggle',
+                    name = 'Track NPC data',
+                    desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
+                    get = function(info) return CLN.db.profile.logNpcTexts end,
+                    set = function(info, value)
+                        CLN.db.profile.logNpcTexts = value
+                        if (not value) then
+                            CLN.db.profile.printNpcTexts = false
+                        end
+                    end,
+                },
+                overwriteExistingGossipValues = {
+                    type = 'toggle',
+                    name = 'Overwrite existing values.',
+                    desc = 'Overwrite existing values of gathered npc texts when interacting not the first time.',
+                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
+                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
+                },
+                printNpcTexts = {
+                    type = 'toggle',
+                    name = 'Print NPC data (if tracking enabled)',
+                    desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
+                    get = function(info) return CLN.db.profile.printNpcTexts end,
+                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
+                },
+                debugMode = {
+                    type = 'toggle',
+                    name = 'Print Debug Messages',
+                    desc = 'Toggle to print debug messages.',
+                    get = function(info) return CLN.db.profile.debugMode end,
+                    set = function(info, value) 
+                        CLN.db.profile.debugMode = value 
+                        -- no additional action required; gates read dynamically
+                    end,
+                },
+                debugAnimations = {
+                    type = 'toggle',
+                    name = 'Animation Debug',
+                    desc = 'Reduce noise: only print animation-related debug when enabled.',
+                    get = function(info) return CLN.db.profile.debugAnimations end,
+                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
+                },
+                showGossipEditor = {
+                    type = 'toggle',
+                    name = 'Show Gossip Editor',
+                    desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
+                    get = function(info) return CLN.Editor.Frame:IsShown() end,
+                    set = function(info, value)
+                        if value then
+                            CLN.Editor.Frame:Show()
+                        else
+                            CLN.Editor.Frame:Hide()
+                        end
+                    end,
+                },
+                checkVoiceoverPacks = {
+                    type = 'execute',
+                    name = 'Check Voiceover Packs',
+                    desc = 'Check which voiceover pack addons are installed and loaded.',
+                    func = function() CLN:CheckVoiceoverPacks() end,
+                },
+            },
+        },
     },
 }
 
