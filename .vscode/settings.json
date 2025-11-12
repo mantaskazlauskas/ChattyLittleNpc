@@ -52,9 +52,15 @@
         "GameTooltipTextLeft3",
         "GameTooltipTextLeft4",
         "ID",
-        "EditModeManagerFrame"
+        "EditModeManagerFrame",
+        "UIDropDownMenu_SetWidth",
+        "UIDropDownMenu_Initialize",
+        "UIDropDownMenu_SetText",
+        "UIDropDownMenu_AddButton",
+        "UIDropDownMenu_CreateInfo"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"
-    ]
+    ],
+    "Lua.type.weakUnionCheck": true
 }

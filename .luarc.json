@@ -1,0 +1,54 @@
+{
+  "runtime": {
+    "version": "Lua 5.1"
+  },
+  "diagnostics": {
+    "globals": [
+      "_G",
+      "C_AddOns",
+      "C_GossipInfo",
+      "C_Item",
+      "C_QuestLog",
+      "C_Sound",
+      "C_Timer",
+      "CreateFrame",
+      "DEFAULT_CHAT_FRAME",
+      "GameTooltip",
+      "GetBuildInfo",
+      "GetLocale",
+      "GetQuestID",
+      "GetRealmName",
+      "GetTime",
+      "GossipFrame",
+      "InterfaceOptions_AddCategory",
+      "InterfaceOptionsFrame_OpenToCategory",
+      "ItemTextFrame",
+      "ItemTextGetItem",
+      "ItemTextGetText",
+      "PlaySoundFile",
+      "QuestFrame",
+      "QuestMapFrame",
+      "QuestMapFrame_UpdateAll",
+      "QuestUtils_GetQuestName",
+      "Settings",
+      "SlashCmdList",
+      "StopSound",
+      "UIDropDownMenu_AddButton",
+      "UIDropDownMenu_CreateInfo",
+      "UIDropDownMenu_Initialize",
+      "UIDropDownMenu_SetText",
+      "UIDropDownMenu_SetWidth",
+      "UIParent",
+      "UnitClass",
+      "UnitGUID",
+      "UnitName",
+      "UnitRace",
+      "UnitSex"
+    ]
+  },
+  "workspace": {
+    "ignoreDir": [
+      ".vscode"
+    ]
+  }
+}
