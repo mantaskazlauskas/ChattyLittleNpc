@@ -1,13 +1,15 @@
----@class EventHandler: table, AceEvent-3.0, AceTimer-3.0
-local EventHandler = LibStub("AceAddon-3.0"):NewAddon("EventHandler", "AceEvent-3.0", "AceTimer-3.0")
+---@class EventHandler
+local EventHandler = {}
 
----@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local CLN
+---@class ChattyLittleNpc
+local CLN = _G.ChattyLittleNpc
 
--- Set the reference to ChattyLittleNpc
-function EventHandler:SetChattyLittleNpcReference(reference)
-    CLN = reference
-end
+-- Register this module with the main addon
+CLN.EventHandler = EventHandler
+
+-- Create event system and timer instances
+local events = ChattyLittleNpc.EventSystem:New()
+local timer = ChattyLittleNpc.TimerUtil
 
 -- Initialize the EventHandler module
 function EventHandler:OnInitialize()
@@ -16,43 +18,41 @@ end
 
 -- Register all events for ChattyLittleNpc
 function EventHandler:RegisterEvents()
-    self:RegisterEvent("ADDON_LOADED")
-    self:RegisterEvent("GOSSIP_SHOW")
-    self:RegisterEvent("GOSSIP_CLOSED")
-    self:RegisterEvent("QUEST_GREETING")
-    self:RegisterEvent("QUEST_DETAIL")
-    self:RegisterEvent("QUEST_PROGRESS")
-    self:RegisterEvent("QUEST_COMPLETE")
-    self:RegisterEvent("QUEST_FINISHED")
-    self:RegisterEvent("ITEM_TEXT_READY")
-    self:RegisterEvent("CINEMATIC_START")
-    self:RegisterEvent("PLAY_MOVIE")
-    -- self:RegisterEvent("CHAT_MSG_MONSTER_SAY")
-    -- self:RegisterEvent("CHAT_MSG_MONSTER_YELL")
-    self:RegisterMessage("VOICEOVER_STOP", "OnVoiceoverStop")
+    events:RegisterEvent("ADDON_LOADED", function() self:ADDON_LOADED() end)
+    events:RegisterEvent("GOSSIP_SHOW", function() self:GOSSIP_SHOW() end)
+    events:RegisterEvent("GOSSIP_CLOSED", function() self:GOSSIP_CLOSED() end)
+    events:RegisterEvent("QUEST_GREETING", function() self:QUEST_GREETING() end)
+    events:RegisterEvent("QUEST_DETAIL", function() self:QUEST_DETAIL() end)
+    events:RegisterEvent("QUEST_PROGRESS", function() self:QUEST_PROGRESS() end)
+    events:RegisterEvent("QUEST_COMPLETE", function() self:QUEST_COMPLETE() end)
+    events:RegisterEvent("QUEST_FINISHED", function() self:QUEST_FINISHED() end)
+    events:RegisterEvent("ITEM_TEXT_READY", function() self:ITEM_TEXT_READY() end)
+    events:RegisterEvent("CINEMATIC_START", function() self:CINEMATIC_START() end)
+    events:RegisterEvent("PLAY_MOVIE", function() self:PLAY_MOVIE() end)
+    events:RegisterMessage("VOICEOVER_STOP", function(...) self:OnVoiceoverStop(...) end)
 end
 
 -- Unregister all events for ChattyLittleNpc
 function EventHandler:UnregisterEvents()
-    self:UnregisterEvent("ADDON_LOADED")
-    self:UnregisterEvent("GOSSIP_SHOW")
-    self:UnregisterEvent("GOSSIP_CLOSED")
-    self:UnregisterEvent("QUEST_GREETING")
-    self:UnregisterEvent("QUEST_DETAIL")
-    self:UnregisterEvent("QUEST_PROGRESS")
-    self:UnregisterEvent("QUEST_COMPLETE")
-    self:UnregisterEvent("QUEST_FINISHED")
-    self:UnregisterEvent("ITEM_TEXT_READY")
-    self:UnregisterEvent("CINEMATIC_START")
-    self:UnregisterEvent("PLAY_MOVIE")
-    self:UnregisterMessage("VOICEOVER_STOP")
+    events:UnregisterEvent("ADDON_LOADED")
+    events:UnregisterEvent("GOSSIP_SHOW")
+    events:UnregisterEvent("GOSSIP_CLOSED")
+    events:UnregisterEvent("QUEST_GREETING")
+    events:UnregisterEvent("QUEST_DETAIL")
+    events:UnregisterEvent("QUEST_PROGRESS")
+    events:UnregisterEvent("QUEST_COMPLETE")
+    events:UnregisterEvent("QUEST_FINISHED")
+    events:UnregisterEvent("ITEM_TEXT_READY")
+    events:UnregisterEvent("CINEMATIC_START")
+    events:UnregisterEvent("PLAY_MOVIE")
+    events:UnregisterMessage("VOICEOVER_STOP")
 end
 
 -- Register a job that triggers events
 function EventHandler:StartWatcher()
     -- Latch to avoid sending VOICEOVER_STOP repeatedly for the same sound handle
     self._stopLatchHandle = nil
-    self:ScheduleRepeatingTimer(function()
+    self.watcherTimer = timer:ScheduleRepeatingTimer(0.5, function()
         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
         if not cp then return end
 
@@ -74,11 +74,11 @@ function EventHandler:StartWatcher()
                     CLN.Utils:LogDebug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle))
                 end
                 self._stopLatchHandle = handle
-                self:SendMessage("VOICEOVER_STOP", cp)
+                events:SendMessage("VOICEOVER_STOP", cp)
             end
             return
         end
-    end, 0.5)
+    end)
 end
 
 -- EVENT HANDLERS
@@ -313,9 +313,3 @@ function EventHandler:PLAY_MOVIE()
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
-
--- Initialize the EventHandler module
-EventHandler:OnInitialize()
-
--- Start the watcher
-EventHandler:StartWatcher()

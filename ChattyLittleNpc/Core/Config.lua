@@ -2,12 +2,6 @@
 -- Provides a simplified options panel builder for WoW's Settings API
 
 ---@class ConfigSystem
----@field categories table
----@field options table
----@field db table
----@field optionsTable table
----@field category table
----@field panel table
 local ConfigSystem = {}
 ConfigSystem.__index = ConfigSystem
 

@@ -1,7 +1,6 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
----@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
 -- Emote registry and helpers
@@ -52,7 +51,8 @@ end
 function ReplayFrame:OnceEmote(event, fn)
     if type(fn) ~= "function" then return end
     local selfRef
-    local wrapper = function(payload)
+    local wrapper
+    wrapper = function(payload)
         -- ensure we remove before invoking to avoid reentrancy issues
         if selfRef then selfRef:OffEmote(event, wrapper) end
         fn(payload)

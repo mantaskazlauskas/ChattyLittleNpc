@@ -1,13 +1,14 @@
----@class Options: table, AceConsole-3.0
-local Options = LibStub("AceAddon-3.0"):NewAddon("Options", "AceConsole-3.0")
+---@class Options
+local Options = {}
 
----@class ChattyLittleNpc: AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local CLN
+---@class ChattyLittleNpc
+local CLN = _G.ChattyLittleNpc
 
--- Store a reference to ChattyLittleNpc
-function Options:SetChattyLittleNpcReference(reference)
-    CLN = reference
-end
+-- Register this module with the main addon
+CLN.Options = Options
+
+-- Create config system instance
+local config = ChattyLittleNpc.ConfigSystem:New()
 
 local options = {
     name = "Chatty Little Npc",
@@ -87,6 +88,12 @@ local options = {
                     name = 'Print VO Pack metadata',
                     desc = 'Print what VO packs were loaded, what kind of voiceovers they support and how many voiceovers they have.',
                     func = function() CLN:PrintLoadedVoiceoverPacks() end,
+                },
+                checkVoiceoverPacks = {
+                    type = 'execute',
+                    name = 'Check Voiceover Packs',
+                    desc = 'Check which voiceover pack addons are installed and loaded.',
+                    func = function() CLN:CheckVoiceoverPacks() end,
                 },
             },
         },
@@ -265,23 +272,12 @@ local options = {
 }
 
 function Options:SetupOptions()
-    if (not self.optionsFrame) then
-        LibStub("AceConfig-3.0"):RegisterOptionsTable("ChattyLittleNpc", options)
-        self.optionsFrame = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("ChattyLittleNpc", "Chatty Little Npc")
+    if not self.optionsPanel then
+        self.optionsPanel = config:RegisterOptions("ChattyLittleNpc", options, CLN.db)
     end
 end
 
--- Initialize the Options module
-Options:SetupOptions()
-
 -- Helper for other modules to open the Settings category
 function Options:OpenSettings()
-    local dlg = LibStub("AceConfigDialog-3.0", true)
-    if dlg and dlg.Open then
-        dlg:Open("ChattyLittleNpc")
-        return
-    end
-    if InterfaceOptionsFrame_OpenToCategory and self.optionsFrame then
-        InterfaceOptionsFrame_OpenToCategory(self.optionsFrame)
-    end
+    config:Open()
 end

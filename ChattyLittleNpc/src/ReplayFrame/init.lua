@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 ---@class ReplayFrame
 local ReplayFrame = {}
@@ -130,10 +130,10 @@ function ReplayFrame.Pure.ChooseTalkAnimIdForText(text, rng)
     local s = ReplayFrame.Pure.ToSingleLine(text or "") or ""
     -- Count sentences (rough): split on . ! ?
     local total = 0
-    s:gsub("[%.%!%?]+", function() total = total + 1 end)
+    local _ = s:gsub("[%.%!%?]+", function() total = total + 1 end)
     if total == 0 then total = 1 end
-    local q = 0; s:gsub("%?", function() q = q + 1 end)
-    local e = 0; s:gsub("%!", function() e = e + 1 end)
+    local q = 0; _ = s:gsub("%?", function() q = q + 1 end)
+    local e = 0; _ = s:gsub("%!", function() e = e + 1 end)
     local pQ = math.min(1, math.max(0, q / total))
     local pE = math.min(1, math.max(0, e / total))
     local sum = pQ + pE

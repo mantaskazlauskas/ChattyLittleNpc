@@ -2,11 +2,6 @@
 -- Provides profile management and change callbacks
 
 ---@class Database
----@field profile table The current profile data (accessed via metatable)
----@field savedVarName string
----@field defaults table
----@field callbacks table
----@field sv table
 local Database = {}
 Database.__index = Database
 

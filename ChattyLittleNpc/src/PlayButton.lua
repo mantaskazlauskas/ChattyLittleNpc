@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -270,7 +270,10 @@ end
 
 -- ElvUI Support
 function PlayButton:GetElvUI()
-    local ElvUI = LibStub("AceAddon-3.0"):GetAddon("ElvUI")
+    -- ElvUI is stored globally
+    ---@type table|nil
+    ---@diagnostic disable-next-line: undefined-field
+    local ElvUI = _G.ElvUI
     return ElvUI
 end
 
@@ -279,9 +282,13 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     button:SetSize(90, 25) -- Adjusted to fit ElvUI's style better
 
     local ElvUI = PlayButton:GetElvUI()
-    local ElvUISkins = ElvUI:GetModule('Skins')
-    ---@diagnostic disable-next-line: undefined-field
-    ElvUISkins:HandleButton(button)
+    if ElvUI then
+        local ElvUISkins = ElvUI:GetModule('Skins')
+        if ElvUISkins and ElvUISkins.HandleButton then
+            ---@diagnostic disable-next-line: undefined-field
+            ElvUISkins:HandleButton(button)
+        end
+    end
     button:SetText("Play Voiceover")
 
     button:SetScript("OnEnter", function()
@@ -289,8 +296,10 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     end)
 
     button:SetScript("OnLeave", function()
-        ---@diagnostic disable-next-line: undefined-field
-        button:SetBackdropBorderColor(unpack(ElvUI.media.bordercolor)) -- Reset border on leave
+        if ElvUI and ElvUI.media and ElvUI.media.bordercolor then
+            ---@diagnostic disable-next-line: undefined-field
+            button:SetBackdropBorderColor(unpack(ElvUI.media.bordercolor)) -- Reset border on leave
+        end
     end)
 
     button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", offsetX, offsetY)

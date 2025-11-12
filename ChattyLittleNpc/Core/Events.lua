@@ -2,9 +2,6 @@
 -- Provides RegisterEvent, UnregisterEvent, and a message bus for custom events (SendMessage/RegisterMessage)
 
 ---@class EventSystem
----@field frame table
----@field events table
----@field messages table
 local EventSystem = {}
 EventSystem.__index = EventSystem
 
