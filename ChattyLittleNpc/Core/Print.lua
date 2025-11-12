@@ -22,6 +22,6 @@ end
 
 -- Export globally for the addon
 _G.ChattyLittleNpc = _G.ChattyLittleNpc or {}
-_G.ChattyLittleNpc.Print = PrintUtil
+_G.ChattyLittleNpc.PrintUtil = PrintUtil
 
 return PrintUtil

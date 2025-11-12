@@ -25,6 +25,9 @@
 
 ---@class EventHandler
 
+---@class PrintUtil
+---@field Print fun(self: PrintUtil, ...: any)
+
 ---@class ReplayFrame
 ---@field waveLowerDelta? number Optional override for wave emote lower delta (default 0.05)
 ---@field talkChance? number Optional override for talk chance in emote loop
@@ -38,6 +41,7 @@
 ---@class ChattyLittleNpc
 ---@field db Database The database object with profile management
 ---@field Database Database The Database class
+---@field PrintUtil PrintUtil The Print utility class
 ---@field EventSystem EventSystem The EventSystem class
 ---@field TimerUtil table The TimerUtil class
 ---@field EventHandler EventHandler

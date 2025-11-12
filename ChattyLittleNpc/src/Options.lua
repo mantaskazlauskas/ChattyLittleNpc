@@ -274,6 +274,9 @@ local options = {
 function Options:SetupOptions()
     if not self.optionsPanel then
         self.optionsPanel = config:RegisterOptions("ChattyLittleNpc", options, CLN.db)
+        if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
+            CLN:Print("Options panel registered successfully")
+        end
     end
 end
 

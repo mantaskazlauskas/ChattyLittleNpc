@@ -23,13 +23,19 @@ function ConfigSystem:CreateCheckbox(parent, info)
     checkbox.Text:SetText(info.name)
     checkbox.tooltipText = info.desc
     
+    -- Store the info for later use
+    checkbox.info = info
+    
     checkbox:SetScript("OnShow", function(self)
-        self:SetChecked(info.get())
+        local value = self.info.get()
+        self:SetChecked(value)
     end)
     
     checkbox:SetScript("OnClick", function(self)
         local checked = self:GetChecked()
-        info.set(checked)
+        self.info.set(nil, checked and true or false)
+        -- Force update to ensure visual state matches stored value
+        self:SetChecked(self.info.get())
     end)
     
     return checkbox
@@ -48,20 +54,23 @@ function ConfigSystem:CreateSlider(parent, info)
     slider:SetValueStep(info.step)
     slider:SetObeyStepOnDrag(true)
     
+    -- Store the info for later use
+    slider.info = info
+    
     -- Value text
     local valueText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
     slider.valueText = valueText
     
     slider:SetScript("OnShow", function(self)
-        local value = info.get()
+        local value = self.info.get()
         self:SetValue(value)
         self.valueText:SetText(string.format("%.2f", value))
     end)
     
     slider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(string.format("%.2f", value))
-        info.set(value)
+        self.info.set(nil, value)
     end)
     
     return slider
@@ -74,6 +83,9 @@ end
 function ConfigSystem:CreateDropdown(parent, info)
     local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
     
+    -- Store the info for later use
+    dropdown.info = info
+    
     local label = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 16, 3)
     label:SetText(info.name)
@@ -82,12 +94,12 @@ function ConfigSystem:CreateDropdown(parent, info)
     UIDropDownMenu_SetWidth(dropdown, 150)
     
     local function OnClick(self)
-        info.set(self.value)
+        dropdown.info.set(nil, self.value)
         UIDropDownMenu_SetText(dropdown, self:GetText())
     end
     
     local function Initialize(self, level)
-        for value, text in pairs(info.values) do
+        for value, text in pairs(dropdown.info.values) do
             local item = UIDropDownMenu_CreateInfo()
             item.text = text
             item.value = value
@@ -99,8 +111,8 @@ function ConfigSystem:CreateDropdown(parent, info)
     UIDropDownMenu_Initialize(dropdown, Initialize)
     
     dropdown:SetScript("OnShow", function(self)
-        local currentValue = info.get()
-        UIDropDownMenu_SetText(self, info.values[currentValue] or currentValue)
+        local currentValue = self.info.get()
+        UIDropDownMenu_SetText(self, self.info.values[currentValue] or currentValue)
     end)
     
     return dropdown

@@ -298,7 +298,7 @@ function CLN:GetLoadedAddonsForIntegrations()
     end
 end
 
--- Create alias for Print utility from Print.lua
-CLN.Print = function(self, ...)
-    return ChattyLittleNpc.Print:Print(...)
+-- Create Print method as an alias for Print utility from Print.lua
+function CLN:Print(...)
+    return ChattyLittleNpc.PrintUtil:Print(...)
 end
