@@ -62,7 +62,8 @@
         "UIDropDownMenu_SetText",
         "UIDropDownMenu_SetWidth",
         "UIParent",
-        "hash_SlashCmdList"
+        "hash_SlashCmdList",
+        "InterfaceOptions_AddCategory"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"
