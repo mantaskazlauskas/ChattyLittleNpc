@@ -1,4 +1,4 @@
-## Interface: 120000, 110205, 50502, 40402, 30404, 20504, 11507
+## Interface: 120000, 110205, 50502, 40402, 30405, 20504, 11508
 ## Title: Chatty Little NPC
 ## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
