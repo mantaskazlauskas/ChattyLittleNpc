@@ -7,17 +7,26 @@
 
 embeds.xml
 
+Core/Config.lua
+Core/Database.lua
+Core/Events.lua
+Core/Print.lua
+Core/Timer.lua
+
 src/EventHandler.lua
-src/Options.lua
 Main.lua
+src/Options.lua
 src/IconAtlas.lua
 src/ReplayFrame/init.lua
 src/ReplayFrame/HostCamera.lua
 src/ReplayFrame/DebugWindow.lua
 src/ReplayFrame/LogsWindow.lua
+src/ReplayFrame/PortraitStudio.lua
+src/ReplayFrame/PortraitGallery.lua
 src/ReplayFrame/FramerScene.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
+src/ReplayFrame/EditMode.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
 src/ReplayFrame/ModelAnimation.lua
@@ -50,3 +59,5 @@ utils/Md5.lua
 utils/SimHash.lua
 
 db/NpcDisplayIdDB.lua
+
+Init.lua

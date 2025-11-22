@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -32,10 +32,12 @@ function ReplayFrame:LoadFramePosition()
     if size and size.width and size.height and self.DisplayFrame and self.DisplayFrame.SetSize then
         self.DisplayFrame:SetSize(size.width, size.height)
     end
-    if (pos) then
+    if (pos and pos.point and pos.relativePoint and pos.xOfs and pos.yOfs) then
         self.DisplayFrame:ClearAllPoints()
         self.DisplayFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
     else
+        -- Use default position if saved data is invalid or missing
+        self.DisplayFrame:ClearAllPoints()
         self.DisplayFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -500, -200)
     end
 end

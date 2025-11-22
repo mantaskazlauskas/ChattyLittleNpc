@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 local IconAtlas = CLN.IconAtlas
 
 ---@class ReplayFrame
@@ -415,8 +415,10 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     end)
     optionsBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     optionsBtn:SetScript("OnClick", function()
-        local dlg = LibStub and LibStub("AceConfigDialog-3.0", true)
-        if dlg and dlg.Open then dlg:Open("ChattyLittleNpc") end
+        -- Use the new Options module
+        if CLN.Options and CLN.Options.OpenSettings then
+            CLN.Options:OpenSettings()
+        end
     end)
     self.OptionsButton = optionsBtn
 

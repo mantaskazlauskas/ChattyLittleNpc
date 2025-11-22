@@ -1,13 +1,12 @@
----@class ChattyLittleNpc: table, AceAddon-3.0, AceConsole-3.0, AceEvent-3.0
-local CLN = LibStub("AceAddon-3.0"):NewAddon("ChattyLittleNpc", "AceConsole-3.0", "AceEvent-3.0")
+---@class ChattyLittleNpc
+local CLN = _G.ChattyLittleNpc
 
----@class EventHandler
-CLN.EventHandler = LibStub("AceAddon-3.0"):GetAddon("EventHandler")
-CLN.EventHandler:SetChattyLittleNpcReference(CLN)
+-- EventHandler is loaded via src/EventHandler.lua and attaches itself to CLN
 
 ---@class Options
-CLN.Options = LibStub("AceAddon-3.0"):GetAddon("Options")
-CLN.Options:SetChattyLittleNpcReference(CLN)
+-- Options is now a standalone module, loaded via src/Options.lua
+-- It will be attached to CLN.Options when that file loads
+
 
 CLN.locale = nil
 CLN.gameVersion = nil
@@ -74,7 +73,7 @@ local defaults = {
 }
 
 function CLN:OnInitialize()
-    self.db = LibStub("AceDB-3.0"):New("ChattyLittleNpcDB", defaults, true)
+    self.db = CLN.Database:New("ChattyLittleNpcDB", defaults, true)
 
     -- Attach deferred IconAtlas if file loaded before addon existed
     if not self.IconAtlas and _G.ChattyLittleNpc_PendingAtlas then
@@ -106,6 +105,11 @@ end
 
 function CLN:OnEnable()
     CLN.EventHandler:RegisterEvents()
+
+    -- Setup options panel for game settings
+    if self.Options and self.Options.SetupOptions then
+        self.Options:SetupOptions()
+    end
 
     if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
@@ -256,7 +260,13 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
                 self.Logger:debug("Loaded voiceover pack: " .. tostring(expansion), false, C.loader or 'misc')
             end
 
-            local addon = LibStub("AceAddon-3.0"):GetAddon(voiceoverPackName, true)
+            local addon = _G[voiceoverPackName]
+            -- Fallback to AceAddon if _G is nil (for backward compatibility if packs aren't updated)
+            if not addon and LibStub then
+                 local ace = LibStub("AceAddon-3.0", true)
+                 if ace then addon = ace:GetAddon(voiceoverPackName, true) end
+            end
+
             if addon then
                 self.VoiceoverPacks[voiceoverPackName] = addon
             end
@@ -330,4 +340,4 @@ function CLN:GetLoadedAddonsForIntegrations()
     end
 end
 
-CLN:OnInitialize()
+-- CLN:OnInitialize() called by Init.lua

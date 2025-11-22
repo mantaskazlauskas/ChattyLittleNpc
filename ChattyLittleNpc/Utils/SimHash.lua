@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 -- SimHash64_CharNgrams.lua
 -- SimHash that uses character-based n-grams to make small typos yield near-identical hashes.
