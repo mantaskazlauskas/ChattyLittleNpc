@@ -136,6 +136,41 @@ function Utils:IsNilOrEmpty(str)
     return str == nil or str == ""
 end
 
+--- Safely retrieves and parses a unit's GUID, handling tainted/secret values.
+--- @param unit string The unit identifier (e.g., "target", "npc", "player", "mouseover")
+--- @return string|nil unitGuid The GUID string if successfully retrieved and not tainted, nil otherwise
+--- @return string|nil unitType The type of unit ("Creature", "Vehicle", "GameObject", etc.), nil if unavailable
+--- @return number|nil unitId The numeric ID of the unit (for creatures, vehicles, game objects), nil if unavailable
+function Utils:GetSecureUnitGuid(unit)
+    local unitGuid = UnitGUID(unit)
+    if not unitGuid then
+        return nil, nil, nil
+    end
+
+    -- Check if the GUID is tainted/secret
+    -- issecurevariable returns false if the variable is tainted
+    if issecurevariable("unitGuid") == false then
+        return nil, nil, nil
+    end
+
+    -- Use pcall to safely parse the GUID
+    local success, unitType, unitId = pcall(function()
+        local t = select(1, strsplit("-", unitGuid))
+        local id = nil
+        if (t == "Creature" or t == "Vehicle" or t == "GameObject") then
+            local idString = select(6, strsplit("-", unitGuid))
+            id = tonumber(idString)
+        end
+        return t, id
+    end)
+
+    if success then
+        return unitGuid, unitType, unitId
+    else
+        return nil, nil, nil
+    end
+end
+
 --- Gets the path to a non-quest voiceover file based on the provided parameters.
 --- @param npcId number The ID of the NPC.
 --- @param type string The type of sound (e.g., "gossip", "item").

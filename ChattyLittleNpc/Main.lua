@@ -179,17 +179,7 @@ function CLN:GetUnitInfo(unit)
     local gender = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
     local race = UnitRace(unit) or ""
 
-    local unitGuid = UnitGUID(unit)
-    local unitType = nil
-    local unitId = nil
-
-    if (unitGuid) then
-        unitType = select(1, strsplit("-", unitGuid))
-        if (unitType == "Creature" or unitType == "Vehicle" or unitType == "GameObject") then
-            local idString = select(6, strsplit("-", unitGuid))
-            unitId = tonumber(idString)
-        end
-    end
+    local unitGuid, unitType, unitId = CLN.Utils:GetSecureUnitGuid(unit)
 
     return unitName, gender, race, unitGuid, unitType, unitId
 end

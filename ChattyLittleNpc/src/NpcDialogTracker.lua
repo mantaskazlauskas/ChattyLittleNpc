@@ -218,14 +218,12 @@ function NpcDialogTracker:HandleQuestTexts(event)
 end
 
 function NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
-    local unitGuid = UnitGUID('npc')
+    local unitGuid, unitType, unitId = CLN.Utils:GetSecureUnitGuid('npc')
     if (itemName and itemText and unitGuid) then
-        local unitType = select(1, string.split('-', unitGuid))
         if (unitType == "Item") then
             self:StoreUnitInfo(itemId, itemName, itemText, unitType)
         else 
-            local itemID = select(6, string.split("-", unitGuid));
-            self:StoreUnitInfo(itemID, itemName, itemText, unitType)
+            self:StoreUnitInfo(unitId, itemName, itemText, unitType)
             return
         end
     end
@@ -275,12 +273,10 @@ function NpcDialogTracker:GatherTooltipInfo()
     f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     f:SetScript("OnEvent", function()
         if not UnitIsPlayer("mouseover") then
-            local unitGuid = UnitGUID("mouseover")
-            if (unitGuid) then
-                local unitID = select(6, strsplit("-", unitGuid))
-                local unitIdAsNumber = tonumber(unitID)
+            local unitName, gender, race, unitGuid, unitType, unitId = CLN:GetUnitInfo("mouseover")
+            if (unitId) then
                 local npcTooltipInfo = {
-                    Id = unitIdAsNumber,
+                    Id = unitId,
                     tooltip_info = {}
                 }
 
