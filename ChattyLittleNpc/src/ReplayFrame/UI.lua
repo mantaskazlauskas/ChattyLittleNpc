@@ -628,7 +628,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         end
                         CLN.questsQueue = {}
                         if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        for _, q in ipairs(toPlay) do CLN:PlayQuestTTS(q) end
+                        for _, q in ipairs(toPlay) do 
+                            CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
+                        end
                     end
                 end
             end)

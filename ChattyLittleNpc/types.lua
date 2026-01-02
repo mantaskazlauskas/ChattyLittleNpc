@@ -73,5 +73,4 @@
 ---@field ReplayFrame table
 ---@field Print fun(self: ChattyLittleNpc, ...: any)
 ---@field CheckVoiceoverPacks fun(self: ChattyLittleNpc)
----@field PlayQuestTTS fun(self: ChattyLittleNpc, quest: table)
 ---@field SendMessage fun(self: ChattyLittleNpc, message: string, ...)

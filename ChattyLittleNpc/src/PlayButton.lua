@@ -270,11 +270,15 @@ end
 
 -- ElvUI Support
 function PlayButton:GetElvUI()
-    -- ElvUI is stored globally
+    -- ElvUI is stored globally as an array, the addon object is at index 1
     ---@type table|nil
     ---@diagnostic disable-next-line: undefined-field
     local ElvUI = _G.ElvUI
-    return ElvUI
+    -- ElvUI stores the main addon object in the first index
+    if ElvUI and type(ElvUI) == "table" and ElvUI[1] then
+        return ElvUI[1]
+    end
+    return nil
 end
 
 function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
