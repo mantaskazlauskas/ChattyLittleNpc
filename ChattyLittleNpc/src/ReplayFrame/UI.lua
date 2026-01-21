@@ -912,18 +912,8 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         end
                         CLN.questsQueue = {}
                         if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        -- Play each queued quest entry directly using VoiceoverPlayer
-                        for _, q in ipairs(toPlay) do
-                            if q and q.questId and q.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                                if CLN.Logger then
-                                    CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                                end
-                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
-                            else
-                                if CLN.Logger then
-                                    CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                                end
-                            end
+                        for _, q in ipairs(toPlay) do 
+                            CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
                         end
                     end
                 end
