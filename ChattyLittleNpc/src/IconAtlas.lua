@@ -4,15 +4,9 @@
 --  Add files under Interface\\AddOns\\ChattyLittleNpc\\Icons\\
 --  e.g. ChattyLittleNpc_Icon_Play.png, ChattyLittleNpc_Icon_Stop.png, etc.
 
-local CLN = nil
-local ok, addon = pcall(function() return LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc") end)
-if ok and addon then
-    CLN = addon
-end
-
+local CLN = _G.ChattyLittleNpc
 local Atlas = {}
 
--- If addon not yet initialized, stash globally for later pickup in Main.lua OnInitialize
 if CLN then
     CLN.IconAtlas = Atlas
 else

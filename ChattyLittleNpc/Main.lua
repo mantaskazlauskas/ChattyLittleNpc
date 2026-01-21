@@ -23,6 +23,13 @@ CLN.currentItemInfo = {
     ItemText = nil
 }
 
+-- Add Print method to CLN
+function CLN:Print(...)
+    if self.PrintUtil then
+        self.PrintUtil:Print(...)
+    end
+end
+
 local defaults = {
     profile = {
         autoPlayVoiceovers = true,
@@ -63,8 +70,7 @@ local defaults = {
     debugMode = false,
     debugAnimations = false,
     debugNoAnim = false,
-    disableCameraAnimations = false
-    ,
+    disableCameraAnimations = false,
     -- Per Edit Mode layout overrides (keyed by layoutName)
     editModeLayouts = {},
     -- Opt-in for using SetPropagateKeyboardInput (can cause taint). Disabled by default.

@@ -95,6 +95,7 @@ end
 ---@param event string Event name ("OnProfileChanged", "OnProfileCopied", "OnProfileReset")
 ---@param callback function Callback function
 function Database:RegisterCallback(event, callback)
+    if not self.callbacks then self.callbacks = {} end
     if not self.callbacks[event] then
         self.callbacks[event] = {}
     end

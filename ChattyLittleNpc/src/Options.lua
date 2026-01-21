@@ -197,11 +197,6 @@ end
 local options = {}
 local optionsFrame = nil
 
-    return button
-end
-
-local optionsFrame = nil
-
 -- Build the native UI panel
 function Options:BuildOptionsPanel()
     if optionsFrame then return optionsFrame end

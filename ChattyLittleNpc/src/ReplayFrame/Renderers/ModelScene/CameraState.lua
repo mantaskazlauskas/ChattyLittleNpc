@@ -1,5 +1,5 @@
 ---@class ChattyLittleNpc
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 
 -- Lightweight centralized camera state helper used by the simplified framing path.
 -- This does NOT replace the legacy snapshot system yet; it co-exists so we can

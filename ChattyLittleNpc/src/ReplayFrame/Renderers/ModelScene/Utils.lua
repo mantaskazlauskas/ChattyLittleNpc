@@ -1,4 +1,4 @@
-local CLN = LibStub("AceAddon-3.0"):GetAddon("ChattyLittleNpc")
+local CLN = _G.ChattyLittleNpc
 local ReplayFrame = CLN.ReplayFrame
 ReplayFrame.ModelScene = ReplayFrame.ModelScene or {}
 local NS = ReplayFrame.ModelScene

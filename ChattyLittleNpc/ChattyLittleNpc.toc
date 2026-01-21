@@ -5,8 +5,6 @@
 ## Version: 2.0.2
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
 
-embeds.xml
-
 Core/Config.lua
 Core/Database.lua
 Core/Events.lua
@@ -21,12 +19,9 @@ src/ReplayFrame/init.lua
 src/ReplayFrame/HostCamera.lua
 src/ReplayFrame/DebugWindow.lua
 src/ReplayFrame/LogsWindow.lua
-src/ReplayFrame/PortraitStudio.lua
-src/ReplayFrame/PortraitGallery.lua
 src/ReplayFrame/FramerScene.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
-src/ReplayFrame/EditMode.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
 src/ReplayFrame/ModelAnimation.lua
