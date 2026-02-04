@@ -50,6 +50,13 @@ function ConfigSystem:CreateSlider(parent, info)
     slider.Text:SetText(info.name)
     slider.tooltipText = info.desc
     
+    -- Set a reasonable width to prevent text cutoff
+    if info.width == "full" then
+        slider:SetWidth(400)
+    else
+        slider:SetWidth(250)
+    end
+    
     slider:SetMinMaxValues(info.min, info.max)
     slider:SetValueStep(info.step)
     slider:SetObeyStepOnDrag(true)
@@ -91,7 +98,12 @@ function ConfigSystem:CreateDropdown(parent, info)
     label:SetText(info.name)
     dropdown.label = label
     
-    UIDropDownMenu_SetWidth(dropdown, 150)
+    -- Set dropdown width
+    if info.width == "full" then
+        UIDropDownMenu_SetWidth(dropdown, 380)
+    else
+        UIDropDownMenu_SetWidth(dropdown, 150)
+    end
     
     local function OnClick(self)
         dropdown.info.set(nil, self.value)
@@ -125,7 +137,13 @@ end
 function ConfigSystem:CreateButton(parent, info)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetText(info.name)
-    button:SetWidth(200)
+    
+    -- Set button width based on width parameter
+    if info.width == "full" then
+        button:SetWidth(400)
+    else
+        button:SetWidth(200)
+    end
     button:SetHeight(22)
     button.tooltipText = info.desc
     
@@ -190,8 +208,8 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                 -- Create group header
                 local header = self:CreateHeader(content, group.name)
                 header:SetPoint("TOPLEFT", 6, yOffset)
-                yOffset = yOffset - 30
-                contentHeight = contentHeight + 30
+                yOffset = yOffset - 40  -- Increased spacing after header
+                contentHeight = contentHeight + 40
                 
                 -- Process group args
                 if group.args then
@@ -200,7 +218,15 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                     for key in pairs(group.args) do
                         table.insert(sortedControlKeys, key)
                     end
-                    table.sort(sortedControlKeys)
+                    -- Sort by order parameter if it exists, otherwise alphabetically
+                    table.sort(sortedControlKeys, function(a, b)
+                        local orderA = group.args[a].order or 999
+                        local orderB = group.args[b].order or 999
+                        if orderA == orderB then
+                            return a < b -- Alphabetical fallback
+                        end
+                        return orderA < orderB
+                    end)
                     
                     for _, key in ipairs(sortedControlKeys) do
                         local opt = group.args[key]

@@ -320,14 +320,15 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     clearTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
     clearBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Clear all queued voiceovers")
+        GameTooltip:SetText("Stop playback and clear all queued voiceovers")
         GameTooltip:Show()
     end)
     clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     clearBtn:SetScript("OnClick", function()
-        CLN.questsQueue = {}
-        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
-        ReplayFrame:UpdateDisplayFrame()
+        -- Stop current sound and clear the entire queue
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        ReplayFrame.userHidden = false
+        ReplayFrame:UpdateDisplayFrameState()
     end)
     self.ClearButton = clearBtn
 
@@ -617,20 +618,15 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if not e then return end
                 if button == "LeftButton" then
                     if e.isPlaying then
-                        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+                        -- Stop current sound but don't clear the queue - let it continue to next
+                        CLN.VoiceoverPlayer:StopCurrentSound()
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
                     elseif e.queueIndex then
-                        local qi = e.queueIndex
-                        local toPlay = {}
-                        for i = qi, #CLN.questsQueue do
-                            table.insert(toPlay, CLN.questsQueue[i])
-                        end
-                        CLN.questsQueue = {}
+                        -- Remove this specific item from the queue
+                        table.remove(CLN.questsQueue, e.queueIndex)
                         if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        for _, q in ipairs(toPlay) do 
-                            CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
-                        end
+                        this:UpdateDisplayFrameState()
                     end
                 end
             end)

@@ -57,20 +57,21 @@ local defaults = {
         overwriteExistingGossipValues = false,
         showGossipEditor = false,
         showReplayFrame = true,
+        alwaysShowReplayFrame = false,
         showSpeakButton = true,
-    lockInEditMode = false,
-    hideInEditMode = false,
-    compactMode = false,
-    queueTextScale = 1.0,
-    -- Last known window position/size
-    framePos = { -- Default position
+        lockInEditMode = false,
+        hideInEditMode = false,
+        compactMode = false,
+        queueTextScale = 1.0,
+        -- Last known window position/size
+        framePos = { -- Default position
             point = "CENTER",
             relativeTo = nil,
             relativePoint = "CENTER",
             xOfs = 500,
             yOfs = 0
         },
-    frameSize = { width = 310 + 165, height = 165 },
+        frameSize = { width = 310 + 165, height = 165 },
         layoutPositions = {},
         layoutSizes = {},
         buttonPosX = -15,
@@ -78,8 +79,8 @@ local defaults = {
         enableQuestPlaybackQueueing = true,
         stopVoiceoverAfterDialogWindowClose = false,
         audioChannel = "MASTER",
-    debugMode = false,
-    debugAnimations = false
+        debugMode = false,
+        debugAnimations = false
     }
 }
 
@@ -135,6 +136,8 @@ function CLN:OnEnable()
                 self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "showReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
                 self.ReplayFrame:UpdateDisplayFrameState()
+            elseif key == "alwaysShowReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
+                self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "debugMode" or key == "debugAnimations" then
                 -- no-op: toggles just affect logging gates
             end
@@ -145,12 +148,13 @@ function CLN:OnEnable()
             applyKey("queueTextScale")
             applyKey("compactMode")
             applyKey("showReplayFrame")
+            applyKey("alwaysShowReplayFrame")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
+            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame")
+            applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame")
         end)
         self._dbProfileHooked = true
     end

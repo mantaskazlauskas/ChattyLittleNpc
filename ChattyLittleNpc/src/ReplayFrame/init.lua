@@ -278,19 +278,22 @@ end
 
 -- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue
 function ReplayFrame:UpdateVisibility()
-    if (not self._forceShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
+    -- Check if user wants to always show the frame
+    local alwaysShow = CLN and CLN.db and CLN.db.profile and CLN.db.profile.alwaysShowReplayFrame
+    
+    if (not self._forceShow) and (not alwaysShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         return false
     end
 
-    if (not self._forceShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
+    if (not self._forceShow) and (not alwaysShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         self.userHidden = false
         return false
     end
 
-    if (not self._forceShow) and (self:IsDisplayFrameHideNeeded()) then
+    if (not self._forceShow) and (not alwaysShow) and (self:IsDisplayFrameHideNeeded()) then
         if self.DisplayFrame then self.DisplayFrame:Hide() end
         return false
     end
