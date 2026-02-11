@@ -5,7 +5,6 @@
 ## Version: 3.0.4
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
 
-# Core utilities (replace Ace3)
 Core/Print.lua
 Core/Events.lua
 Core/Timer.lua

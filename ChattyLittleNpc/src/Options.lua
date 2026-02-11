@@ -21,6 +21,7 @@ local options = {
             inline = true,
             args = {
                 autoPlayVoiceovers = {
+                    order = 1,
                     type = 'toggle',
                     name = 'Play on dialog window open',
                     desc = 'Toggle to play voiceovers when opening the gossip or quest window.',
@@ -28,6 +29,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.autoPlayVoiceovers = value end,
                 },
                 stopVoiceoverAfterDialogWindowClose = {
+                    order = 2,
                     type = 'toggle',
                     name = 'Stop on dialog window close',
                     desc = 'Only play voiceover while the npc dialog window is open, and auto stop voiceover after the dialog window is closed. (Quest queueing will be disabled)',
@@ -40,6 +42,7 @@ local options = {
                     end
                 },
                 enableQuestPlaybackQueueing = {
+                    order = 3,
                     type = 'toggle',
                     name = 'Enable Quest Playback Queueing',
                     desc = 'Toggle to enable or disable quest playback queueing. (Stop on dialog window close will be disabled)',
@@ -51,10 +54,21 @@ local options = {
                         end
                     end
                 },
+                showSpeakButton = {
+                    order = 4,
+                    type = 'toggle',
+                    name = 'Enable Speak/Play button for dialogs',
+                    desc = 'Toggle to enable or disable Speak/Play button on next to the dialog frame.',
+
+                    get = function(info) return CLN.db.profile.showSpeakButton end,
+                    set = function(info, value) CLN.db.profile.showSpeakButton = value end,
+                },
                 playVoiceoverAfterDelay = {
+                    order = 5,
                     type = 'range',
                     name = 'Play Voiceover After A Delay',
                     desc = 'Set the delay (in seconds) before playing voiceovers after talking with questgiver.',
+                    width = "full",
                     min = 0,
                     max = 3,
                     step = 0.1,
@@ -62,9 +76,11 @@ local options = {
                     set = function(info, value) CLN.db.profile.playVoiceoverAfterDelay = value end,
                 },
                 audioChannel = {
+                    order = 6,
                     type = 'select',
                     name = 'Audio Channels',
                     desc = 'Select the audio channel for voiceover playback.',
+                    width = "full",
                     values = {
                         MASTER = 'MASTER',
                         DIALOG = 'DIALOG',
@@ -75,13 +91,6 @@ local options = {
                     get = function(info) return CLN.db.profile.audioChannel end,
                     set = function(info, value) CLN.db.profile.audioChannel = value end,
                 },
-                showSpeakButton = {
-                    type = 'toggle',
-                    name = 'Enable Speak/Play button for dialogs',
-                    desc = 'Toggle to enable or disable Speak/Play button on next to the dialog frame.',
-                    get = function(info) return CLN.db.profile.showSpeakButton end,
-                    set = function(info, value) CLN.db.profile.showSpeakButton = value end,
-                },
             },
         },
         ["2_QuestFrameButtonOptions"] = {
@@ -90,9 +99,11 @@ local options = {
             inline = true,
             args = {
                 buttonPosX = {
+                    order = 1,
                     type = 'range',
                     name = 'Button X Position',
                     desc = 'Set the X coordinate for the button position relative to the frame.',
+                    width = "full",
                     min = -200,
                     max = 200,
                     step = 1,
@@ -103,9 +114,11 @@ local options = {
                     end,
                 },
                 buttonPosY = {
+                    order = 2,
                     type = 'range',
                     name = 'Button Y Position',
                     desc = 'Set the Y coordinate for the button position relative to the frame.',
+                    width = "full",
                     min = -200,
                     max = 200,
                     step = 1,
@@ -116,9 +129,11 @@ local options = {
                     end,
                 },
                 resetButtonPosition = {
+                    order = 3,
                     type = 'execute',
                     name = 'Reset Button Positions',
                     desc = 'Reset the X and Y positions to their default values.',
+                    width = "full",
                     func = function()
                         CLN.db.profile.buttonPosX = -15  -- Default X position
                         CLN.db.profile.buttonPosY = -30  -- Default Y position
@@ -133,6 +148,7 @@ local options = {
             inline = true,
             args = {
                 showReplayFrame = {
+                    order = 1,
                     type = 'toggle',
                     name = 'Show Floating Head Frame (voiceover queue)',
                     desc = 'Toggle to show the floating head frame (voiceover queue)',
@@ -142,10 +158,23 @@ local options = {
                         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
                     end,
                 },
+                alwaysShowReplayFrame = {
+                    order = 2,
+                    type = 'toggle',
+                    name = 'Always show replay frame',
+                    desc = 'Keep the replay frame visible even when the queue is empty and nothing is playing',
+                    get = function(info) return CLN.db.profile.alwaysShowReplayFrame end,
+                    set = function(info, value)
+                        CLN.db.profile.alwaysShowReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
                 queueTextScale = {
+                    order = 3,
                     type = 'range',
                     name = 'Queue Text Scale',
                     desc = 'Scale the header and queue row text size.',
+                    width = "full",
                     min = 0.75,
                     max = 1.5,
                     step = 0.05,
@@ -158,6 +187,7 @@ local options = {
                     end,
                 },
                 compactMode = {
+                    order = 4,
                     type = 'toggle',
                     name = 'Compact Mode (hide NPC model)',
                     desc = 'Hide the NPC model and shrink the queue frame width.',
@@ -168,15 +198,19 @@ local options = {
                     end,
                 },
                 resetFramePos = {
+                    order = 5,
                     type = 'execute',
                     name = 'Reset Replay Frame Position',
                     desc = 'Reset the replay frame position to its default values.',
+                    width = "full",
                     func = function() CLN.ReplayFrame:ResetFramePosition() end,
                 },
                 openEditMode = {
+                    order = 6,
                     type = 'execute',
                     name = 'Open Edit Mode (show frame)',
                     desc = 'Show the replay frame and enter Edit Mode so you can move/resize it, even if nothing is playing.',
+                    width = "full",
                     func = function()
                         if CLN and CLN.ReplayFrame and CLN.ReplayFrame.ShowForEdit then
                             CLN.ReplayFrame:ShowForEdit()
@@ -191,6 +225,7 @@ local options = {
             inline = true,
             args = {
                 printMissingFiles = {
+                    order = 1,
                     type = 'toggle',
                     name = 'Print Missing Files',
                     desc = 'Toggle to print missing voiceover files.',
@@ -198,6 +233,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.printMissingFiles = value end,
                 },
                 logNpcTexts = {
+                    order = 2,
                     type = 'toggle',
                     name = 'Track NPC data',
                     desc = 'Toggle to save all the texts that an npc has to saved variables. (Enable if you want to contribute to addon development by helping to gather data for voiceover generation. Contact us on discord if you want to help.)',
@@ -210,6 +246,7 @@ local options = {
                     end,
                 },
                 overwriteExistingGossipValues = {
+                    order = 3,
                     type = 'toggle',
                     name = 'Overwrite existing values.',
                     desc = 'Overwrite existing values of gathered npc texts when interacting not the first time.',
@@ -217,6 +254,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
                 },
                 printNpcTexts = {
+                    order = 4,
                     type = 'toggle',
                     name = 'Print NPC data (if tracking enabled)',
                     desc = 'Toggle to print the data that is being collected by npc dialog tracker (if it is enabled).',
@@ -224,6 +262,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.printNpcTexts = value end,
                 },
                 debugMode = {
+                    order = 5,
                     type = 'toggle',
                     name = 'Print Debug Messages',
                     desc = 'Toggle to print debug messages.',
@@ -234,6 +273,7 @@ local options = {
                     end,
                 },
                 debugAnimations = {
+                    order = 6,
                     type = 'toggle',
                     name = 'Animation Debug',
                     desc = 'Reduce noise: only print animation-related debug when enabled.',
@@ -241,6 +281,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.debugAnimations = value end,
                 },
                 showGossipEditor = {
+                    order = 7,
                     type = 'toggle',
                     name = 'Show Gossip Editor',
                     desc = 'Toggle to show the Gossip Editor window (used for editing/fixing collected npc gossip lines).',
@@ -254,9 +295,11 @@ local options = {
                     end,
                 },
                 checkVoiceoverPacks = {
+                    order = 8,
                     type = 'execute',
                     name = 'Check Voiceover Packs',
                     desc = 'Check which voiceover pack addons are installed and loaded.',
+                    width = "full",
                     func = function() CLN:CheckVoiceoverPacks() end,
                 },
             },
