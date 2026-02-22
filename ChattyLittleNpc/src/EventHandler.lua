@@ -29,6 +29,8 @@ function EventHandler:RegisterEvents()
     events:RegisterEvent("ITEM_TEXT_READY", function() self:ITEM_TEXT_READY() end)
     events:RegisterEvent("CINEMATIC_START", function() self:CINEMATIC_START() end)
     events:RegisterEvent("PLAY_MOVIE", function() self:PLAY_MOVIE() end)
+    events:RegisterEvent("PLAYER_REGEN_DISABLED", function() self:PLAYER_REGEN_DISABLED() end)
+    events:RegisterEvent("PLAYER_REGEN_ENABLED", function() self:PLAYER_REGEN_ENABLED() end)
     CLN:RegisterMessage("VOICEOVER_STOP", function(...) self:OnVoiceoverStop(...) end)
 end
 
@@ -45,6 +47,8 @@ function EventHandler:UnregisterEvents()
     events:UnregisterEvent("ITEM_TEXT_READY")
     events:UnregisterEvent("CINEMATIC_START")
     events:UnregisterEvent("PLAY_MOVIE")
+    events:UnregisterEvent("PLAYER_REGEN_DISABLED")
+    events:UnregisterEvent("PLAYER_REGEN_ENABLED")
     CLN:UnregisterMessage("VOICEOVER_STOP")
     -- Cancel the watcher timer to prevent callbacks on stale state
     if self.watcherTimer then
@@ -327,5 +331,21 @@ function EventHandler:PLAY_MOVIE()
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on movie play.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+    end
+end
+
+function EventHandler:PLAYER_REGEN_DISABLED()
+    -- Combat started
+    CLN._inCombat = true
+    if CLN.ReplayFrame and CLN.ReplayFrame.OnCombatStart then
+        CLN.ReplayFrame:OnCombatStart()
+    end
+end
+
+function EventHandler:PLAYER_REGEN_ENABLED()
+    -- Combat ended
+    CLN._inCombat = false
+    if CLN.ReplayFrame and CLN.ReplayFrame.OnCombatEnd then
+        CLN.ReplayFrame:OnCombatEnd()
     end
 end

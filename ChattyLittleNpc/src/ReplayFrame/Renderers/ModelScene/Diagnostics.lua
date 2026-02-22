@@ -16,7 +16,8 @@ function NS.Diagnostics.log(cat, fmt, ...)
     if CLN.Utils and CLN.Utils.LogAnimDebug then
         CLN.Utils:LogAnimDebug(tostring(cat or "misc"), msg)
     elseif CLN and CLN.Logger then
-        CLN.Logger:debug("[CLN:" .. tostring(cat or "?") .. "] " .. msg, false, CLN.Utils.LogCategories.projection)
+        local logCat = (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.projection) or "projection"
+        CLN.Logger:debug("[CLN:" .. tostring(cat or "?") .. "] " .. msg, false, logCat)
     end
 end
 

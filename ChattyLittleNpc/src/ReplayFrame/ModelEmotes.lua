@@ -158,14 +158,18 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
         end
         return false
     end
-    if not (steps and type(steps) == "table" and #steps > 0) then 
-    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
-        return false 
+    if not (steps and type(steps) == "table" and #steps > 0) then
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
+        end
+        return false
     end
     local m = self.NpcModelFrame
-    if not m then 
-    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - no NpcModelFrame")
-        return false 
+    if not m then
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - no NpcModelFrame")
+        end
+        return false
     end
 
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then

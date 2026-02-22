@@ -888,8 +888,14 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9)
             row.bulletTex = bulletTex
 
+            local typeIcon = row:CreateTexture(nil, "ARTWORK")
+            typeIcon:SetPoint("LEFT", bulletTex, "RIGHT", 4, 0)
+            typeIcon:SetSize(0.001, 14)
+            typeIcon:Hide()
+            row.typeIcon = typeIcon
+
             local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            text:SetPoint("LEFT", bulletTex, "RIGHT", 8, 0)
+            text:SetPoint("LEFT", typeIcon, "RIGHT", 4, 0)
             text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
             text:SetJustifyH("LEFT")
             if text.SetWordWrap then text:SetWordWrap(false) end
@@ -940,11 +946,20 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     -- Prefer smart sentence split with multiple AddLine calls to improve wrapping
                     local maxW = ReplayFrame.GetTooltipMaxWidth and ReplayFrame:GetTooltipMaxWidth() or 420
                     if GameTooltip.SetMaximumWidth then GameTooltip:SetMaximumWidth(maxW) end
-                    local lines = ReplayFrame.SplitTooltipIntoSentences and ReplayFrame:SplitTooltipIntoSentences(e.tooltip) or { e.tooltip }
                     GameTooltip:ClearLines()
+                    -- Type badge prefix
+                    local typeBadge = ""
+                    if e.entryType == "quest" then
+                        typeBadge = "|cFFFFD100[Quest]|r "
+                    elseif e.entryType == "Gossip" then
+                        typeBadge = "|cFF99CCFF[Gossip]|r "
+                    elseif e.entryType == "GameObject" then
+                        typeBadge = "|cFFD9C08C[Item]|r "
+                    end
+                    local lines = ReplayFrame.SplitTooltipIntoSentences and ReplayFrame:SplitTooltipIntoSentences(e.tooltip) or { e.tooltip }
                     for i, line in ipairs(lines) do
                         if i == 1 then
-                            GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
+                            GameTooltip:AddLine(typeBadge .. line, 0.9, 0.9, 0.9, true)
                         else
                             GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true)
                         end
@@ -955,7 +970,14 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             row:SetScript("OnLeave", function(selfBtn)
                 if selfBtn._hl then selfBtn._hl:Hide() end
                 if not selfBtn._isActive and selfBtn.text then
-                    selfBtn.text:SetTextColor(0.95, 0.86, 0.20)
+                    local e = selfBtn._element
+                    if e and e.entryType == "Gossip" then
+                        selfBtn.text:SetTextColor(0.6, 0.8, 1.0)
+                    elseif e and e.entryType == "GameObject" then
+                        selfBtn.text:SetTextColor(0.85, 0.75, 0.55)
+                    else
+                        selfBtn.text:SetTextColor(0.95, 0.86, 0.20)
+                    end
                 end
                 GameTooltip_Hide()
             end)
@@ -972,7 +994,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
         for i = 1, toShow do
             local row = self.QueueRows[i]
             local element = entries[i]
@@ -983,9 +1005,40 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             row._fullText = label
             -- Apply coloring
             if element.isPlaying then
-                row.text:SetTextColor(0.2, 1.0, 0.2)
+                row.text:SetTextColor(0.2, 1.0, 0.2) -- green for active
+            elseif element.entryType == "quest" then
+                row.text:SetTextColor(1.0, 0.82, 0.0) -- gold for quest
+            elseif element.entryType == "Gossip" then
+                row.text:SetTextColor(0.6, 0.8, 1.0) -- light blue for gossip
+            elseif element.entryType == "GameObject" then
+                row.text:SetTextColor(0.85, 0.75, 0.55) -- parchment for item/object
             else
-                row.text:SetTextColor(0.95, 0.86, 0.20)
+                row.text:SetTextColor(0.95, 0.86, 0.20) -- default gold
+            end
+            -- Set type icon based on entryType
+            if row.typeIcon then
+                local iconAtlas = CLN and CLN.IconAtlas
+                if iconAtlas and element.entryType then
+                    if element.entryType == "quest" then
+                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
+                        row.typeIcon:SetSize(14, 14)
+                        row.typeIcon:Show()
+                    elseif element.entryType == "Gossip" then
+                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
+                        row.typeIcon:SetSize(14, 14)
+                        row.typeIcon:Show()
+                    elseif element.entryType == "GameObject" then
+                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
+                        row.typeIcon:SetSize(14, 14)
+                        row.typeIcon:Show()
+                    else
+                        row.typeIcon:SetSize(0.001, 14)
+                        row.typeIcon:Hide()
+                    end
+                else
+                    row.typeIcon:SetSize(0.001, 14)
+                    row.typeIcon:Hide()
+                end
             end
             -- Only update text/fit if content or available width changed
             local avail = self:GetRowTextAvailableWidth(row)

@@ -291,6 +291,13 @@ local options = {
                         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
                     end,
                 },
+                combatAutoCollapse = {
+                    type = 'toggle',
+                    name = 'Auto-hide in Combat',
+                    desc = 'Automatically collapse the replay frame during combat',
+                    get = function(info) return CLN.db.profile.combatAutoCollapse end,
+                    set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
+                },
                 resetFramePos = {
                     type = 'execute',
                     name = 'Reset Replay Frame Position',

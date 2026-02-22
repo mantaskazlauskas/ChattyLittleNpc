@@ -128,6 +128,8 @@ end
 
 -- Public: feed playback start/stop to FSM
 function ReplayFrame:FSM_OnPlaybackStart(cur)
+    -- Skip frame manipulation during combat lockdown to avoid taint
+    if InCombatLockdown and InCombatLockdown() then return end
     self:InitStateMachine()
     local fsm = self._fsm
     if not cur then 
@@ -226,6 +228,8 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
 end
 
 function ReplayFrame:FSM_OnPlaybackStop(lastMsg)
+    -- Skip frame manipulation during combat lockdown to avoid taint
+    if InCombatLockdown and InCombatLockdown() then return end
     self:InitStateMachine()
     local fsm = self._fsm
     
@@ -297,6 +301,8 @@ end
 
 -- Public: per-frame tick; handles deferred hides and safety checks
 function ReplayFrame:FSM_Tick()
+    -- Skip frame manipulation during combat lockdown to avoid taint
+    if InCombatLockdown and InCombatLockdown() then return end
     if not self._fsm then return end
     local fsm = self._fsm
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying

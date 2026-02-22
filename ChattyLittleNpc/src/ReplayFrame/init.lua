@@ -571,6 +571,45 @@ function ReplayFrame:UpdateVisibility()
     return true
 end
 
+-- Combat auto-collapse: hide frame instantly on combat start, restore on end
+function ReplayFrame:OnCombatStart()
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse
+    if not enabled then return end
+    if not self.DisplayFrame or not self.DisplayFrame:IsShown() then return end
+    -- Already collapsed, nothing to do
+    if self.CollapseButton and self.CollapseButton._collapsed then return end
+    -- Instant collapse (skip animation to avoid taint during combat lockdown)
+    self._combatAutoCollapsed = true
+    if self.ApplyImmediateCollapseState then
+        self:ApplyImmediateCollapseState(true)
+    elseif self.DisplayFrame then
+        self.DisplayFrame:Hide()
+    end
+end
+
+function ReplayFrame:OnCombatEnd()
+    if not self._combatAutoCollapsed then return end
+    self._combatAutoCollapsed = false
+    -- Deferred restore: InCombatLockdown() may still be true briefly after PLAYER_REGEN_ENABLED
+    local function safeRestore()
+        if InCombatLockdown() then
+            C_Timer.After(0.2, safeRestore)
+            return
+        end
+        if self.ApplyImmediateCollapseState then
+            self:ApplyImmediateCollapseState(false)
+        end
+        if self.UpdateDisplayFrameState then
+            self:UpdateDisplayFrameState()
+        end
+    end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0.1, safeRestore)
+    else
+        safeRestore()
+    end
+end
+
 -- List refresh debounce/dirty handling
 function ReplayFrame:RefreshListIfNeeded(sig, nowT)
     local needRefresh = false
