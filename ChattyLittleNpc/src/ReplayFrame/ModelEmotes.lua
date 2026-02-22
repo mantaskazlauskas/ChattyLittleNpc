@@ -664,22 +664,9 @@ function ReplayFrame:StartEmoteLoop(opts)
 
     -- Ensure the first segment is TALK to avoid any initial idle
     self._emoteFirstSegmentForced = true
-    -- Immediately start with talk animation to avoid idle delay (no sequence/hold)
-    self:PlayTalkEmote({ duration = 0 })
-    self._emoteSegType = "talk"
-    
-    -- Also ensure animation via central setter as fallback
-    local m = self.NpcModelFrame
-    if m then
-        local talkId = 60
-        if self.ChooseTalkAnimIdForText and cur and cur.title then
-            talkId = self:ChooseTalkAnimIdForText(cur.title)
-        end
-        if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
-        if m.SetSheathed then pcall(m.SetSheathed, m, true) end
-    end
 
     -- Start the first segment immediately; subsequent transitions are timer-driven
+    -- (_emoteFirstSegmentForced forces talk, so no initial idle delay)
     if self._EmoteLoop_PickAndStartSegment then
         self:_EmoteLoop_PickAndStartSegment(GetTime and GetTime() or 0)
     end

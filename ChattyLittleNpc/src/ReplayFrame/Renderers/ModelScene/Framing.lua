@@ -26,11 +26,12 @@ function NS.Framing.solveAxis(axis, vfov, hfov, halfX, halfY, halfZ)
     local v = tonumber(vfov) or 0.8
     local h = tonumber(hfov) or 1.2
     local hx = math.max(0.01, tonumber(halfX) or 1)
-    local hy = math.max(0.00, tonumber(halfY) or 0)
+    local hy = math.max(0.01, tonumber(halfY) or 0.01)
     local hz = math.max(0.01, tonumber(halfZ) or 1)
     local halfViewV = math.tan(v * 0.5)
     local halfViewH = math.tan(h * 0.5)
-    local dV = (axis == "Y") and (hz) / math.max(1e-6, halfViewV) or (hz) / math.max(1e-6, halfViewV)
+    -- Vertical: Z extent vs vertical FOV (Z is always vertical regardless of camera axis)
+    local dV = hz / math.max(1e-6, halfViewV)
     local dH = (axis == "Y") and (hx)      / math.max(1e-6, halfViewH) or (hy)      / math.max(1e-6, halfViewH)
     local d = math.max(dV, dH)
     local depthHalf = (axis == "Y") and hy or hx

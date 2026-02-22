@@ -61,9 +61,9 @@ function ReplayFrame:LayoutModelArea(frame)
     if frame and not self._hookedDisplayFrame then
         if frame.HookScript then
             frame:HookScript("OnHide", function()
-                -- Hide and clear model to avoid rendering costs while window is hidden
+                -- Hide model frame while window is hidden; keep model loaded in GPU
+                -- to avoid expensive async reload on re-show
                 if self.NpcModelFrame then
-                    if self.NpcModelFrame.ClearModel then pcall(self.NpcModelFrame.ClearModel, self.NpcModelFrame) end
                     self.NpcModelFrame:Hide()
                 end
                 if self.ModelContainer then self.ModelContainer:Hide() end
@@ -209,7 +209,9 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             local function tryApply()
                 -- Guard: abort if model frame was destroyed or backend changed
                 if not (self.NpcModelFrame and self.NpcModelFrame._backend == capturedBackend) then return end
-                if self.NpcModelFrame._currentDisplayID ~= displayID then return end
+                -- Abort if display ID changed since we started polling
+                local hostDisplayID = self.NpcModelFrame._currentDisplayID or self.NpcModelFrame._lastRequestArg
+                if hostDisplayID ~= nil and hostDisplayID ~= displayID then return end
                 tries = tries + 1
                 local loaded = (be.actor.IsLoaded and be.actor:IsLoaded()) or false
                 if loaded then

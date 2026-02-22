@@ -62,7 +62,65 @@ function ReplayFrame:GetDisplayFrame()
         frame:SetScale(CLN.db.profile.frameScale)
     end
 
+    -- Edit mode glow overlay (hidden until edit mode activates)
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -4, 4)
+    glow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 4, -4)
+    glow:SetTexture("Interface/Buttons/UI-ActionButton-Border")
+    glow:SetBlendMode("ADD")
+    glow:SetVertexColor(1.0, 0.82, 0.0, 0)
+    glow:Hide()
+    self.EditGlow = glow
+
     return frame
+end
+
+function ReplayFrame:StartEditGlowPulse()
+    if not self.EditGlow then return end
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.editModeGlowHints
+    if not enabled then return end
+    -- Check if already shown enough times
+    local profile = CLN and CLN.db and CLN.db.profile
+    if profile and profile._glowHintShown then return end
+
+    self.EditGlow:Show()
+    self._glowPulseCount = 0
+    local maxCycles = 3
+
+    if not self._glowAnimGroup then
+        local ag = self.EditGlow:CreateAnimationGroup()
+        local fadeIn = ag:CreateAnimation("Alpha")
+        fadeIn:SetFromAlpha(0)
+        fadeIn:SetToAlpha(0.4)
+        fadeIn:SetDuration(1.0)
+        fadeIn:SetOrder(1)
+        local fadeOut = ag:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(0.4)
+        fadeOut:SetToAlpha(0)
+        fadeOut:SetDuration(1.0)
+        fadeOut:SetOrder(2)
+        ag:SetLooping("REPEAT")
+        ag:SetScript("OnLoop", function()
+            self._glowPulseCount = (self._glowPulseCount or 0) + 1
+            if self._glowPulseCount >= maxCycles then
+                ag:Stop()
+                self.EditGlow:Hide()
+                -- Mark as shown in profile
+                if CLN and CLN.db and CLN.db.profile then
+                    CLN.db.profile._glowHintShown = true
+                end
+            end
+        end)
+        self._glowAnimGroup = ag
+    end
+
+    self._glowPulseCount = 0
+    self._glowAnimGroup:Play()
+end
+
+function ReplayFrame:StopEditGlowPulse()
+    if self._glowAnimGroup then self._glowAnimGroup:Stop() end
+    if self.EditGlow then self.EditGlow:Hide() end
 end
 
 -- Create the minimized button that appears when frame is hidden
@@ -186,6 +244,44 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetHeight(1)
     self.HeaderDivider = divider
 
+    -- Progress bar: 2px gold texture below divider (indeterminate shimmer)
+    local progressBar = contentFrame:CreateTexture(nil, "ARTWORK")
+    progressBar:SetColorTexture(1.0, 0.82, 0.0, 0.7)
+    progressBar:SetPoint("TOPLEFT", divider, "BOTTOMLEFT", 0, -1)
+    progressBar:SetHeight(2)
+    progressBar:SetWidth(0)
+    progressBar:Hide()
+    self.ProgressBar = progressBar
+
+    -- Shimmer overlay for indeterminate progress
+    local shimmer = contentFrame:CreateTexture(nil, "OVERLAY")
+    shimmer:SetColorTexture(1.0, 1.0, 0.8, 0.4)
+    shimmer:SetPoint("TOPLEFT", progressBar, "TOPLEFT", 0, 0)
+    shimmer:SetHeight(2)
+    shimmer:SetWidth(30)
+    shimmer:Hide()
+    self.ProgressShimmer = shimmer
+
+    -- Subtitle display: shows current dialogue text below model area
+    local subtitleBg = CreateFrame("Frame", nil, contentFrame, "BackdropTemplate")
+    subtitleBg:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 4, -4)
+    subtitleBg:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -4, -4)
+    subtitleBg:SetHeight(36)
+    subtitleBg:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background" })
+    subtitleBg:SetBackdropColor(0, 0, 0, 0.5)
+    subtitleBg:SetFrameLevel((contentFrame.GetFrameLevel and contentFrame:GetFrameLevel() or 0) + 5)
+    subtitleBg:Hide()
+    self.SubtitleFrame = subtitleBg
+
+    local subtitleText = subtitleBg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    subtitleText:SetPoint("TOPLEFT", subtitleBg, "TOPLEFT", 8, -6)
+    subtitleText:SetPoint("BOTTOMRIGHT", subtitleBg, "BOTTOMRIGHT", -8, 4)
+    subtitleText:SetJustifyH("CENTER")
+    subtitleText:SetJustifyV("MIDDLE")
+    if subtitleText.SetWordWrap then subtitleText:SetWordWrap(true) end
+    subtitleText:SetTextColor(1.0, 1.0, 1.0, 0.95)
+    self.SubtitleText = subtitleText
+
     -- Queue count badge (hidden when <=1 queued)
     local badge = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     badge:SetPoint("LEFT", header, "RIGHT", 8, -1)
@@ -209,6 +305,59 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
         if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
     end)
 end
+
+function ReplayFrame:ShowSubtitle(text)
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showSubtitles
+    if not enabled or not self.SubtitleFrame or not self.SubtitleText then return end
+    -- Cancel any existing subtitle timer
+    self:HideSubtitle()
+    if not text or text == "" then return end
+
+    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+
+    -- Split into sentences and reveal one at a time
+    local sentences = self.SplitTooltipIntoSentences and self:SplitTooltipIntoSentences(text) or { text }
+    self._subtitleSentences = sentences
+    self._subtitleIndex = 0
+    self.SubtitleFrame:Show()
+    self.SubtitleFrame:SetAlpha(0)
+
+    local function showNext()
+        if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
+        self._subtitleIndex = (self._subtitleIndex or 0) + 1
+        local idx = self._subtitleIndex
+        if idx > #sentences then
+            -- All sentences shown; hide visuals after a pause but keep
+            -- _subtitleSentences non-nil so UpdateAnimationsIfNeeded
+            -- won't re-trigger the same text while the voiceover plays.
+            self._subtitleTimer = C_Timer and C_Timer.After(2.0, function()
+                self._subtitleTimer = nil
+                if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+            end)
+            return
+        end
+        self.SubtitleText:SetText(sentences[idx])
+        self.SubtitleFrame:SetAlpha(1)
+        -- Duration per sentence: roughly 2.5 seconds per sentence
+        local dur = math.max(1.5, math.min(5.0, 2.5))
+        self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
+    end
+
+    -- Start first sentence after a brief fade-in delay
+    self._subtitleTimer = C_Timer and C_Timer.After(0.3, showNext)
+end
+
+function ReplayFrame:HideSubtitle()
+    if self._subtitleTimer and C_Timer and C_Timer.After then
+        -- Cancel timer by clearing reference (C_Timer has no cancel API, timer will fire but find nil state)
+        self._subtitleTimer = nil
+    end
+    self._subtitleSentences = nil
+    self._subtitleIndex = nil
+    if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+end
+
 -- Return the real available width (in pixels) that a row's text can use
 function ReplayFrame:GetRowTextAvailableWidth(row)
     if not (row and row.text) then return 0 end
@@ -557,6 +706,10 @@ function ReplayFrame:EnsureCompactBadge()
     qfs:SetJustifyH("RIGHT")
     badge.QueueCount = qfs
 
+    badge:SetScript("OnSizeChanged", function()
+        if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
+    end)
+
     self.CompactBadge = badge
 end
 
@@ -573,9 +726,13 @@ function ReplayFrame:UpdateCompactBadge(force)
         title = q and q.title or "Queued Quest"
     end
     if not title then title = "Idle" end
-    -- Truncate to ~32 chars
-    if #title > 32 then title = string.sub(title,1,29).."..." end
-    badge.Title:SetText(title)
+    -- Truncate to fit available width (TruncateToWidth already calls SetText)
+    if self.TruncateToWidth and badge.Title.GetWidth then
+        local maxW = math.max(40, (badge:GetWidth() or 200) - 36)
+        self:TruncateToWidth(badge.Title, title, maxW)
+    else
+        badge.Title:SetText(title)
+    end
     -- Icon state (speaker vs mute)
     if playing then
         badge.Icon:SetVertexColor(1,1,1,1)
@@ -587,6 +744,39 @@ function ReplayFrame:UpdateCompactBadge(force)
         badge.QueueCount:SetText("Queue: "..qcount)
     else
         badge.QueueCount:SetText("")
+    end
+end
+
+function ReplayFrame:UpdateProgressBar()
+    if not self.ProgressBar then return end
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showProgressBar
+    if not enabled then
+        self.ProgressBar:Hide()
+        if self.ProgressShimmer then self.ProgressShimmer:Hide() end
+        return
+    end
+    local playing = self:IsVoiceoverCurrenltyPlaying()
+    if playing then
+        -- Show progress bar at full width of divider
+        local maxW = 0
+        if self.HeaderDivider and self.HeaderDivider.GetWidth then
+            maxW = self.HeaderDivider:GetWidth() or 200
+        end
+        self.ProgressBar:SetWidth(maxW)
+        self.ProgressBar:Show()
+        -- Animate shimmer
+        if self.ProgressShimmer then
+            self.ProgressShimmer:Show()
+            -- Simple shimmer: move shimmer across the bar using time
+            local t = GetTime and GetTime() or 0
+            local cycle = (t % 2) / 2 -- 0..1 over 2 seconds
+            local shimmerX = cycle * math.max(1, maxW - 30)
+            self.ProgressShimmer:ClearAllPoints()
+            self.ProgressShimmer:SetPoint("TOPLEFT", self.ProgressBar, "TOPLEFT", shimmerX, 0)
+        end
+    else
+        self.ProgressBar:Hide()
+        if self.ProgressShimmer then self.ProgressShimmer:Hide() end
     end
 end
 

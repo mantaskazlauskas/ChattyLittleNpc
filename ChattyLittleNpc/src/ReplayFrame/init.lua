@@ -564,6 +564,7 @@ function ReplayFrame:UpdateVisibility()
     if (not forced) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
+        if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
         return false
     end
@@ -571,6 +572,7 @@ function ReplayFrame:UpdateVisibility()
     if (not forced) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
+        if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
         return false
     end
@@ -578,6 +580,7 @@ function ReplayFrame:UpdateVisibility()
     if (not forced) and (self:IsDisplayFrameHideNeeded()) then
         if self.DisplayFrame then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
+        if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
         return false
     end
@@ -586,11 +589,21 @@ function ReplayFrame:UpdateVisibility()
     if (not forced) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then
         self:EnsureMinimizedButton()
         if self.MinButton then self.MinButton:Show() end
+        if self.HideSubtitle then self:HideSubtitle() end
         return false
     end
 
     self:UpdateParent()
     if self.DisplayFrame then self.DisplayFrame:Show() end
+    -- First-time edit mode glow hint
+    if self.StartEditGlowPulse and not self._glowTriggered then
+        self._glowTriggered = true
+        if C_Timer and C_Timer.After then
+            C_Timer.After(1.0, function()
+                if self.StartEditGlowPulse then self:StartEditGlowPulse() end
+            end)
+        end
+    end
     if self.MinButton then self.MinButton:Hide() end
     self:CheckAndShowModel()
     self.userHidden = false
@@ -679,6 +692,13 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
     end
         self:UpdateConversationAnimation()
+        -- Show subtitle if enabled and not already showing
+        if self.ShowSubtitle and not self._subtitleSentences then
+            local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            if cur2 and cur2.title then
+                self:ShowSubtitle(cur2.title)
+            end
+        end
     else
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
@@ -726,6 +746,7 @@ function ReplayFrame:UpdateDisplayFrame()
 
     -- Animation updates gated by visibility and playback
     self:UpdateAnimationsIfNeeded()
+    if self.UpdateProgressBar then self:UpdateProgressBar() end
 
 end
 

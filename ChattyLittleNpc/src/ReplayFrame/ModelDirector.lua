@@ -82,7 +82,7 @@ function Director:LooksLikeGreeting(msg)
             -- Restrict match to first 3 words to reduce false positives
             local firstWords = firstPart:match("^(%S+%s+%S+%s+%S+)") or firstPart
             local hasCommonGreetingWords = string.find(firstWords, "welcome") or 
-                                         string.find(firstWords, "come") or
+                                         string.find(firstWords, "%f[%a]come%f[%A]") or
                                          string.find(firstWords, "seek") or
                                          string.find(firstWords, "need") or
                                          string.find(firstWords, "help")

@@ -281,6 +281,32 @@ local options = {
                         if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
                     end,
                 },
+                showSubtitles = {
+                    type = 'toggle',
+                    name = 'Show Subtitles',
+                    desc = 'Show subtitle captions below the model during playback.',
+                    get = function(info) return CLN.db.profile.showSubtitles end,
+                    set = function(info, value)
+                        CLN.db.profile.showSubtitles = value
+                        if (not value) and CLN.ReplayFrame and CLN.ReplayFrame.HideSubtitle then
+                            CLN.ReplayFrame:HideSubtitle()
+                        end
+                    end,
+                },
+                subtitleFontScale = {
+                    type = 'range',
+                    name = 'Subtitle Font Scale',
+                    desc = 'Adjust subtitle caption text size.',
+                    min = 0.5,
+                    max = 2.0,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.subtitleFontScale or 1.0
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.subtitleFontScale = value
+                    end,
+                },
                 compactMode = {
                     type = 'toggle',
                     name = 'Compact Mode (hide NPC model)',
@@ -297,6 +323,13 @@ local options = {
                     desc = 'Automatically collapse the replay frame during combat',
                     get = function(info) return CLN.db.profile.combatAutoCollapse end,
                     set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
+                },
+                showProgressBar = {
+                    type = 'toggle',
+                    name = 'Show Progress Bar',
+                    desc = 'Show a progress indicator during voiceover playback',
+                    get = function(info) return CLN.db.profile.showProgressBar end,
+                    set = function(info, value) CLN.db.profile.showProgressBar = value end,
                 },
                 resetFramePos = {
                     type = 'execute',
@@ -325,6 +358,13 @@ local options = {
                             end
                         end
                     end,
+                },
+                editModeGlowHints = {
+                    type = 'toggle',
+                    name = 'Edit Mode Glow Hints',
+                    desc = 'Show a subtle glow pulse to highlight the frame on first use',
+                    get = function(info) return CLN.db.profile.editModeGlowHints end,
+                    set = function(info, value) CLN.db.profile.editModeGlowHints = value end,
                 },
                 showReplayFrame = {
                     type = 'toggle',

@@ -535,7 +535,23 @@ function M.Attach(host, backend)
     -- Persist snapshot for subsequent operations (zoom/pan)
     self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
     end
-    
+
+    -- Apply camera from explicit _distance/_targetX/Y/Z (used by FramerScene)
+    function host:_ApplyCamera()
+        if backend.kind ~= "scene" or not backend.frame then return end
+        local tx = self._targetX or 0
+        local ty = self._targetY or 0
+        local tz = self._targetZ or (self._camBaseZ or 1.0)
+        local d = self._distance or self._camDist or 2.5
+        -- Place camera along +Y axis at distance from target (same convention as PointCameraAtHead)
+        local px, py, pz = tx, ty + d, tz
+        self._camBaseZ = tz
+        self._camDist = d
+        self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
+        if self._lastBounds then self:_UpdateClipPlanesForFit(d, self._lastBounds, 0.12) end
+        self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
+    end
+
     function host:FaceCamera()
         -- Preserve user camera placement; only rotate actor to face forward
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
