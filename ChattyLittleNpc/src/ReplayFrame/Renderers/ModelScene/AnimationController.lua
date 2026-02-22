@@ -6,7 +6,9 @@ local NS = ReplayFrame.ModelScene
 NS.AnimationController = NS.AnimationController or {}
 
 function NS.AnimationController.new()
-    return { desiredAnimId = nil }
+    local inst = { desiredAnimId = nil }
+    setmetatable(inst, { __index = NS.AnimationController })
+    return inst
 end
 
 function NS.AnimationController:setDesired(id)

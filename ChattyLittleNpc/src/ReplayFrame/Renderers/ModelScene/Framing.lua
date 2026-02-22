@@ -30,7 +30,7 @@ function NS.Framing.solveAxis(axis, vfov, hfov, halfX, halfY, halfZ)
     local hz = math.max(0.01, tonumber(halfZ) or 1)
     local halfViewV = math.tan(v * 0.5)
     local halfViewH = math.tan(h * 0.5)
-    local dV = (axis == "Y") and (hz + hy) / math.max(1e-6, halfViewV) or (hz + hx) / math.max(1e-6, halfViewV)
+    local dV = (axis == "Y") and (hz) / math.max(1e-6, halfViewV) or (hz) / math.max(1e-6, halfViewV)
     local dH = (axis == "Y") and (hx)      / math.max(1e-6, halfViewH) or (hy)      / math.max(1e-6, halfViewH)
     local d = math.max(dV, dH)
     local depthHalf = (axis == "Y") and hy or hx

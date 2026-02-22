@@ -33,6 +33,7 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
         cantBeInterrupted = nil,
         npcId = nil,
         gender = nil,
+        entryType = nil,
         phase = nil,
         questId = nil,
         soundHandle = nil,
@@ -62,11 +63,7 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    if CLN and CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-            CLN.ReplayFrame:UpdateDisplayFrameState()
-        end
-    end
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
 end
 
 -- Stop current audio.
@@ -82,9 +79,7 @@ function VoiceoverPlayer:StopCurrentSound()
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    if CLN and CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-        CLN.ReplayFrame:UpdateDisplayFrameState()
-    end
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
 end
 
 ---@param questId number The quest ID to play audio for
@@ -157,7 +152,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
 
     table.insert(CLN.questsQueue, audioFileInfo)
         if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-        CLN.ReplayFrame:UpdateDisplayFrameState()
+        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
         return
     end
 
@@ -180,6 +175,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
                 VoiceoverPlayer.currentlyPlaying.questId = questId
                 VoiceoverPlayer.currentlyPlaying.npcId = npcId
                 VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
+                VoiceoverPlayer.currentlyPlaying.entryType = "quest"
                 -- Non-interruptible only when in queue mode
                 VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = (CLN.db.profile.questPlaybackMode == 'queue')
                 -- Mark playback start time for animation gating
@@ -200,11 +196,6 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
                     if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
                     if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
                         CLN.ReplayFrame:UpdateDisplayFrameState()
-                    end
-                    -- Only trigger animation update if model is already visible; otherwise OnShow will handle it
-                    if CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown() 
-                        and CLN.ReplayFrame.UpdateConversationAnimation then
-                        CLN.ReplayFrame:UpdateConversationAnimation()
                     end
                 end
             end
@@ -227,11 +218,6 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
 
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
         CLN.ReplayFrame:UpdateDisplayFrameState()
-    end
-    -- Only trigger animation update if playback didn't start successfully
-    -- (successful playback already triggered it above)
-    if not success and CLN.ReplayFrame and CLN.ReplayFrame.UpdateConversationAnimation then
-        CLN.ReplayFrame:UpdateConversationAnimation()
     end
 end
 
@@ -268,6 +254,8 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             -- Non-quest lines are never queue-locked
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
             VoiceoverPlayer.currentlyPlaying.title = text
+            VoiceoverPlayer.currentlyPlaying.entryType = soundType
+            VoiceoverPlayer.currentlyPlaying.gender = gender
             -- Mark playback start time for animation gating
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
@@ -302,11 +290,5 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
 
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
         CLN.ReplayFrame:UpdateDisplayFrameState()
-    end
-    -- Only trigger animation update if playback didn't start successfully
-    -- (successful playback already triggered it above)
-    if not success and CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown()
-        and CLN.ReplayFrame.UpdateConversationAnimation then
-        CLN.ReplayFrame:UpdateConversationAnimation()
     end
 end

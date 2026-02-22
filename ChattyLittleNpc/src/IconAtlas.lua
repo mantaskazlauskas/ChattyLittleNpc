@@ -5,8 +5,10 @@
 --  e.g. ChattyLittleNpc_Icon_Play.png, ChattyLittleNpc_Icon_Stop.png, etc.
 
 local CLN = _G.ChattyLittleNpc
+
 local Atlas = {}
 
+-- If addon not yet initialized, stash globally for later pickup in Main.lua OnInitialize
 if CLN then
     CLN.IconAtlas = Atlas
 else
@@ -37,6 +39,10 @@ Atlas.keys = {
     queue = "queue",
     refresh = "refresh",
     portrait = "portrait",
+    questBang = "questBang",
+    gossipBubble = "gossipBubble",
+    itemScroll = "itemScroll",
+    replay = "replay",
 }
 
 -- Mapping: logical key -> texture path (placeholders referencing existing Blizzard icons until custom art arrives)
@@ -54,6 +60,10 @@ Atlas.textures = {
     [Atlas.keys.queue] = P("Chatty_QueuePlaceholder"),    -- TODO add Chatty_QueuePlaceholder.png
     [Atlas.keys.refresh] = "Interface/Buttons/UI-RefreshButton",
     [Atlas.keys.portrait] = P("Chatty_PortraitPlaceholder"), -- TODO add Chatty_PortraitPlaceholder.png
+    [Atlas.keys.questBang] = "Interface/GossipFrame/AvailableQuestIcon",
+    [Atlas.keys.gossipBubble] = "Interface/GossipFrame/GossipGossipIcon",
+    [Atlas.keys.itemScroll] = "Interface/GossipFrame/BankerGossipIcon",
+    [Atlas.keys.replay] = "Interface/Buttons/UI-SpellbookIcon-PrevPage-Up",
 }
 
 ---Get the texture path for a logical icon key.

@@ -41,15 +41,15 @@ local function getBounds(actor)
         if type(a)=="number" and type(f)=="number" then return a,b,c,d,e,f end
     end
     local minX,minY,minZ,maxX,maxY,maxZ
-    if actor.GetMaxBoundingBox then
-        local ok,a,b,c,d,e,f = pcall(actor.GetMaxBoundingBox, actor)
+    if actor.GetActiveBoundingBox then
+        local ok,a,b,c,d,e,f = pcall(actor.GetActiveBoundingBox, actor)
         if ok then
             local x1,y1,z1,x2,y2,z2 = assign(a,b,c,d,e,f)
             if x1 then minX,minY,minZ,maxX,maxY,maxZ = x1,y1,z1,x2,y2,z2 end
         end
     end
-    if not minX and actor.GetActiveBoundingBox then
-        local ok,a,b,c,d,e,f = pcall(actor.GetActiveBoundingBox, actor)
+    if not minX and actor.GetMaxBoundingBox then
+        local ok,a,b,c,d,e,f = pcall(actor.GetMaxBoundingBox, actor)
         if ok then
             local x1,y1,z1,x2,y2,z2 = assign(a,b,c,d,e,f)
             if x1 then minX,minY,minZ,maxX,maxY,maxZ = x1,y1,z1,x2,y2,z2 end

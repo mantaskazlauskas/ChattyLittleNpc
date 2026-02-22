@@ -29,7 +29,7 @@ function EventHandler:RegisterEvents()
     events:RegisterEvent("ITEM_TEXT_READY", function() self:ITEM_TEXT_READY() end)
     events:RegisterEvent("CINEMATIC_START", function() self:CINEMATIC_START() end)
     events:RegisterEvent("PLAY_MOVIE", function() self:PLAY_MOVIE() end)
-    events:RegisterMessage("VOICEOVER_STOP", function(...) self:OnVoiceoverStop(...) end)
+    CLN:RegisterMessage("VOICEOVER_STOP", function(...) self:OnVoiceoverStop(...) end)
 end
 
 -- Unregister all events for ChattyLittleNpc
@@ -45,7 +45,12 @@ function EventHandler:UnregisterEvents()
     events:UnregisterEvent("ITEM_TEXT_READY")
     events:UnregisterEvent("CINEMATIC_START")
     events:UnregisterEvent("PLAY_MOVIE")
-    events:UnregisterMessage("VOICEOVER_STOP")
+    CLN:UnregisterMessage("VOICEOVER_STOP")
+    -- Cancel the watcher timer to prevent callbacks on stale state
+    if self.watcherTimer then
+        timer:CancelTimer(self.watcherTimer)
+        self.watcherTimer = nil
+    end
 end
 
 -- Register a job that triggers events
@@ -74,7 +79,7 @@ function EventHandler:StartWatcher()
                     CLN.Logger:debug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle), false, CLN.Utils.LogCategories.loader)
                 end
                 self._stopLatchHandle = handle
-                events:SendMessage("VOICEOVER_STOP", cp)
+                CLN:SendMessage("VOICEOVER_STOP", cp)
             end
             return
         end
@@ -95,7 +100,7 @@ function EventHandler:GOSSIP_SHOW()
     local _, gender, _, _, unitType, unitId = CLN:GetUnitInfo("npc")
     local text = C_GossipInfo.GetText()
     if (not unitId or not unitType or not text) then
-    if CLN and CLN.Logger then CLN.Logger:debug("No unitId, unitType or text found for gossip.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("No unitId, unitType or text found for gossip.", false, CLN.Utils.LogCategories.loader) end
         return
     end
 
@@ -106,7 +111,7 @@ function EventHandler:GOSSIP_SHOW()
     local hashes = CLN.Utils:GetHashes(unitId, text)
     local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, "Gossip", hashes, gender)
     if not filePath or CLN.Utils:IsNilOrEmpty(filePath) then
-    if CLN and CLN.Logger then CLN.Logger:debug("No file path found for gossip voiceover.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("No file path found for gossip voiceover.", false, CLN.Utils.LogCategories.loader) end
         return
     end
 
@@ -144,7 +149,7 @@ function EventHandler:QUEST_DETAIL()
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
+        CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -163,7 +168,7 @@ function EventHandler:QUEST_PROGRESS()
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
+        CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -182,7 +187,7 @@ function EventHandler:QUEST_COMPLETE()
     end
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-    CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
+        CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
     end
 
     if (CLN.db.profile.logNpcTexts) then
@@ -244,17 +249,21 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         self._lastStoppedTime = now
     end
 
-    for i, quest in ipairs(CLN.questsQueue) do
-        if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
-            if CLN and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
-            table.remove(CLN.questsQueue, i)
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-            break
+    local removedFromQueue = false
+    if stoppedVoiceover.questId then
+        for i, quest in ipairs(CLN.questsQueue) do
+            if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
+                if CLN and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
+                table.remove(CLN.questsQueue, i)
+                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                removedFromQueue = true
+                break
+            end
         end
     end
 
-    if (#CLN.questsQueue > 0) then
-    if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
+    if removedFromQueue and (#CLN.questsQueue > 0) then
+        if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
         -- Ensure previous emote/animation state is clean before starting next
         if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
             local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
@@ -272,7 +281,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         local stillPlaying = curr and curr.isPlaying and curr:isPlaying() or false
         if not stillPlaying or (stoppedHandle and currHandle == stoppedHandle) then
             if CLN and CLN.Logger then CLN.Logger:debug("No more quests in queue, clearing currentlyPlaying and closing UI.", false, CLN.Utils.LogCategories.loader) end
-	        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
+            CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
             CLN.VoiceoverPlayer.queueProcessed = true
         end
         -- Conversation stopped; refresh UI and let FSM drive farewell/hide
@@ -289,7 +298,7 @@ function EventHandler:QUEST_FINISHED()
     if CLN and CLN.Logger then CLN.Logger:debug("QUEST_FINISHED", false, CLN.Utils.LogCategories.loader) end
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
-    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -300,7 +309,7 @@ function EventHandler:GOSSIP_CLOSED()
 
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
-    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -308,7 +317,7 @@ end
 function EventHandler:CINEMATIC_START()
     if CLN and CLN.Logger then CLN.Logger:debug("CINEMATIC_START", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
-    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on cinematic start.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on cinematic start.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end
@@ -316,7 +325,7 @@ end
 function EventHandler:PLAY_MOVIE()
     if CLN and CLN.Logger then CLN.Logger:debug("PLAY_MOVIE", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
-    if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on movie play.", false, CLN.Utils.LogCategories.loader) end
+        if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on movie play.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
     end
 end

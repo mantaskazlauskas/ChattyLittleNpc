@@ -232,8 +232,9 @@ function ReplayFrame:FitRowText(row)
     -- If layout not ready yet (no coordinates), try again next frame
     if (not available) or available <= 0 then
         if C_Timer and C_Timer.After then
+            local capturedText = full
             C_Timer.After(0, function()
-                if row and row:IsShown() then self:FitRowText(row) end
+                if row and row:IsShown() and row._fullText == capturedText then self:FitRowText(row) end
             end)
         end
         return
@@ -415,7 +416,6 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     end)
     optionsBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     optionsBtn:SetScript("OnClick", function()
-        -- Use the new Options module
         if CLN.Options and CLN.Options.OpenSettings then
             CLN.Options:OpenSettings()
         end
@@ -626,7 +626,6 @@ function ReplayFrame:AnimateCollapseTransition(collapsed)
     self:EnsureCompactBadge()
     if not self.DisplayFrame then return end
     -- Cancel any prior OnUpdate
-    -- NOTE: Use dot when checking for method existence; colon would attempt a call.
     if self._collapseAnimFrame and self._collapseAnimFrame.SetScript then
         self._collapseAnimFrame:SetScript("OnUpdate", nil)
     end
@@ -818,7 +817,7 @@ function ReplayFrame:AnimateCollapse(collapse, duration)
             else
                 t = 1
             end
-            local h = (frame._animStartH or startH) + ((frame._animEndH or endH) - (frame._animStartH or startH)) * t
+            local h = frame._animStartH + (frame._animEndH - frame._animStartH) * t
             if frame.SetHeight then frame:SetHeight(h) end
             if self.QueueScrollBox and self.QueueScrollBox.SetAlpha then
                 local alpha = frame._animCollapse and (1 - t) or t
@@ -912,8 +911,18 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         end
                         CLN.questsQueue = {}
                         if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        for _, q in ipairs(toPlay) do 
-                            CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
+                        -- Play each queued quest entry directly using VoiceoverPlayer
+                        for _, q in ipairs(toPlay) do
+                            if q and q.questId and q.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                                if CLN.Logger then
+                                    CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                                end
+                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
+                            else
+                                if CLN.Logger then
+                                    CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                                end
+                            end
                         end
                     end
                 end

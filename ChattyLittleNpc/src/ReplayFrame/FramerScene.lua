@@ -103,8 +103,8 @@ end
 -- Public: Zoom by a height factor (inverse relationship with distance)
 function FS.ZoomToHeightFactor(host, k, padding)
     if not host then return end
-    local factor = tonumber(k) or 1.0
-    host._distance = math.max(0.1, (host._distance or 10) * factor)
+    local factor = tonumber(k) or 1.0; if factor == 0 then factor = 1.0 end
+    host._distance = math.max(0.1, (host._distance or 10) / factor)
     if host._ApplyCamera then host:_ApplyCamera() end
     debugf("framing", "FramerScene.ZoomToHeightFactor: k=%.3f newD=%.3f", factor, host._distance or -1)
 end

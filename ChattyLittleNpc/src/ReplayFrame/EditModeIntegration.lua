@@ -396,9 +396,7 @@ function Integration:EnsureOverlay()
     end
 
     ov:EnableKeyboard(true)
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(ov, true)
-    end
+    ov:SetPropagateKeyboardInput(true)
     ov:SetScript("OnKeyDown", function(frame, key)
         -- Keyboard nudging (only when not dragging/resizing)
         if frame._dragging or frame._resizing then return end
@@ -425,11 +423,13 @@ function Integration:ShowOverlay()
     if not hasAPI then return end
     self:EnsureOverlay()
     if self.overlay then
+        -- Enable resizing during edit mode
+        if ReplayFrame.DisplayFrame and ReplayFrame.DisplayFrame.SetResizable then
+            ReplayFrame.DisplayFrame:SetResizable(true)
+        end
         self.overlay:Show()
         -- Auto focus overlay for arrow key nudging
-        if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-            CLN.Utils:SafeSetPropagateKeyboardInput(self.overlay, false)
-        end
+        self.overlay:SetPropagateKeyboardInput(false)
         -- Some Frame types (non-EditBox) lack SetFocus; safeguard to avoid Lua error
         if self.overlay.SetFocus then
             self.overlay:SetFocus()
@@ -459,6 +459,10 @@ function Integration:ShowOverlay()
 end
 function Integration:HideOverlay()
     if self.overlay then
+        -- Disable resizing outside edit mode
+        if ReplayFrame.DisplayFrame and ReplayFrame.DisplayFrame.SetResizable then
+            ReplayFrame.DisplayFrame:SetResizable(false)
+        end
         if self.overlay.RefreshDebugGlows then self.overlay:RefreshDebugGlows(false) end
         self.overlay:Hide()
         -- If we injected sample entries, restore the real queue now

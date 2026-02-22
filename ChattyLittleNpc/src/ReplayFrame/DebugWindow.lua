@@ -130,6 +130,7 @@ function DW:Create()
     if self.frame then return self.frame end
 
     local f = CreateFrame("Frame", "CLN_DebugModelWindow", UIParent, "BackdropTemplate")
+    f:SetClampedToScreen(true)
     -- Load persisted placement and settings
     local prof = CLN and CLN.db and CLN.db.profile or nil
     local cfg = prof and (prof.debugWindow or {}) or {}
@@ -282,9 +283,7 @@ function DW:Create()
         mf:SetBackdropColor(0, 0, 0, 0.8)
         mf:EnableMouse(true)
     -- Don't trap keyboard while this overlay is shown
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(mf, true)
-    end
+    if mf.SetPropagateKeyboardInput then mf:SetPropagateKeyboardInput(true) end
     if mf.EnableKeyboard then mf:EnableKeyboard(false) end
         mf:EnableMouseWheel(true)
     -- Always keep the mirror static to allow Left-button drag for panning
@@ -488,9 +487,7 @@ function DW:Create()
     overlay:EnableMouse(true)
     overlay:EnableMouseWheel(true)
     overlay:SetFrameLevel(modelArea:GetFrameLevel() + 10)
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(overlay, true)
-    end
+    if overlay.SetPropagateKeyboardInput then overlay:SetPropagateKeyboardInput(true) end
     if overlay.EnableKeyboard then overlay:EnableKeyboard(false) end
     local drag = { active=false }
     overlay:SetScript("OnMouseDown", function(_, btn)
@@ -999,9 +996,7 @@ function DW:Create()
     displayBox:SetPoint("LEFT", displayRow, "LEFT", 0, 0)
     displayBox:SetSize(80, 22)
     displayBox:SetNumeric(true)
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(displayBox, true)
-    end
+    if displayBox and displayBox.SetPropagateKeyboardInput then displayBox:SetPropagateKeyboardInput(true) end
     if displayBox and displayBox.EnableKeyboard then displayBox:EnableKeyboard(false) end
     local loadBtn = CreateFrame("Button", nil, displayRow, "UIPanelButtonTemplate")
     loadBtn:SetPoint("LEFT", displayBox, "RIGHT", 6, 0)
@@ -1061,9 +1056,7 @@ function DW:Create()
     animBox:SetPoint("LEFT", animRow, "LEFT", 0, 0)
     animBox:SetSize(60, 22)
     animBox:SetNumeric(true)
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(animBox, true)
-    end
+    if animBox and animBox.SetPropagateKeyboardInput then animBox:SetPropagateKeyboardInput(true) end
     if animBox and animBox.EnableKeyboard then animBox:EnableKeyboard(false) end
     local animBtn = CreateFrame("Button", nil, animRow, "UIPanelButtonTemplate")
     animBtn:SetPoint("LEFT", animBox, "RIGHT", 6, 0)
@@ -1119,9 +1112,7 @@ function DW:Create()
         eb:SetWidth(260)
     sf:SetScrollChild(eb)
     -- Do not consume any keyboard events
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(eb, true)
-    end
+    if eb and eb.SetPropagateKeyboardInput then eb:SetPropagateKeyboardInput(true) end
     if eb and eb.EnableKeyboard then eb:EnableKeyboard(false) end
         oy = oy - (height + 10)
         return sf, eb
@@ -1209,9 +1200,7 @@ function DW:Create()
     copyInfoBtn:SetScript("OnClick", function()
         if not infoEdit then return end
         if infoEdit.EnableKeyboard then infoEdit:EnableKeyboard(true) end
-        if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-            CLN.Utils:SafeSetPropagateKeyboardInput(infoEdit, true)
-        end
+        if infoEdit.SetPropagateKeyboardInput then infoEdit:SetPropagateKeyboardInput(true) end
         if infoEdit.SetFocus then infoEdit:SetFocus() end
         if infoEdit.HighlightText then infoEdit:HighlightText(0, -1) end
     end)
@@ -1456,9 +1445,7 @@ function DW:Create()
     end)
 
     -- Let keyboard input propagate while this window is open and disable keyboard handling
-    if CLN and CLN.Utils and CLN.Utils.SafeSetPropagateKeyboardInput then
-        CLN.Utils:SafeSetPropagateKeyboardInput(f, true)
-    end
+    if f and f.SetPropagateKeyboardInput then f:SetPropagateKeyboardInput(true) end
     if f and f.EnableKeyboard then f:EnableKeyboard(false) end
     -- Clicks anywhere in the window should release edit box focus so game keybinds work immediately
     f:EnableMouse(true)

@@ -195,7 +195,7 @@ function M.Attach(host, backend)
             targetScale = math.max(0.05, math.min(10, targetScale))
             local pRef = meta._pRef
             local sRef = tonumber(meta.scaleD10) or 1.0
-            local zoom = pRef * (sRef / targetScale)
+            local zoom = math.max(0.0, math.min(1.5, pRef * (sRef / targetScale)))
             self:SetPortraitZoom(zoom)
             -- Adjust Z so that center.z tracks with scale (Δz scaled by 1/scale)
             local cz = (targetCenter and targetCenter.z) or self._targetZ or 0

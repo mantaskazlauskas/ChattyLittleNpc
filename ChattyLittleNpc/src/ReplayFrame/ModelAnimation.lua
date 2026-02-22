@@ -81,7 +81,7 @@ function ReplayFrame:_AnimStart(kind, from, to, duration, opts)
     return anim
 end
 
--- Public: animate zoom to target in [0..1]
+-- Public: animate zoom to target in [0..1.5]
 function ReplayFrame:AnimZoomTo(target, duration, opts)
     if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
@@ -95,7 +95,7 @@ function ReplayFrame:AnimZoomTo(target, duration, opts)
         local ok, z = pcall(m.GetPortraitZoom, m)
         if ok and type(z) == "number" then from = z end
     end
-    target = applyClamp(target or 0.65, 0, 1)
+    target = applyClamp(target or 0.65, 0, 1.5)
     
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimZoomTo: from=" .. tostring(from) .. " to=" .. tostring(target) .. " dur=" .. tostring(duration or 0.5))
@@ -171,9 +171,9 @@ function ReplayFrame:AnimUpdate(elapsed)
         local v = a.from + (a.to - a.from) * e
         if a.kind == "zoom" then
             if m and m.SetPortraitZoom then 
-                pcall(m.SetPortraitZoom, m, applyClamp(v, 0, 1))
+                pcall(m.SetPortraitZoom, m, applyClamp(v, 0, 1.5))
             end
-            self._currentZoom = applyClamp(v, 0, 1)
+            self._currentZoom = applyClamp(v, 0, 1.5)
         elseif a.kind == "pan" then
             if m and m.SetPosition then 
                 pcall(m.SetPosition, m, 0, 0, v)

@@ -142,11 +142,13 @@ function PlayButton:UpdatePlayButton()
         return
     end
     local questID = PlayButton:GetSelectedQuest()
-    for buttonName, button in pairs(PlayButton.buttons) do
-        if (questID) then
-            button:Show()
-        else
-            button:Hide()
+    local allButtons = {}
+    for _, name in ipairs(PlayButton.DialogWindowButtons) do allButtons[#allButtons + 1] = name end
+    for _, name in ipairs(PlayButton.QuestLogButtons) do allButtons[#allButtons + 1] = name end
+    for _, name in ipairs(allButtons) do
+        local btn = _G[name]
+        if btn then
+            if (questID) then btn:Show() else btn:Hide() end
         end
     end
 end
@@ -156,8 +158,11 @@ function PlayButton:HidePlayButton()
         -- dont create button if the setting is disabled in options
         return
     end
-    for buttonName, button in pairs(PlayButton.buttons) do
-        button:Hide()
+    for _, name in ipairs(PlayButton.DialogWindowButtons) do
+        if _G[name] then _G[name]:Hide() end
+    end
+    for _, name in ipairs(PlayButton.QuestLogButtons) do
+        if _G[name] then _G[name]:Hide() end
     end
 end
 

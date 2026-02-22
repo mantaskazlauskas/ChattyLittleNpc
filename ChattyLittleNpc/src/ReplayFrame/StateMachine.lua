@@ -183,7 +183,8 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
         self._watchTimeout = nil
         if self.CancelEmote then self:CancelEmote() end
     end
-    -- update handle & last message
+    -- update handle & last message; clear tick-stop debounce so re-used handles work
+    fsm._lastTickStopHandle = nil
     fsm.lastHandle = cur.soundHandle
     fsm.lastMsg = cur.title
 
@@ -285,7 +286,9 @@ function ReplayFrame:_processPendingContext()
     -- Only process if the pending content is still actually playing
     if pendingCur:isPlaying() then
     if self.Debug then self:Debug("Pending context is still playing, processing now") end
-        self:FSM_OnPlaybackStart(pendingCur)
+        local ctx = fsm.pendingContext
+        fsm.pendingContext = nil
+        self:FSM_OnPlaybackStart(ctx)
     else
     if self.Debug then self:Debug("Pending context is no longer playing, discarding") end
         fsm.pendingContext = nil
@@ -309,8 +312,12 @@ function ReplayFrame:FSM_Tick()
     -- Safety: if state is talk but playback handle changed/ended, transition appropriately
     if fsm.state == S.TALK then
         if (not playing) or (cur and fsm.lastHandle and cur.soundHandle ~= fsm.lastHandle) then
-            -- Treat as stop for our previous handle
-            self:FSM_OnPlaybackStop(fsm.lastMsg)
+            -- Debounce: avoid calling stop repeatedly for the same stale handle
+            local staleHandle = fsm.lastHandle
+            if staleHandle ~= fsm._lastTickStopHandle then
+                fsm._lastTickStopHandle = staleHandle
+                self:FSM_OnPlaybackStop(fsm.lastMsg)
+            end
         end
     end
 end

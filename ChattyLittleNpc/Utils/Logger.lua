@@ -80,10 +80,8 @@ function Logger:log(message, includeInChat, category, level)
 	else prefix = "|cffcccccc[INFO]|r" end
 	local line = string.format("%s[%s] %s", prefix, cat, text)
 
-	-- Always send to addon print (captured by LogsWindow). Avoid infinite recursion by detecting reentry.
-	if CLN and CLN._origAddonPrint then
-		CLN:_origAddonPrint(line) -- send to chat if AceConsole default, but our Print hook suppresses chat
-	elseif CLN and CLN.Print then
+	-- Always send to addon print (captured by LogsWindow via hook).
+	if CLN and CLN.Print then
 		CLN:Print(line)
 	end
 

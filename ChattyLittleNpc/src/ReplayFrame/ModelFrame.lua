@@ -202,7 +202,11 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         local be = self.NpcModelFrame._backend
         if be and be.kind == "scene" and be.actor and C_Timer and C_Timer.After then
             local tries = 0
+            local capturedBackend = be
             local function tryApply()
+                -- Guard: abort if model frame was destroyed or backend changed
+                if not (self.NpcModelFrame and self.NpcModelFrame._backend == capturedBackend) then return end
+                if self.NpcModelFrame._currentDisplayID ~= displayID then return end
                 tries = tries + 1
                 local loaded = (be.actor.IsLoaded and be.actor:IsLoaded()) or false
                 if loaded then
@@ -211,7 +215,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                     if self.ApplyDefaultFit then self:ApplyDefaultFit(displayID) end
                     return -- done
                 end
-                if tries < 10 then C_Timer.After(0.05, tryApply) end
+                if tries < 30 then C_Timer.After(0.05, tryApply) end
             end
             C_Timer.After(0.01, tryApply)
         else

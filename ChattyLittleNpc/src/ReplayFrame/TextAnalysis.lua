@@ -140,12 +140,12 @@ local function ta_getLexicons()
         -- night elf
         "elune adore","goddess watch over you","elune-adore","ishnu-alah",
         -- blood elf/high elf
-        "salama ashal'anore","anu belore dela'na","belore'doranei","shorel'aran",
+        "salama ashal'anore","anu belore dela'na","belore'doranei","shorel'aran","glory to the sin'dorei",
         -- tauren
         "may the eternal sun shine upon you","an'she guide you","peace friend",
         "earth mother be with you","walk with the earth mother",
         -- orc
-        "lok'tar ogar","strength and honor","blood and thunder",
+        "lok'tar ogar","lok'tar","loktar","strength and honor","blood and thunder","victory or death",
         -- troll
         "hey mon","how ya doin mon","how ya doin', mon","how you doin mon",
         "stay away from da voodoo","darkspear never die",
@@ -242,15 +242,14 @@ function ReplayFrame:HasGreetingInFirstWords(text, limit)
         local animId = self:ChooseTalkAnimIdForText(firstSentence)
         if animId == 60 and #firstSentence < 100 then
             -- Additional heuristics for potential greetings missed by patterns
+            -- Require greeting indicators in the first few words to reduce false positives
             local lowerFirst = firstSentence:lower()
-            local hasGreetingIndicators = lowerFirst:find("welcome") or 
-                                        lowerFirst:find("you") or
-                                        lowerFirst:find("what") or
-                                        lowerFirst:find("how") or
-                                        lowerFirst:find("come") or
-                                        lowerFirst:find("need") or
-                                        lowerFirst:find("help") or
-                                        lowerFirst:find("seek")
+            local firstWords = lowerFirst:match("^(%S+%s+%S+%s+%S+)") or lowerFirst
+            local hasGreetingIndicators = firstWords:find("welcome") or 
+                                        firstWords:find("come") or
+                                        firstWords:find("seek") or
+                                        firstWords:find("need") or
+                                        firstWords:find("help")
             if hasGreetingIndicators then
                 return true
             end

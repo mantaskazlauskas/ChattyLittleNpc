@@ -379,10 +379,10 @@ function ReplayFrame.Pure.ChooseTalkAnimIdForText(text, rng)
     local s = ReplayFrame.Pure.ToSingleLine(text or "") or ""
     -- Count sentences (rough): split on . ! ?
     local total = 0
-    local _ = s:gsub("[%.%!%?]+", function() total = total + 1 end)
+    s:gsub("[%.%!%?]+", function() total = total + 1 end)
     if total == 0 then total = 1 end
-    local q = 0; _ = s:gsub("%?", function() q = q + 1 end)
-    local e = 0; _ = s:gsub("%!", function() e = e + 1 end)
+    local q = 0; s:gsub("%?", function() q = q + 1 end)
+    local e = 0; s:gsub("%!", function() e = e + 1 end)
     local pQ = math.min(1, math.max(0, q / total))
     local pE = math.min(1, math.max(0, e / total))
     local sum = pQ + pE
@@ -509,7 +509,7 @@ function ReplayFrame:MarkQueueDirty()
             self._queueDirtyPending = nil
             if not self._queueDirty then return end
             self._queueDirty = false
-            self:RefreshQueueDataProvider()
+            if self.RefreshQueueDataProvider then self:RefreshQueueDataProvider() end
             if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
             if self.UpdateQueueBadge then self:UpdateQueueBadge() end
         end)
@@ -537,6 +537,8 @@ function ReplayFrame:UpdateVisibility()
     local forced = self._forceShow
     if (not forced) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
+        if self.MinButton then self.MinButton:Hide() end
+        self.userHidden = false
         return false
     end
 
@@ -549,6 +551,8 @@ function ReplayFrame:UpdateVisibility()
 
     if (not forced) and (self:IsDisplayFrameHideNeeded()) then
         if self.DisplayFrame then self.DisplayFrame:Hide() end
+        if self.MinButton then self.MinButton:Hide() end
+        self.userHidden = false
         return false
     end
 
@@ -606,10 +610,14 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         inGrace = dt >= 0 and dt < 0.6
     end
     if (playing or inGrace) and shown and self.UpdateConversationAnimation then
-    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    end
         self:UpdateConversationAnimation()
     else
-    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
+    end
         -- If we are playing but not yet visible, schedule a short deferred retry
         if (playing or inGrace) and (not shown) and (not self._deferAnimTimer) and C_Timer and C_Timer.After then
             self._deferAnimTimer = true
@@ -659,16 +667,7 @@ end
 -- Update display frame state
 function ReplayFrame:UpdateDisplayFrameState()
     if self._editMode or self._isDragging then return end
-    -- Defensive: In rare cases (load-order issues or earlier UI.lua load failure) GetDisplayFrame may be nil.
-    -- Avoid throwing here; log once per session if missing and continue so other logic can still run.
-    if self.GetDisplayFrame then
-        self:GetDisplayFrame()
-    else
-        if (not self._loggedMissingGetDisplayFrame) and CLN and CLN.Logger then
-            self._loggedMissingGetDisplayFrame = true
-            CLN.Logger:warn("ReplayFrame:GetDisplayFrame missing when UpdateDisplayFrameState invoked; skipping lazy frame creation", false, (CLN.Utils and CLN.Utils.LogCategories.ui) or 'ui')
-        end
-    end
+    self:GetDisplayFrame()
     self:UpdateDisplayFrame()
 end
 

@@ -288,41 +288,6 @@ function Utils:IsNilOrEmpty(str)
     return str == nil or str == ""
 end
 
---- Safely retrieves and parses a unit's GUID, handling tainted/secret values.
---- @param unit string The unit identifier (e.g., "target", "npc", "player", "mouseover")
---- @return string|nil unitGuid The GUID string if successfully retrieved and not tainted, nil otherwise
---- @return string|nil unitType The type of unit ("Creature", "Vehicle", "GameObject", etc.), nil if unavailable
---- @return number|nil unitId The numeric ID of the unit (for creatures, vehicles, game objects), nil if unavailable
-function Utils:GetSecureUnitGuid(unit)
-    local unitGuid = UnitGUID(unit)
-    if not unitGuid then
-        return nil, nil, nil
-    end
-
-    -- Check if the GUID is tainted/secret
-    -- issecurevariable returns false if the variable is tainted
-    if issecurevariable("unitGuid") == false then
-        return nil, nil, nil
-    end
-
-    -- Use pcall to safely parse the GUID
-    local success, unitType, unitId = pcall(function()
-        local t = select(1, strsplit("-", unitGuid))
-        local id = nil
-        if (t == "Creature" or t == "Vehicle" or t == "GameObject") then
-            local idString = select(6, strsplit("-", unitGuid))
-            id = tonumber(idString)
-        end
-        return t, id
-    end)
-
-    if success then
-        return unitGuid, unitType, unitId
-    else
-        return nil, nil, nil
-    end
-end
-
 --- Gets the path to a non-quest voiceover file based on the provided parameters.
 --- @param npcId number The ID of the NPC.
 --- @param type string The type of sound (e.g., "gossip", "item").
@@ -364,37 +329,4 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
     end
 
     return nil
-end
-
---- Safely call SetPropagateKeyboardInput on a frame, avoiding protected/taint scenarios.
---- This guards against the ADDON_ACTION_BLOCKED errors when Blizzard marks the API
---- protected for certain frames (e.g., chat edit boxes) or during combat.
----@param frame Frame|nil The frame to modify
----@param propagate boolean|nil Whether to propagate keyboard input (defaults false)
----@return boolean success True if the call succeeded
-function Utils:SafeSetPropagateKeyboardInput(frame, propagate)
-    if not frame or type(frame) ~= "table" then return false end
-    -- Hard opt-in flag; default OFF to avoid tainting the API at all.
-    local allowed = CLN and CLN.db and CLN.db.profile and CLN.db.profile.allowKeyPropagation
-    if not allowed then
-        if CLN and CLN.Logger and CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
-            local fname = (frame.GetName and frame:GetName()) or "<unnamed>"
-            CLN.Logger:debug("SafeSetPropagateKeyboardInput suppressed (allowKeyPropagation not enabled) on "..fname, false, self.LogCategories.ui)
-        end
-        return false
-    end
-    local fn = frame.SetPropagateKeyboardInput
-    if type(fn) ~= "function" then return false end
-    local want = propagate and true or false
-    local fname = (frame.GetName and frame:GetName()) or ""
-    -- Skip dangerous frames regardless of opt-in
-    if fname:find("^ChatFrame%d+EditBox") then return false end
-    local ok, err = pcall(fn, frame, want)
-    if not ok then
-        if CLN and CLN.Logger then
-            CLN.Logger:warn("SetPropagateKeyboardInput failed: " .. tostring(err), false, self.LogCategories.ui)
-        end
-        return false
-    end
-    return true
 end

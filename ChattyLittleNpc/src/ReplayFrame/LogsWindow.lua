@@ -93,7 +93,8 @@ local function ensureHook()
             local msg = table.concat(parts, " ")
             -- Do not double-capture Utils:LogAnimDebug; it already uses CLN:Print, not raw print.
             pushLine("print", msg, nil, "print")
-            -- Do not echo to chat; suppress global print output now that LogsWindow captures it
+            -- Forward to original print so other addons and debugging still work
+            if _G.__CLN_ORIG_PRINT then _G.__CLN_ORIG_PRINT(...) end
             return
         end
     end
@@ -270,6 +271,7 @@ function LW:Create()
     ensureHook()
 
     local f = CreateFrame("Frame", "CLN_AnimLogsWindow", UIParent, "BackdropTemplate")
+    f:SetClampedToScreen(true)
     -- Restore persisted placement if available
     local prof = CLN and CLN.db and CLN.db.profile or nil
     local cfg = prof and (prof.logsWindow or {}) or {}
@@ -437,7 +439,7 @@ function LW:Create()
     clearBtn:SetSize(70, 22)
     clearBtn:SetPoint("LEFT", refreshBtn, "RIGHT", 6, 0)
     clearBtn:SetText("Clear")
-    clearBtn:SetScript("OnClick", function() CLN._AnimLogBuffer.lines = {}; LW:_Refresh() end)
+    clearBtn:SetScript("OnClick", function() CLN._AnimLogBuffer.lines = {}; CLN._AnimLogBuffer.cats = {}; LW:_Refresh() end)
 
     local includeUncat = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
     includeUncat:SetPoint("LEFT", clearBtn, "RIGHT", 10, 0)

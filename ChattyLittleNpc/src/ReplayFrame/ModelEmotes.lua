@@ -1,17 +1,18 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
 
+---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
 -- Emote registry and helpers
 
 -- Lightweight emote lifecycle events (optional):
--- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via AceEvent if available.
+-- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via CLN:SendMessage.
 -- Also supports local listeners via ReplayFrame:OnEmote(event, fn).
 function ReplayFrame:_EmitEmoteEvent(event, payload)
     local ev = tostring(event or "")
     if ev == "" then return end
-    -- AceEvent broadcast (addon-wide)
+    -- Addon-wide broadcast via shared event bus
     if CLN and CLN.SendMessage then
         pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
     end
@@ -51,8 +52,7 @@ end
 function ReplayFrame:OnceEmote(event, fn)
     if type(fn) ~= "function" then return end
     local selfRef
-    local wrapper
-    wrapper = function(payload)
+    local wrapper = function(payload)
         -- ensure we remove before invoking to avoid reentrancy issues
         if selfRef then selfRef:OffEmote(event, wrapper) end
         fn(payload)
@@ -536,6 +536,10 @@ function ReplayFrame.EmoteBuilder:run(opts)
         -- Clear emote state to let animation system take over
         r._emoteActive = false
         r._emoteName = nil
+        -- Release builder references to allow GC
+        self._internalOnComplete = nil
+        self.steps = nil
+        self.r = nil
     end
     
     local result = r:_StartEmoteSequence(self.steps, runOpts)
@@ -751,6 +755,7 @@ function ReplayFrame:_EmoteLoop_ScheduleNext(dur)
         -- Ignore if loop stopped or token changed
         if not self:_EmoteLoop_StillValid() then return end
         if tok ~= (self._emoteLoopToken or 0) then return end
+        if not self._emoteLoopActive then return end
         if self._EmoteLoop_PickAndStartSegment then
             self:_EmoteLoop_PickAndStartSegment(GetTime and GetTime() or 0)
         end

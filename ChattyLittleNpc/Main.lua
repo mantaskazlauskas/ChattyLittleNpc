@@ -1,12 +1,10 @@
 ---@class ChattyLittleNpc
-local CLN = _G.ChattyLittleNpc
+local CLN = _G.ChattyLittleNpc or {}
+_G.ChattyLittleNpc = CLN
 
--- EventHandler is loaded via src/EventHandler.lua and attaches itself to CLN
-
----@class Options
--- Options is now a standalone module, loaded via src/Options.lua
--- It will be attached to CLN.Options when that file loads
-
+-- Module references (will be populated by each module file)
+CLN.EventHandler = nil
+CLN.Options = nil
 
 CLN.locale = nil
 CLN.gameVersion = nil
@@ -23,63 +21,142 @@ CLN.currentItemInfo = {
     ItemText = nil
 }
 
--- Add Print method to CLN
-function CLN:Print(...)
-    if self.PrintUtil then
-        self.PrintUtil:Print(...)
+-- Diagnostic function to check voiceover pack status
+function CLN:CheckVoiceoverPacks()
+    if not self.Logger then return end
+    self.Logger:info("Checking for voiceover packs...")
+    local foundCount = 0
+    for _, expansion in ipairs(self.expansions) do
+        local packName = "ChattyLittleNpc_" .. expansion
+        local isLoaded = C_AddOns.IsAddOnLoaded(packName)
+        if isLoaded then
+            foundCount = foundCount + 1
+            local addon = _G[packName]
+            local voCount = (addon and addon.Voiceovers and #addon.Voiceovers) or 0
+            self.Logger:info("|cff00ff00✓|r " .. packName .. " - " .. voCount .. " voiceovers")
+        else
+            self.Logger:info("|cffff0000✗|r " .. packName .. " - Not loaded")
+        end
+    end
+    if foundCount == 0 then
+        self.Logger:warn("No voiceover packs found!")
+        self.Logger:info("You need to install voiceover pack addons separately.")
+    else
+        self.Logger:info("|cff00ff00Found " .. foundCount .. " voiceover pack(s)|r")
     end
 end
 
 local defaults = {
     profile = {
+        schemaVersion = 1,
         autoPlayVoiceovers = true,
         playVoiceoverAfterDelay = 0,
         printMissingFiles = false,
         logNpcTexts = true,
         printNpcTexts = false,
-    -- Mirror addon logs to the chat frame (the Logs window always captures). Off by default to keep chat clean.
-    logToChat = false,
+        -- Mirror addon logs to the chat frame (the Logs window always captures). Off by default to keep chat clean.
+        logToChat = false,
         overwriteExistingGossipValues = false,
         showGossipEditor = false,
         showReplayFrame = true,
+        alwaysShowReplayFrame = false,
         showSpeakButton = true,
-    lockInEditMode = false,
-    hideInEditMode = false,
-    compactMode = false,
-    queueTextScale = 1.0,
-    frameScale = 1.0,
-    npcModelFrameHeight = 140,
-    -- Last known window position/size
-    framePos = { -- Default position
+        lockInEditMode = false,
+        hideInEditMode = false,
+        compactMode = false,
+        queueTextScale = 1.0,
+        frameScale = 1.0,
+        npcModelFrameHeight = 140,
+        -- Last known window position/size
+        framePos = { -- Default position
             point = "CENTER",
             relativeTo = nil,
             relativePoint = "CENTER",
             xOfs = 500,
             yOfs = 0
         },
-    frameSize = { width = 310 + 165, height = 165 },
+        frameSize = { width = 310 + 165, height = 165 },
         buttonPosX = -15,
         buttonPosY = -30,
-    -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"
-    questPlaybackMode = "queue",
+        -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"
+        questPlaybackMode = "queue",
         audioChannel = "MASTER",
-    -- Rendering backend preference for the Replay Frame model host: 'auto' | 'scene' | 'player'
-    renderBackend = "auto",
-    -- Advanced projector-based fitting for ModelScene backend (optional)
-    advancedCameraFitting = false,
-    debugMode = false,
-    debugAnimations = false,
-    debugNoAnim = false,
-    disableCameraAnimations = false,
-    -- Per Edit Mode layout overrides (keyed by layoutName)
-    editModeLayouts = {},
-    -- Opt-in for using SetPropagateKeyboardInput (can cause taint). Disabled by default.
-    allowKeyPropagation = false
+        -- Rendering backend preference for the Replay Frame model host: 'auto' | 'scene' | 'player'
+        renderBackend = "auto",
+        -- Advanced projector-based fitting for ModelScene backend (optional)
+        advancedCameraFitting = false,
+        debugMode = false,
+        debugAnimations = false,
+        debugNoAnim = false,
+        disableCameraAnimations = false,
+        -- Per Edit Mode layout overrides (keyed by layoutName)
+        editModeLayouts = {},
+        -- Replay UI: combat behavior
+        combatAutoCollapse = true,
+        -- Replay UI: progress bar
+        showProgressBar = true,
+        -- Replay UI: subtitles
+        showSubtitles = false,
+        subtitleFontScale = 1.0,
+        -- Replay UI: queue type badges
+        showQuestTypeBadges = true,
+        -- Replay UI: history
+        queueHistoryMaxEntries = 20,
+        -- Replay UI: edit mode glow hints
+        editModeGlowHints = true,
     }
 }
 
+-- Migrate legacy saved variables from upstream format to fork format
+function CLN:_MigrateSavedVars()
+    if not (self.db and self.db.profile) then return end
+    local p = self.db.profile
+
+    -- Schema version guard: run migrations in order, then stamp current version
+    local sv = p.schemaVersion or 0
+
+    if sv < 1 then
+        -- v1: initial schema stamp (all existing migrations below remain for pre-v1 profiles)
+    end
+
+    p.schemaVersion = 1
+
+    -- Migrate enableQuestPlaybackQueueing + stopVoiceoverAfterDialogWindowClose → questPlaybackMode
+    if p.enableQuestPlaybackQueueing ~= nil or p.stopVoiceoverAfterDialogWindowClose ~= nil then
+        if p.stopVoiceoverAfterDialogWindowClose then
+            p.questPlaybackMode = "stopOnClose"
+        elseif p.enableQuestPlaybackQueueing == false then
+            p.questPlaybackMode = "manual"
+        else
+            p.questPlaybackMode = "queue"
+        end
+        p.enableQuestPlaybackQueueing = nil
+        p.stopVoiceoverAfterDialogWindowClose = nil
+    end
+
+    -- Migrate layoutPositions/layoutSizes → editModeLayouts
+    if p.layoutPositions or p.layoutSizes then
+        if not p.editModeLayouts then p.editModeLayouts = {} end
+        -- Best-effort: merge any existing per-layout data
+        if type(p.layoutPositions) == "table" then
+            for name, pos in pairs(p.layoutPositions) do
+                if not p.editModeLayouts[name] then p.editModeLayouts[name] = {} end
+                p.editModeLayouts[name].framePos = pos
+            end
+        end
+        if type(p.layoutSizes) == "table" then
+            for name, size in pairs(p.layoutSizes) do
+                if not p.editModeLayouts[name] then p.editModeLayouts[name] = {} end
+                p.editModeLayouts[name].frameSize = size
+            end
+        end
+        p.layoutPositions = nil
+        p.layoutSizes = nil
+    end
+end
+
 function CLN:OnInitialize()
-    self.db = CLN.Database:New("ChattyLittleNpcDB", defaults, true)
+    self.db = ChattyLittleNpc.Database:New("ChattyLittleNpcDB", defaults, true)
 
     -- Attach deferred IconAtlas if file loaded before addon existed
     if not self.IconAtlas and _G.ChattyLittleNpc_PendingAtlas then
@@ -112,11 +189,6 @@ end
 function CLN:OnEnable()
     CLN.EventHandler:RegisterEvents()
 
-    -- Setup options panel for game settings
-    if self.Options and self.Options.SetupOptions then
-        self.Options:SetupOptions()
-    end
-
     if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
     end
@@ -147,6 +219,8 @@ function CLN:OnEnable()
             elseif key == "compactMode" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
                 self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "showReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
+                self.ReplayFrame:UpdateDisplayFrameState()
+            elseif key == "alwaysShowReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
                 self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "debugMode" or key == "debugAnimations" then
                 -- no-op: toggles just affect logging gates
@@ -180,18 +254,19 @@ function CLN:OnEnable()
             end
         end
         -- Use dot-notation per CallbackHandler: self is the addon receiving callbacks
-        self.db.RegisterCallback(self, "OnProfileChanged", function()
+        self.db:RegisterCallback("OnProfileChanged", function()
             -- Rebuild UI scaling and visibility on profile switch
             applyKey("queueTextScale")
             applyKey("compactMode")
             applyKey("showReplayFrame")
+            applyKey("alwaysShowReplayFrame")
             applyKey("debugNoAnim")
         end)
-        self.db.RegisterCallback(self, "OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
+        self.db:RegisterCallback("OnProfileCopied", function()
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
         end)
-        self.db.RegisterCallback(self, "OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
+        self.db:RegisterCallback("OnProfileReset", function()
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
         end)
         self._dbProfileHooked = true
     end
@@ -221,7 +296,25 @@ function CLN:GetUnitInfo(unit)
     local gender = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
     local race = UnitRace(unit) or ""
 
-    local unitGuid, unitType, unitId = CLN.Utils:GetSecureUnitGuid(unit)
+    local unitGuid = UnitGUID(unit)
+    local unitType = nil
+    local unitId = nil
+
+    if (unitGuid) then
+        local success, uType, uId = pcall(function()
+            local t = select(1, strsplit("-", unitGuid))
+            local id = nil
+            if (t == "Creature" or t == "Vehicle" or t == "GameObject") then
+                local idString = select(6, strsplit("-", unitGuid))
+                id = tonumber(idString)
+            end
+            return t, id
+        end)
+        if success then
+            unitType = uType
+            unitId = uId
+        end
+    end
 
     return unitName, gender, race, unitGuid, unitType, unitId
 end
@@ -257,12 +350,6 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
             end
 
             local addon = _G[voiceoverPackName]
-            -- Fallback to AceAddon if _G is nil (for backward compatibility if packs aren't updated)
-            if not addon and LibStub then
-                 local ace = LibStub("AceAddon-3.0", true)
-                 if ace then addon = ace:GetAddon(voiceoverPackName, true) end
-            end
-
             if addon then
                 self.VoiceoverPacks[voiceoverPackName] = addon
             end
@@ -295,7 +382,10 @@ function CLN:HandlePlaybackStart(questPhase)
     local gender = select(2, self:GetUnitInfo("npc"))
     
     if (questId > 0) then
+        self._playbackTimerGen = (self._playbackTimerGen or 0) + 1
+        local gen = self._playbackTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
+            if self._playbackTimerGen ~= gen then return end
             self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
         end)
     end
@@ -312,7 +402,10 @@ end
 ]]
 function CLN:HandleGossipPlaybackStart(id, text, type, gender)
     if (id > 0 and text) then
+        self._playbackTimerGen = (self._playbackTimerGen or 0) + 1
+        local gen = self._playbackTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
+            if self._playbackTimerGen ~= gen then return end
             self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender)
         end)
     end
@@ -336,4 +429,31 @@ function CLN:GetLoadedAddonsForIntegrations()
     end
 end
 
--- CLN:OnInitialize() called by Init.lua
+-- Create Print method as an alias for Print utility from Print.lua
+function CLN:Print(...)
+    return ChattyLittleNpc.PrintUtil:Print(...)
+end
+
+-- Shared event bus for cross-module messaging (replaces AceEvent)
+CLN._sharedEvents = ChattyLittleNpc.EventSystem:New()
+
+--- Send a message on the shared addon event bus
+---@param message string Message name
+---@param ... any Message arguments
+function CLN:SendMessage(message, ...)
+    self._sharedEvents:SendMessage(message, ...)
+end
+
+--- Register a callback for a message on the shared addon event bus
+---@param message string Message name
+---@param callback function Callback function
+function CLN:RegisterMessage(message, callback)
+    self._sharedEvents:RegisterMessage(message, callback)
+end
+
+--- Unregister a callback for a message on the shared addon event bus
+---@param message string Message name
+---@param callback function|nil Specific callback to remove, or nil to remove all
+function CLN:UnregisterMessage(message, callback)
+    self._sharedEvents:UnregisterMessage(message, callback)
+end

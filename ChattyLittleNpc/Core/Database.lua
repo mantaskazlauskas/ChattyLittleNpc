@@ -59,20 +59,29 @@ function Database:New(savedVarName, defaults, defaultProfile)
     return instance
 end
 
+-- Recursively merge defaults into target, filling only missing keys
+---@param target table
+---@param defaults table
+function Database:MergeDefaults(target, defaults)
+    for key, value in pairs(defaults) do
+        if target[key] == nil then
+            if type(value) == "table" then
+                target[key] = self:DeepCopy(value)
+            else
+                target[key] = value
+            end
+        elseif type(value) == "table" and type(target[key]) == "table" then
+            self:MergeDefaults(target[key], value)
+        end
+    end
+end
+
 -- Apply default values to current profile
 function Database:ApplyDefaults()
     if not self.defaults.profile then return end
     
     local profileData = self.sv.profiles[self.sv.currentProfile]
-    for key, value in pairs(self.defaults.profile) do
-        if profileData[key] == nil then
-            if type(value) == "table" then
-                profileData[key] = self:DeepCopy(value)
-            else
-                profileData[key] = value
-            end
-        end
-    end
+    self:MergeDefaults(profileData, self.defaults.profile)
 end
 
 -- Deep copy a table
@@ -95,7 +104,6 @@ end
 ---@param event string Event name ("OnProfileChanged", "OnProfileCopied", "OnProfileReset")
 ---@param callback function Callback function
 function Database:RegisterCallback(event, callback)
-    if not self.callbacks then self.callbacks = {} end
     if not self.callbacks[event] then
         self.callbacks[event] = {}
     end

@@ -12,6 +12,7 @@ function ReplayFrame:CreateEditPanel()
     if self._editPanel then return self._editPanel end
 
     local panel = CreateFrame("Frame", "ChattyLittleNpcEditPanel", UIParent, "BasicFrameTemplateWithInset")
+    panel:SetClampedToScreen(true)
     panel:SetSize(370, 360)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)

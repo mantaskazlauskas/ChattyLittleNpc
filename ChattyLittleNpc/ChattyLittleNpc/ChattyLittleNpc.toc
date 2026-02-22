@@ -1,0 +1,46 @@
+## Interface: 120001, 50503, 40402, 30405, 20505, 11508
+## Title: Chatty Little NPC
+## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
+## Author: Tuubby
+## Version: 3.0.5
+## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
+
+Core/Print.lua
+Core/Events.lua
+Core/Timer.lua
+Core/Database.lua
+Core/Config.lua
+
+# Main addon file - loads first to set up structure
+Main.lua
+
+# Main addon modules
+src/EventHandler.lua
+src/Options.lua
+
+# UI and features
+src/ReplayFrame/init.lua
+src/ReplayFrame/Position.lua
+src/ReplayFrame/UI.lua
+src/ReplayFrame/EditMode.lua
+src/ReplayFrame/ModelAnimation.lua
+src/ReplayFrame/ModelEmotes.lua
+src/ReplayFrame/StateMachine.lua
+src/ReplayFrame/ModelDirector.lua
+src/ReplayFrame/ModelFrame.lua
+src/PlayButton.lua
+src/NpcDialogTracker.lua
+src/VoiceoverPlayer.lua
+src/Editor.lua
+
+# Utilities
+utils/Utils.lua
+utils/Base64.lua
+utils/Md5.lua
+utils/SimHash.lua
+
+# Database
+db/NpcDisplayIdDB.lua
+
+# Initialization - MUST load last
+Init.lua

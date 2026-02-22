@@ -64,7 +64,9 @@ end
 function EventSystem:DispatchEvent(event, ...)
     if not self.events[event] then return end
     
-    for _, callback in ipairs(self.events[event]) do
+    -- Snapshot the callback list so unregisters during dispatch don't skip entries
+    local snapshot = {unpack(self.events[event])}
+    for _, callback in ipairs(snapshot) do
         callback(event, ...)
     end
 end
@@ -106,7 +108,9 @@ end
 function EventSystem:SendMessage(message, ...)
     if not self.messages[message] then return end
     
-    for _, callback in ipairs(self.messages[message]) do
+    -- Snapshot the callback list so unregisters during dispatch don't skip entries
+    local snapshot = {unpack(self.messages[message])}
+    for _, callback in ipairs(snapshot) do
         callback(message, ...)
     end
 end

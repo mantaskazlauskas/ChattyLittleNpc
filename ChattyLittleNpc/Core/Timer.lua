@@ -42,6 +42,12 @@ end
 function TimerUtil:CancelTimer(timer)
     if timer then
         timer.cancelled = true
+        for i = #self.activeTimers, 1, -1 do
+            if self.activeTimers[i] == timer then
+                table.remove(self.activeTimers, i)
+                break
+            end
+        end
     end
 end
 

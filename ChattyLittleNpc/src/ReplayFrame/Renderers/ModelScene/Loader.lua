@@ -122,7 +122,7 @@ local function loadInternal(actor, callFn, arg, opts)
             prepare(actor)
             tryLoad()
         end
-        if ticks > timeoutTicks then
+        if ticks >= timeoutTicks then
             session.state = "Failed"
             if NS.Diagnostics and NS.Diagnostics.log then
                 NS.Diagnostics.log("load", "Timeout loading %s after %d attempts", tostring(arg), session.attempts)
