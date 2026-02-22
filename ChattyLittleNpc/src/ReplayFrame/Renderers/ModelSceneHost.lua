@@ -512,8 +512,7 @@ function M.Attach(host, backend)
         self._zoom = tonumber(v) or self._zoom or 0.65
         local d = math.max(1.2, 3.2 - (self._zoom * 2.6))
         self._camDist = d
-    self._userControlledCamera = true
-    self:PointCameraAtHead()
+        self:PointCameraAtHead()
     end
     
     function host:GetPortraitZoom()

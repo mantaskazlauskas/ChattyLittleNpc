@@ -418,6 +418,30 @@ function ReplayFrame:GetNpcNameById(npcId)
     return name
 end
 
+-- ============================================================================
+-- REPLAY HISTORY (Ring Buffer)
+-- ============================================================================
+ReplayFrame._replayHistory = ReplayFrame._replayHistory or {}
+ReplayFrame._replayHistoryMax = 20
+
+function ReplayFrame:PushHistory(entry)
+    if not entry then return end
+    local max = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueHistoryMaxEntries) or self._replayHistoryMax
+    table.insert(self._replayHistory, 1, entry) -- newest first
+    while #self._replayHistory > max do
+        table.remove(self._replayHistory)
+    end
+end
+
+function ReplayFrame:GetHistory()
+    return self._replayHistory or {}
+end
+
+function ReplayFrame:ClearHistory()
+    self._replayHistory = {}
+    if self.MarkQueueDirty then self:MarkQueueDirty() end
+end
+
 -- Build a normalized list of entries for the queue view
 -- Each entry: { isPlaying=bool, queueIndex=number|nil, label=string, tooltip=string }
 function ReplayFrame:BuildQueueEntries()
@@ -443,6 +467,29 @@ function ReplayFrame:BuildQueueEntries()
         end
     end
 
+    -- Append history entries (most recent first)
+    local history = self:GetHistory()
+    if history and #history > 0 then
+        table.insert(entries, { isDivider = true, label = "— History —" })
+        for i, h in ipairs(history) do
+            local npcName = self:GetNpcNameById(h.npcId)
+            local label = ReplayFrame.Pure.FormatEntryLabel(npcName, h.title, h.entryType == "quest")
+            local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, h.title)
+            table.insert(entries, {
+                isHistory = true,
+                historyIndex = i,
+                label = label,
+                tooltip = tooltip,
+                entryType = h.entryType or "unknown",
+                questId = h.questId,
+                phase = h.phase,
+                npcId = h.npcId,
+                gender = h.gender,
+                title = h.title,
+            })
+        end
+    end
+
     return entries
 end
 
@@ -459,38 +506,17 @@ function ReplayFrame:RefreshQueueDataProvider()
         local h = self.ContentFrame:GetHeight() or 0
         rowsFit = math.max(1, math.floor((h - 36 - 8) / 24))
     end
+    -- Scroll-aware: show a window of entries based on scroll offset
+    self._scrollOffset = self._scrollOffset or 0
+    local maxOffset = math.max(0, #entries - rowsFit)
+    if self._scrollOffset > maxOffset then self._scrollOffset = maxOffset end
+    if self._scrollOffset < 0 then self._scrollOffset = 0 end
+
     local selected = {}
-    if #entries <= rowsFit then
-        selected = entries
-    else
-        if nowPlayingIndex then
-            -- Always include now playing, plus most recent others from the end
-            table.insert(selected, entries[nowPlayingIndex])
-            local needed = rowsFit - 1
-            for idx = #entries, 1, -1 do
-                if needed <= 0 then break end
-                if idx ~= nowPlayingIndex then
-                    table.insert(selected, entries[idx])
-                    needed = needed - 1
-                end
-            end
-            -- Keep selected in a sensible order: now playing first, rest newest last
-            -- Reverse tail so newest appears at bottom
-            if #selected > 1 then
-                local head = selected[1]
-                local tail = {}
-                for i = 2, #selected do table.insert(tail, selected[i]) end
-                local rev = {}
-                for i = #tail, 1, -1 do table.insert(rev, tail[i]) end
-                selected = { head }
-                for _, v in ipairs(rev) do table.insert(selected, v) end
-            end
-        else
-            -- No now playing: just take the last rowsFit items in order
-            for i = math.max(1, #entries - rowsFit + 1), #entries do
-                table.insert(selected, entries[i])
-            end
-        end
+    local startIdx = self._scrollOffset + 1
+    local endIdx = math.min(#entries, self._scrollOffset + rowsFit)
+    for i = startIdx, endIdx do
+        table.insert(selected, entries[i])
     end
 
     -- Feed directly to manual list (no scrolling)

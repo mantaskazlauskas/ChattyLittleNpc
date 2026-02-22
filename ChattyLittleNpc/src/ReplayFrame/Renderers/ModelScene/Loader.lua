@@ -13,15 +13,18 @@ local function capabilities(actor)
     }
 end
 
-local function prepare(actor)
+local function prepare(actor, opts)
     if not actor then return end
+    opts = opts or {}
     if actor.ClearModel then pcall(actor.ClearModel, actor) end
     if actor.SetUseTransmogChoices then pcall(actor.SetUseTransmogChoices, actor, false) end
     if actor.SetUseTransmogSkin then pcall(actor.SetUseTransmogSkin, actor, false) end
     if actor.SetAutoDress then pcall(actor.SetAutoDress, actor, false) end
     if actor.SetDesaturated then pcall(actor.SetDesaturated, actor, false) end
     if actor.SetAlpha then pcall(actor.SetAlpha, actor, 1.0) end
-    if actor.SetAnimation then pcall(actor.SetAnimation, actor, 0) end
+    if not opts.respectAnimationIntent and actor.SetAnimation then
+        pcall(actor.SetAnimation, actor, 0)
+    end
 end
 
 local function startTicker(interval, onTick)
@@ -66,7 +69,7 @@ local function loadInternal(actor, callFn, arg, opts)
         cancel = function() end,
     }
 
-    prepare(actor)
+    prepare(actor, { respectAnimationIntent = opts.respectAnimationIntent ~= false })
     if NS.Stabilizer then
         NS.Stabilizer.stabilize(actor, { respectAnimationIntent = opts.respectAnimationIntent ~= false })
     end
@@ -119,7 +122,7 @@ local function loadInternal(actor, callFn, arg, opts)
         end
         if (ticks >= 20) and (not retried) and (session.attempts < maxAttempts) then
             retried = true
-            prepare(actor)
+            prepare(actor, {})
             tryLoad()
         end
         if ticks >= timeoutTicks then

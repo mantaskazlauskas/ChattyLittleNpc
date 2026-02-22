@@ -253,6 +253,19 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         self._lastStoppedTime = now
     end
 
+    -- Push to replay history
+    if stoppedVoiceover and (stoppedVoiceover.title or stoppedVoiceover.questId) and CLN.ReplayFrame and CLN.ReplayFrame.PushHistory then
+        CLN.ReplayFrame:PushHistory({
+            title = stoppedVoiceover.title,
+            npcId = stoppedVoiceover.npcId,
+            questId = stoppedVoiceover.questId,
+            phase = stoppedVoiceover.phase,
+            entryType = stoppedVoiceover.entryType or (stoppedVoiceover.questId and "quest" or "unknown"),
+            gender = stoppedVoiceover.gender,
+            completedAt = GetTime and GetTime() or 0,
+        })
+    end
+
     local removedFromQueue = false
     if stoppedVoiceover.questId then
         for i, quest in ipairs(CLN.questsQueue) do

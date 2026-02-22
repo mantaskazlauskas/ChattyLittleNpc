@@ -862,6 +862,11 @@ function ReplayFrame:CreateScrollBox(contentFrame)
     end
     list:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 8, 8)
     self.QueueListFrame = list
+    list:EnableMouseWheel(true)
+    list:SetScript("OnMouseWheel", function(_, delta)
+        this._scrollOffset = (this._scrollOffset or 0) - delta
+        if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
+    end)
     self.QueueRowHeight = 24
     self.QueueRows = {}
 
@@ -931,6 +936,14 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                                 end
                             end
                         end
+                    elseif e.isHistory then
+                        -- Replay from history
+                        if InCombatLockdown and InCombatLockdown() then return end
+                        if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                            CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId)
+                        elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
+                            CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
+                        end
                     end
                 end
             end)
@@ -971,7 +984,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if selfBtn._hl then selfBtn._hl:Hide() end
                 if not selfBtn._isActive and selfBtn.text then
                     local e = selfBtn._element
-                    if e and e.entryType == "Gossip" then
+                    if e and e.isHistory then
+                        selfBtn.text:SetTextColor(0.5, 0.5, 0.5)
+                    elseif e and e.entryType == "Gossip" then
                         selfBtn.text:SetTextColor(0.6, 0.8, 1.0)
                     elseif e and e.entryType == "GameObject" then
                         selfBtn.text:SetTextColor(0.85, 0.75, 0.55)
@@ -994,62 +1009,117 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
         for i = 1, toShow do
             local row = self.QueueRows[i]
             local element = entries[i]
             row._element = element
             row._isActive = element.isPlaying
             row:Show()
-            local label = element.label or "Unknown"
-            row._fullText = label
-            -- Apply coloring
-            if element.isPlaying then
-                row.text:SetTextColor(0.2, 1.0, 0.2) -- green for active
-            elseif element.entryType == "quest" then
-                row.text:SetTextColor(1.0, 0.82, 0.0) -- gold for quest
-            elseif element.entryType == "Gossip" then
-                row.text:SetTextColor(0.6, 0.8, 1.0) -- light blue for gossip
-            elseif element.entryType == "GameObject" then
-                row.text:SetTextColor(0.85, 0.75, 0.55) -- parchment for item/object
-            else
-                row.text:SetTextColor(0.95, 0.86, 0.20) -- default gold
-            end
-            -- Set type icon based on entryType
-            if row.typeIcon then
-                local iconAtlas = CLN and CLN.IconAtlas
-                if iconAtlas and element.entryType then
-                    if element.entryType == "quest" then
-                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
-                        row.typeIcon:SetSize(14, 14)
-                        row.typeIcon:Show()
-                    elseif element.entryType == "Gossip" then
-                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
-                        row.typeIcon:SetSize(14, 14)
-                        row.typeIcon:Show()
-                    elseif element.entryType == "GameObject" then
-                        row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
-                        row.typeIcon:SetSize(14, 14)
-                        row.typeIcon:Show()
+
+            -- Divider row
+            if element.isDivider then
+                row.text:SetText(element.label or "— History —")
+                row.text:SetTextColor(0.6, 0.5, 0.2)
+                row._lastLabel = nil -- invalidate cache so recycled rows re-render
+                row._lastAvail = nil
+                if row.bulletTex then row.bulletTex:Hide() end
+                if row.typeIcon then row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide() end
+                row:EnableMouse(false)
+            -- History row (greyed out with replay capability)
+            elseif element.isHistory then
+                local label = element.label or "Unknown"
+                row._fullText = label
+                row.text:SetTextColor(0.5, 0.5, 0.5) -- grey
+                if row.bulletTex then
+                    row.bulletTex:SetColorTexture(0.5, 0.5, 0.5, 0.5) -- dim bullet
+                    row.bulletTex:Show()
+                end
+                -- Type icon for history
+                if row.typeIcon then
+                    local iconAtlas = CLN and CLN.IconAtlas
+                    if iconAtlas and element.entryType then
+                        if element.entryType == "quest" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
+                            row.typeIcon:SetDesaturated(true)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        elseif element.entryType == "Gossip" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
+                            row.typeIcon:SetDesaturated(true)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        elseif element.entryType == "GameObject" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
+                            row.typeIcon:SetDesaturated(true)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        else
+                            row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
+                        end
                     else
-                        row.typeIcon:SetSize(0.001, 14)
-                        row.typeIcon:Hide()
+                        row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
                     end
+                end
+                row:EnableMouse(true)
+                -- Update text
+                local avail = self:GetRowTextAvailableWidth(row)
+                if row._lastLabel ~= label or row._lastAvail ~= avail then
+                    row.text:SetText(label)
+                    self:FitRowText(row)
+                    row._lastLabel = label
+                    row._lastAvail = avail
+                end
+            -- Active/queued row (existing logic)
+            else
+                local label = element.label or "Unknown"
+                row._fullText = label
+                row:EnableMouse(true)
+                -- Apply coloring by type
+                if element.isPlaying then
+                    row.text:SetTextColor(0.2, 1.0, 0.2)
+                elseif element.entryType == "quest" then
+                    row.text:SetTextColor(1.0, 0.82, 0.0)
+                elseif element.entryType == "Gossip" then
+                    row.text:SetTextColor(0.6, 0.8, 1.0)
+                elseif element.entryType == "GameObject" then
+                    row.text:SetTextColor(0.85, 0.75, 0.55)
                 else
-                    row.typeIcon:SetSize(0.001, 14)
-                    row.typeIcon:Hide()
+                    row.text:SetTextColor(0.95, 0.86, 0.20)
+                end
+                -- Set type icon
+                if row.typeIcon then
+                    local iconAtlas = CLN and CLN.IconAtlas
+                    if iconAtlas and element.entryType then
+                        if element.entryType == "quest" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
+                            row.typeIcon:SetDesaturated(false)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        elseif element.entryType == "Gossip" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
+                            row.typeIcon:SetDesaturated(false)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        elseif element.entryType == "GameObject" then
+                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
+                            row.typeIcon:SetDesaturated(false)
+                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                        else
+                            row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
+                        end
+                    else
+                        row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
+                    end
+                end
+                if row.bulletTex then
+                    row.bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9) -- restore gold bullet
+                    row.bulletTex:Show()
+                end
+                local avail = self:GetRowTextAvailableWidth(row)
+                if row._lastLabel ~= label or row._lastAvail ~= avail then
+                    row.text:SetText(label)
+                    if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+                    self:FitRowText(row)
+                    row._lastLabel = label
+                    row._lastAvail = avail
                 end
             end
-            -- Only update text/fit if content or available width changed
-            local avail = self:GetRowTextAvailableWidth(row)
-            if row._lastLabel ~= label or row._lastAvail ~= avail then
-                row.text:SetText(label)
-                if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-                self:FitRowText(row)
-                row._lastLabel = label
-                row._lastAvail = avail
-            end
-            if row.bulletTex then row.bulletTex:Show() end
         end
     end
 

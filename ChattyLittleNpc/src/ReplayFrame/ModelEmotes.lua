@@ -182,13 +182,18 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
     end
     self._emoteSeqActive = true
     self._emoteSeqIndex = 0
+    -- Generation token: stale C_Timer callbacks from cancelled sequences
+    -- see _emoteSeqActive==true (re-set by new sequence) and would corrupt
+    -- _emoteSeqIndex. The token lets callbacks detect they belong to a prior run.
+    self._emoteSeqToken = (self._emoteSeqToken or 0) + 1
+    local seqToken = self._emoteSeqToken
 
     local function stillActive()
-        return self._emoteSeqActive and self._emoteActive and (self._emoteName ~= nil)
+        return self._emoteSeqActive and self._emoteActive and (self._emoteName ~= nil) and seqToken == self._emoteSeqToken
     end
 
     local function applyStep(step)
-        if not self._emoteSeqActive then return end
+        if not self._emoteSeqActive or seqToken ~= self._emoteSeqToken then return end
         
         -- Camera transitions handled by animation system
         if step.zoom ~= nil and self.AnimZoomTo then
@@ -226,7 +231,7 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
             -- Some animations need a quick reapply to ensure they take
             if step.animId == 67 and C_Timer and C_Timer.After then
                 C_Timer.After(0.01, function()
-                    if self._emoteSeqActive and m and m.SetAnimation then pcall(m.SetAnimation, m, 67) end
+                    if self._emoteSeqActive and seqToken == self._emoteSeqToken and m and m.SetAnimation then pcall(m.SetAnimation, m, 67) end
                 end)
             end
             -- Update state immediately
@@ -242,7 +247,7 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
     end
 
     local function nextStep()
-        if not self._emoteSeqActive then return end
+        if not self._emoteSeqActive or seqToken ~= self._emoteSeqToken then return end
         self._emoteSeqIndex = (self._emoteSeqIndex or 0) + 1
         local step = steps[self._emoteSeqIndex]
         if not step then
@@ -265,13 +270,13 @@ function ReplayFrame:_StartEmoteSequence(steps, opts)
             -- Immediate next step next frame
             if C_Timer and C_Timer.After then
                 C_Timer.After(0, function()
-                    if self._emoteSeqActive then nextStep() end
+                    if self._emoteSeqActive and seqToken == self._emoteSeqToken then nextStep() end
                 end)
             end
         else
             if C_Timer and C_Timer.After then
                 C_Timer.After(hold, function()
-                    if self._emoteSeqActive then nextStep() end
+                    if self._emoteSeqActive and seqToken == self._emoteSeqToken then nextStep() end
                 end)
             end
         end
@@ -525,18 +530,14 @@ function ReplayFrame.EmoteBuilder:run(opts)
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run: steps=" .. tostring(#self.steps) .. ", name=" .. tostring(self._name))
     end
     
-    if self._name and self._name ~= "" then
-        r._emoteName = self._name
-        -- Do not override top-level _animState here; FSM owns state. Per-step animId applies directly.
-    end
-    r._emoteActive = true
-    -- Broadcast started
-    r:_EmitEmoteEvent("EMOTE_STARTED", { name = self._name })
-    -- Always run internal completion first (if present), then emit EMOTE_COMPLETE
+    -- Defer _emoteActive, _emoteName, and EMOTE_STARTED until after
+    -- _StartEmoteSequence's internal cancel to avoid a spurious
+    -- STARTED→CANCELLED→re-STARTED cycle.
+    local savedName = self._name
     local runOpts = {}
     runOpts.onComplete = function()
         if self._internalOnComplete then pcall(self._internalOnComplete, r) end
-        r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = self._name })
+        r:_EmitEmoteEvent("EMOTE_COMPLETE", { name = savedName })
         -- Clear emote state to let animation system take over
         r._emoteActive = false
         r._emoteName = nil
@@ -547,6 +548,11 @@ function ReplayFrame.EmoteBuilder:run(opts)
     end
     
     local result = r:_StartEmoteSequence(self.steps, runOpts)
+    if result then
+        r._emoteActive = true
+        r._emoteName = savedName
+        r:_EmitEmoteEvent("EMOTE_STARTED", { name = savedName })
+    end
     return result
 end
 
