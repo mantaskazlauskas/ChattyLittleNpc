@@ -126,6 +126,7 @@ function ReplayFrame:InitializeModelContainer()
         modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
         modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
         modelContainer:SetHeight(self.npcModelFrameHeight)
+        modelContainer:SetClipsChildren(true)
         modelContainer:Hide()
         self.ModelContainer = modelContainer
 
@@ -1065,14 +1066,6 @@ function ReplayFrame:SetupFrameResize()
             return
         end
 
-        if this.ModelContainer then
-            this.ModelContainer:ClearAllPoints()
-            this.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
-            this.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
-            this.ModelContainer:SetHeight(this.npcModelFrameHeight or 140)
-            if hasModel then this.ModelContainer:Show() else this.ModelContainer:Hide() end
-        end
-        
         -- Layout the model area via extracted module
         if this.LayoutModelArea then this:LayoutModelArea(frame) end
 

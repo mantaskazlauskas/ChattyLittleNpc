@@ -7,23 +7,22 @@ local ReplayFrame = CLN.ReplayFrame
 -- Creates a full-width container for the NPC model and a PlayerModel that spans the full width (fixed height).
 -- The model itself isn't changed; we just give it more horizontal space for animations.
 function ReplayFrame:CreateModelUI()
-    -- Prevent duplicate creation
     if self.ModelContainer or self.NpcModelFrame then return end
-    -- Defaults if not already set
     self.npcModelFrameWidth = self.npcModelFrameWidth or 220
-    -- Avoid compounding height increases across multiple calls
     self.npcModelFrameHeight = self.npcModelFrameHeight or math.floor(140 * 1.15)
 
-    -- Container spans the width; used as a row above the queue
+    -- Container is a child of DisplayFrame, anchored INSIDE the top
     local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
     modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
     modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
     modelContainer:SetHeight(self.npcModelFrameHeight)
+    modelContainer:SetClipsChildren(true)
     modelContainer:Hide()
     self.ModelContainer = modelContainer
-    -- Keep the model row above the queue; allow child host to sit on top
-    if modelContainer.SetFrameStrata then modelContainer:SetFrameStrata("HIGH") end
-    if modelContainer.SetFrameLevel then modelContainer:SetFrameLevel((self.DisplayFrame and self.DisplayFrame.GetFrameLevel and self.DisplayFrame:GetFrameLevel() or 0) + 10) end
+    -- Keep model at a moderate frame level within MEDIUM strata (no HIGH strata)
+    if modelContainer.SetFrameLevel then
+        modelContainer:SetFrameLevel((self.DisplayFrame and self.DisplayFrame.GetFrameLevel and self.DisplayFrame:GetFrameLevel() or 0) + 2)
+    end
 
     -- Model host: prefers ModelScene+Actor, falls back to PlayerModel
     local host = self.CreateModelHost and self:CreateModelHost(modelContainer) or CreateFrame("Frame", "ChattyLittleNpcModelHost", modelContainer)
@@ -31,8 +30,9 @@ function ReplayFrame:CreateModelUI()
     host:SetPoint("TOPLEFT", modelContainer, "TOPLEFT", 0, 0)
     host:SetPoint("TOPRIGHT", modelContainer, "TOPRIGHT", 0, 0)
     host:SetHeight(self.npcModelFrameHeight)
-    if host.SetFrameStrata then host:SetFrameStrata("HIGH") end
-    if host.SetFrameLevel and modelContainer and modelContainer.GetFrameLevel then host:SetFrameLevel(modelContainer:GetFrameLevel() + 1) end
+    if host.SetFrameLevel and modelContainer and modelContainer.GetFrameLevel then
+        host:SetFrameLevel(modelContainer:GetFrameLevel() + 1)
+    end
     host:Hide()
     self.NpcModelFrame = host
 end
@@ -79,11 +79,10 @@ function ReplayFrame:LayoutModelArea(frame)
 
     if self.ModelContainer then
         self.ModelContainer:ClearAllPoints()
-    -- Anchor ABOVE the frame: container bottom sits at frame top
-    self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 5, 6)
-    self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -5, 6)
+        -- Anchor INSIDE the frame top (not above)
+        self.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
+        self.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
         self.ModelContainer:SetHeight(self.npcModelFrameHeight or 140)
-    if self.ModelContainer.SetFrameStrata then self.ModelContainer:SetFrameStrata("HIGH") end
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
 
@@ -91,9 +90,10 @@ function ReplayFrame:LayoutModelArea(frame)
         self.NpcModelFrame:ClearAllPoints()
         self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
         self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, 0)
-    self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or 140)
-    if self.NpcModelFrame.SetFrameStrata then self.NpcModelFrame:SetFrameStrata("HIGH") end
-    if self.NpcModelFrame.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then self.NpcModelFrame:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1) end
+        self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or 140)
+        if self.NpcModelFrame.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
+            self.NpcModelFrame:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
+        end
         if hasModel then
             self.NpcModelFrame:Show()
             -- For ModelScene, ensure there is at least one active camera
@@ -128,6 +128,9 @@ function ReplayFrame:RebuildModelHost()
     host:SetPoint("TOPLEFT", self.ModelContainer, "TOPLEFT", 0, 0)
     host:SetPoint("TOPRIGHT", self.ModelContainer, "TOPRIGHT", 0, 0)
     host:SetHeight(self.npcModelFrameHeight or 140)
+    if host.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
+        host:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
+    end
     host:Hide()
     self.NpcModelFrame = host
     -- If a voiceover is in progress, refresh the model; otherwise keep hidden until needed

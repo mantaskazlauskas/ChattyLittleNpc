@@ -143,6 +143,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
             phase = phase,
             title = CLN:GetTitleForQuestID(questId),
             cantBeInterrupted = true,
+            entryType = "quest",
             npcId = npcId,
         }
 

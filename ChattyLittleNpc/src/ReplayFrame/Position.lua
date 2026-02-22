@@ -156,8 +156,16 @@ function ReplayFrame:ApplyCompactMode()
             -- visibility controlled by current NPC state
         end
         self.ContentFrame:ClearAllPoints()
-        self.ContentFrame:SetPoint("TOPLEFT", self.NpcModelFrame, "TOPRIGHT", 2.5, 0)
-        self.ContentFrame:SetSize(frame:GetWidth() - height - 5, height - 5)
+        if self._hasValidModel and self.ModelContainer then
+            -- Content sits below the embedded model
+            self.ContentFrame:SetPoint("TOPLEFT", self.ModelContainer, "BOTTOMLEFT", 0, -6)
+            self.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+            self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
+        else
+            self.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
+            self.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+            self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
+        end
         self:CheckAndShowModel()
     end
     -- Persist updated size after mode change

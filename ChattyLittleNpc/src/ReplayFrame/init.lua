@@ -430,7 +430,7 @@ function ReplayFrame:BuildQueueEntries()
     local label = ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
     local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
 
-        table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip })
+        table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip, entryType = now.entryType or (isQuest and "quest" or "unknown") })
     end
 
     if CLN.questsQueue then
@@ -439,7 +439,7 @@ function ReplayFrame:BuildQueueEntries()
             local questTitle = q.title
             local label = ReplayFrame.Pure.FormatEntryLabel(npcName, questTitle, true)
             local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, questTitle)
-            table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip })
+            table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip, entryType = q.entryType or "quest" })
         end
     end
 
