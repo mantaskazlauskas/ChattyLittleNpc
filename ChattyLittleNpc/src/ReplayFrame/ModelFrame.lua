@@ -82,7 +82,7 @@ function ReplayFrame:LayoutModelArea(frame)
         -- Anchor INSIDE the frame top (not above)
         self.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
         self.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
-        self.ModelContainer:SetHeight(self.npcModelFrameHeight or 140)
+        self.ModelContainer:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
 
@@ -90,7 +90,7 @@ function ReplayFrame:LayoutModelArea(frame)
         self.NpcModelFrame:ClearAllPoints()
         self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
         self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, 0)
-        self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or 140)
+        self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
         if self.NpcModelFrame.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
             self.NpcModelFrame:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
         end
@@ -127,7 +127,7 @@ function ReplayFrame:RebuildModelHost()
     host:ClearAllPoints()
     host:SetPoint("TOPLEFT", self.ModelContainer, "TOPLEFT", 0, 0)
     host:SetPoint("TOPRIGHT", self.ModelContainer, "TOPRIGHT", 0, 0)
-    host:SetHeight(self.npcModelFrameHeight or 140)
+    host:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
     if host.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
         host:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
     end
@@ -195,6 +195,21 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         if self._lastDisplayID ~= displayID then
             if self.ResetAnimationState then self:ResetAnimationState() end
             self._lastDisplayID = displayID
+        else
+            -- Same displayID: skip full reload if model is still loaded
+            local be = self.NpcModelFrame and self.NpcModelFrame._backend
+            local stillLoaded = be and be.actor and be.actor.IsLoaded and be.actor:IsLoaded()
+            if stillLoaded then
+                if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
+                    self.NpcModelFrame:Show()
+                end
+                if self.ModelContainer and self.ModelContainer.IsShown and not self.ModelContainer:IsShown() then
+                    self.ModelContainer:Show()
+                end
+                self._hasValidModel = true
+                return
+            end
+            -- Model no longer loaded; fall through to full reload
         end
     self.NpcModelFrame:ClearModel()
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then

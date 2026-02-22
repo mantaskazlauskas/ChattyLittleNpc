@@ -329,7 +329,12 @@ local options = {
                     name = 'Show Progress Bar',
                     desc = 'Show a progress indicator during voiceover playback',
                     get = function(info) return CLN.db.profile.showProgressBar end,
-                    set = function(info, value) CLN.db.profile.showProgressBar = value end,
+                    set = function(info, value)
+                        CLN.db.profile.showProgressBar = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateProgressBar then
+                            CLN.ReplayFrame:UpdateProgressBar()
+                        end
+                    end,
                 },
                 resetFramePos = {
                     type = 'execute',

@@ -320,10 +320,15 @@ function ReplayFrame:ShowSubtitle(text)
     local sentences = self.SplitTooltipIntoSentences and self:SplitTooltipIntoSentences(text) or { text }
     self._subtitleSentences = sentences
     self._subtitleIndex = 0
+    -- Generation token: prevents stale C_Timer callbacks from a prior
+    -- ShowSubtitle call from corrupting the new subtitle sequence.
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    local token = self._subtitleToken
     self.SubtitleFrame:Show()
     self.SubtitleFrame:SetAlpha(0)
 
     local function showNext()
+        if token ~= self._subtitleToken then return end
         if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
         self._subtitleIndex = (self._subtitleIndex or 0) + 1
         local idx = self._subtitleIndex
@@ -332,6 +337,7 @@ function ReplayFrame:ShowSubtitle(text)
             -- _subtitleSentences non-nil so UpdateAnimationsIfNeeded
             -- won't re-trigger the same text while the voiceover plays.
             self._subtitleTimer = C_Timer and C_Timer.After(2.0, function()
+                if token ~= self._subtitleToken then return end
                 self._subtitleTimer = nil
                 if self.SubtitleFrame then self.SubtitleFrame:Hide() end
             end)
@@ -339,8 +345,8 @@ function ReplayFrame:ShowSubtitle(text)
         end
         self.SubtitleText:SetText(sentences[idx])
         self.SubtitleFrame:SetAlpha(1)
-        -- Duration per sentence: roughly 2.5 seconds per sentence
-        local dur = math.max(1.5, math.min(5.0, 2.5))
+        -- Duration scales with sentence length: ~0.07s per character, clamped 1.5–5s
+        local dur = math.max(1.5, math.min(5.0, #sentences[idx] * 0.07))
         self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
     end
 
@@ -349,10 +355,9 @@ function ReplayFrame:ShowSubtitle(text)
 end
 
 function ReplayFrame:HideSubtitle()
-    if self._subtitleTimer and C_Timer and C_Timer.After then
-        -- Cancel timer by clearing reference (C_Timer has no cancel API, timer will fire but find nil state)
-        self._subtitleTimer = nil
-    end
+    -- Invalidate any in-flight timer callbacks via generation token
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    self._subtitleTimer = nil
     self._subtitleSentences = nil
     self._subtitleIndex = nil
     if self.SubtitleFrame then self.SubtitleFrame:Hide() end

@@ -427,6 +427,7 @@ ReplayFrame._replayHistoryMax = 20
 function ReplayFrame:PushHistory(entry)
     if not entry then return end
     local max = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueHistoryMaxEntries) or self._replayHistoryMax
+    if max <= 0 then return end
     table.insert(self._replayHistory, 1, entry) -- newest first
     while #self._replayHistory > max do
         table.remove(self._replayHistory)
@@ -439,6 +440,7 @@ end
 
 function ReplayFrame:ClearHistory()
     self._replayHistory = {}
+    self._scrollOffset = 0
     if self.MarkQueueDirty then self:MarkQueueDirty() end
 end
 
@@ -527,6 +529,7 @@ end
 function ReplayFrame:MarkQueueDirty()
     -- Debounce: if already scheduled, just mark dirty and exit
     self._queueDirty = true
+    self._scrollOffset = 0
     if self._queueDirtyPending then return end
     self._queueDirtyPending = true
     local delay = 0.12 -- slightly higher than old 0.05 to absorb bursts
@@ -612,6 +615,7 @@ end
 
 -- Combat auto-collapse: hide frame instantly on combat start, restore on end
 function ReplayFrame:OnCombatStart()
+    if self.HideSubtitle then self:HideSubtitle() end
     local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse
     if not enabled then return end
     if not self.DisplayFrame or not self.DisplayFrame:IsShown() then return end
@@ -640,6 +644,14 @@ function ReplayFrame:OnCombatEnd()
         end
         if self.UpdateDisplayFrameState then
             self:UpdateDisplayFrameState()
+        end
+        if self.MarkQueueDirty then self:MarkQueueDirty() end
+        if self.UpdateProgressBar then self:UpdateProgressBar() end
+        local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        if CLN and CLN.db and CLN.db.profile and CLN.db.profile.showSubtitles and cur and cur.title and self.ShowSubtitle then
+            self:ShowSubtitle(cur.title)
+        elseif self.HideSubtitle then
+            self:HideSubtitle()
         end
     end
     if C_Timer and C_Timer.After then

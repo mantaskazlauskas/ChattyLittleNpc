@@ -222,6 +222,39 @@ function CLN:OnEnable()
                 self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "alwaysShowReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
                 self.ReplayFrame:UpdateDisplayFrameState()
+            elseif key == "combatAutoCollapse" and self.ReplayFrame then
+                local inCombat = (self._inCombat == true) or (InCombatLockdown and InCombatLockdown())
+                if inCombat and self.db.profile.combatAutoCollapse and self.ReplayFrame.OnCombatStart then
+                    self.ReplayFrame:OnCombatStart()
+                elseif (not self.db.profile.combatAutoCollapse) and self.ReplayFrame._combatAutoCollapsed and self.ReplayFrame.OnCombatEnd then
+                    self.ReplayFrame:OnCombatEnd()
+                end
+            elseif key == "showProgressBar" and self.ReplayFrame and self.ReplayFrame.UpdateProgressBar then
+                self.ReplayFrame:UpdateProgressBar()
+            elseif key == "showSubtitles" and self.ReplayFrame then
+                local cur = self.VoiceoverPlayer and self.VoiceoverPlayer.currentlyPlaying
+                if self.db.profile.showSubtitles and cur and cur.title and self.ReplayFrame.ShowSubtitle then
+                    self.ReplayFrame:ShowSubtitle(cur.title)
+                elseif self.ReplayFrame.HideSubtitle then
+                    self.ReplayFrame:HideSubtitle()
+                end
+            elseif key == "editModeGlowHints" and self.ReplayFrame then
+                if self.db.profile.editModeGlowHints and self.ReplayFrame.StartEditGlowPulse then
+                    self.ReplayFrame:StartEditGlowPulse()
+                elseif self.ReplayFrame.StopEditGlowPulse then
+                    self.ReplayFrame:StopEditGlowPulse()
+                end
+            elseif key == "showQuestTypeBadges" and self.ReplayFrame and self.ReplayFrame.MarkQueueDirty then
+                self.ReplayFrame:MarkQueueDirty()
+            elseif key == "subtitleFontScale" and self.ReplayFrame then
+                if self.ReplayFrame.SubtitleText then
+                    local fontScale = (self.db and self.db.profile and self.db.profile.subtitleFontScale) or 1.0
+                    self.ReplayFrame.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+                end
+                local cur = self.VoiceoverPlayer and self.VoiceoverPlayer.currentlyPlaying
+                if self.db.profile.showSubtitles and cur and cur.title and self.ReplayFrame.ShowSubtitle then
+                    self.ReplayFrame:ShowSubtitle(cur.title)
+                end
             elseif key == "debugMode" or key == "debugAnimations" then
                 -- no-op: toggles just affect logging gates
             elseif key == "debugNoAnim" and self.ReplayFrame and self.ReplayFrame.SetNoAnimDebug then
@@ -261,12 +294,18 @@ function CLN:OnEnable()
             applyKey("showReplayFrame")
             applyKey("alwaysShowReplayFrame")
             applyKey("debugNoAnim")
+            applyKey("combatAutoCollapse")
+            applyKey("showProgressBar")
+            applyKey("showSubtitles")
+            applyKey("editModeGlowHints")
+            applyKey("showQuestTypeBadges")
+            applyKey("subtitleFontScale")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale")
         end)
         self._dbProfileHooked = true
     end

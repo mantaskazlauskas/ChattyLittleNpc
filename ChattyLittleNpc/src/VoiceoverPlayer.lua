@@ -53,6 +53,7 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue)
     if CLN and CLN.Logger then CLN.Logger:debug("Force stopping current sound", false, CLN.Utils.LogCategories.loader) end
     if (clearQueue) then
         CLN.questsQueue = {}
+        if CLN.ReplayFrame then CLN.ReplayFrame._scrollOffset = 0 end
         if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
     end
 
