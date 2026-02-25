@@ -13,7 +13,7 @@ function ReplayFrame:CreateEditPanel()
 
     local panel = CreateFrame("Frame", "ChattyLittleNpcEditPanel", UIParent, "BasicFrameTemplateWithInset")
     panel:SetClampedToScreen(true)
-    panel:SetSize(370, 360)
+    panel:SetSize(370, 480)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)
     panel:EnableMouse(true)
@@ -331,15 +331,17 @@ function ReplayFrame:CreateEditPanel()
     panel._formBuilder = FormBuilder.new(panel, { rowSpacing = spacing })
     -- Scale row
     panel._formBuilder:AddSlider{ key="scale", label="Frame Scale:", min=0.5, max=2.0, step=0.05, showLowHigh=true, valueFormat="%.2f", excludeKey="frameScale" }
-    -- Dimensions section
+    -- Dimensions section — sync yOffset from FormBuilder before adding header
+    yOffset = panel._formBuilder:GetCurrentY() - spacing
     addSectionHeader("Dimensions")
-    panel._formBuilder.y = panel._formBuilder.y - 18 -- space under section header
+    panel._formBuilder.y = yOffset
     local widthRow = panel._formBuilder:AddSlider{ key="width", label="Width:", min=200, max=1000, step=5, hasInput=true, excludeKey="frameSize" }
     local heightRow = panel._formBuilder:AddSlider{ key="height", label="Height:", min=100, max=600, step=5, hasInput=true } -- inherits exclude visual via width
     panel._formBuilder:AddSlider{ key="modelHeight", label="Model Height:", min=50, max=300, step=5, hasInput=true, excludeKey="npcModelFrameHeight" }
-    -- Text section
+    -- Text section — sync yOffset from FormBuilder before adding header
+    yOffset = panel._formBuilder:GetCurrentY() - spacing
     addSectionHeader("Text")
-    panel._formBuilder.y = panel._formBuilder.y - 18
+    panel._formBuilder.y = yOffset
     panel._formBuilder:AddSlider{ key="textScale", label="Text Scale:", min=0.75, max=1.5, step=0.05, showLowHigh=true, valueFormat="%.2f", excludeKey="queueTextScale" }
     yOffset = panel._formBuilder:GetCurrentY()
     
