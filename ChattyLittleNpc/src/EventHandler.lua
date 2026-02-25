@@ -266,20 +266,23 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         })
     end
 
-    local removedFromQueue = false
+    -- Try to remove the stopped voiceover from the queue (it may already have
+    -- been removed at play-start by PlayQuestSound, which is the normal case).
     if stoppedVoiceover.questId then
         for i, quest in ipairs(CLN.questsQueue) do
             if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
                 if CLN and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
                 table.remove(CLN.questsQueue, i)
                 if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-                removedFromQueue = true
                 break
             end
         end
     end
 
-    if removedFromQueue and (#CLN.questsQueue > 0) then
+    -- Advance the queue regardless of whether the stopped item was found in it;
+    -- PlayQuestSound removes the item from the queue at play-start (line 197),
+    -- so the currently-playing sound is almost never in questsQueue when it stops.
+    if #CLN.questsQueue > 0 then
         if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
         -- Ensure previous emote/animation state is clean before starting next
         if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
