@@ -14,9 +14,46 @@ function ConfigSystem:New()
     return instance
 end
 
+-- Helper: evaluate a value-or-function field (for hidden, disabled, etc.)
+---@param field any A boolean, function, or nil
+---@return boolean
+local function evalField(field)
+    if type(field) == "function" then return field() end
+    return field and true or false
+end
+
+-- Helper: attach GameTooltip on hover for a control
+---@param control table The frame to attach tooltip to
+---@param info table Setting info with desc field
+local function attachTooltip(control, info)
+    if not info.desc then return end
+    control:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText(info.name or "", 1, 1, 1)
+        GameTooltip:AddLine(info.desc, nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    control:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
+-- Helper: update the disabled visual state of a checkbox
+---@param checkbox table The checkbox frame
+local function updateCheckboxDisabled(checkbox)
+    local isDisabled = evalField(checkbox.info.disabled)
+    if isDisabled then
+        checkbox:Disable()
+        checkbox.Text:SetTextColor(0.5, 0.5, 0.5)
+    else
+        checkbox:Enable()
+        checkbox.Text:SetTextColor(1, 0.82, 0)
+    end
+end
+
 -- Create a checkbox setting
 ---@param parent table Parent category or frame
----@param info table Setting info {name, desc, get, set}
+---@param info table Setting info {name, desc, get, set, disabled}
 ---@return table
 function ConfigSystem:CreateCheckbox(parent, info)
     local checkbox = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
@@ -27,23 +64,32 @@ function ConfigSystem:CreateCheckbox(parent, info)
     checkbox.info = info
     
     checkbox:SetScript("OnShow", function(self)
-        local value = self.info.get()
-        self:SetChecked(value)
+        self:SetChecked(self.info.get())
+        updateCheckboxDisabled(self)
     end)
     
     checkbox:SetScript("OnClick", function(self)
+        if evalField(self.info.disabled) then
+            self:SetChecked(self.info.get())
+            return
+        end
         local checked = self:GetChecked()
         self.info.set(nil, checked and true or false)
-        -- Force update to ensure visual state matches stored value
         self:SetChecked(self.info.get())
+        -- Refresh all sibling controls (toggling debug mode should update dependent controls)
+        if self:GetParent() then
+            ConfigSystem._RefreshVisibleControls(self:GetParent())
+        end
     end)
+    
+    attachTooltip(checkbox, info)
     
     return checkbox
 end
 
 -- Create a slider setting
 ---@param parent table Parent category or frame
----@param info table Setting info {name, desc, min, max, step, get, set}
+---@param info table Setting info {name, desc, min, max, step, get, set, disabled}
 ---@return table
 function ConfigSystem:CreateSlider(parent, info)
     local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
@@ -64,6 +110,18 @@ function ConfigSystem:CreateSlider(parent, info)
     -- Store the info for later use
     slider.info = info
     
+    -- Choose format string based on step size (integers vs decimals)
+    local isInteger = (info.step >= 1)
+    local fmt = isInteger and "%d" or "%.2f"
+    
+    -- Min/max range labels
+    if slider.Low then
+        slider.Low:SetText(string.format(fmt, info.min))
+    end
+    if slider.High then
+        slider.High:SetText(string.format(fmt, info.max))
+    end
+    
     -- Value text
     local valueText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
@@ -72,20 +130,33 @@ function ConfigSystem:CreateSlider(parent, info)
     slider:SetScript("OnShow", function(self)
         local value = self.info.get()
         self:SetValue(value)
-        self.valueText:SetText(string.format("%.2f", value))
+        self.valueText:SetText(string.format(fmt, value))
+        local isDisabled = evalField(self.info.disabled)
+        if isDisabled then
+            self:Disable()
+            self.Text:SetTextColor(0.5, 0.5, 0.5)
+            self.valueText:SetTextColor(0.5, 0.5, 0.5)
+        else
+            self:Enable()
+            self.Text:SetTextColor(1, 0.82, 0)
+            self.valueText:SetTextColor(1, 1, 1)
+        end
     end)
     
     slider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(string.format("%.2f", value))
+        if evalField(self.info.disabled) then return end
+        self.valueText:SetText(string.format(fmt, value))
         self.info.set(nil, value)
     end)
+    
+    attachTooltip(slider, info)
     
     return slider
 end
 
 -- Create a dropdown setting
 ---@param parent table Parent category or frame
----@param info table Setting info {name, desc, values, get, set}
+---@param info table Setting info {name, desc, values, get, set, disabled}
 ---@return table
 function ConfigSystem:CreateDropdown(parent, info)
     local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
@@ -102,12 +173,17 @@ function ConfigSystem:CreateDropdown(parent, info)
     if info.width == "full" then
         UIDropDownMenu_SetWidth(dropdown, 380)
     else
-        UIDropDownMenu_SetWidth(dropdown, 150)
+        UIDropDownMenu_SetWidth(dropdown, 200)
     end
     
     local function OnClick(self)
+        if evalField(dropdown.info.disabled) then return end
         dropdown.info.set(nil, self.value)
         UIDropDownMenu_SetText(dropdown, self:GetText())
+        -- Refresh siblings in case this changes disabled state of other controls
+        if dropdown:GetParent() then
+            ConfigSystem._RefreshVisibleControls(dropdown:GetParent())
+        end
     end
     
     local function Initialize(self, level)
@@ -129,6 +205,14 @@ function ConfigSystem:CreateDropdown(parent, info)
         local vals = self.info.values
         if type(vals) == "function" then vals = vals() end
         UIDropDownMenu_SetText(self, vals[currentValue] or currentValue)
+        local isDisabled = evalField(self.info.disabled)
+        if isDisabled then
+            UIDropDownMenu_DisableDropDown(self)
+            self.label:SetTextColor(0.5, 0.5, 0.5)
+        else
+            UIDropDownMenu_EnableDropDown(self)
+            self.label:SetTextColor(1, 0.82, 0)
+        end
     end)
     
     return dropdown
@@ -155,6 +239,8 @@ function ConfigSystem:CreateButton(parent, info)
         info.func()
     end)
     
+    attachTooltip(button, info)
+    
     return button
 end
 
@@ -166,6 +252,46 @@ function ConfigSystem:CreateHeader(parent, text)
     local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     header:SetText(text)
     return header
+end
+
+-- Create a description text under a group header
+---@param parent table Parent frame
+---@param text string Description text
+---@return table
+function ConfigSystem:CreateDescription(parent, text)
+    local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desc:SetText(text)
+    desc:SetTextColor(0.7, 0.7, 0.7)
+    desc:SetJustifyH("LEFT")
+    desc:SetWidth(540)
+    return desc
+end
+
+-- Create a horizontal separator line
+---@param parent table Parent frame
+---@return table
+function ConfigSystem:CreateSeparator(parent)
+    local separator = parent:CreateTexture(nil, "ARTWORK")
+    separator:SetHeight(1)
+    separator:SetWidth(540)
+    separator:SetColorTexture(0.4, 0.4, 0.4, 0.6)
+    return separator
+end
+
+-- Refresh disabled/enabled visual state of all tracked controls on a content frame
+---@param contentFrame table The content frame containing controls
+function ConfigSystem._RefreshVisibleControls(contentFrame)
+    if not contentFrame._trackedControls then return end
+    for _, entry in ipairs(contentFrame._trackedControls) do
+        local control = entry.control
+        local opt = entry.opt
+        if control and control.IsShown and control:IsShown() then
+            -- Re-trigger OnShow to update disabled state
+            if control:GetScript("OnShow") then
+                control:GetScript("OnShow")(control)
+            end
+        end
+    end
 end
 
 -- Register options and create settings panel
@@ -197,23 +323,51 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
     local yOffset = -40
     local contentHeight = 60 -- Start with title space
     
-    -- Process option groups in sorted order (respects numeric prefixes)
+    -- Track all controls for disabled-state refresh
+    content._trackedControls = {}
+    
+    -- Process option groups in sorted order
     if options.args then
-        -- Get sorted keys
+        -- Get sorted keys (respect order field on groups)
         local sortedKeys = {}
         for key in pairs(options.args) do
             table.insert(sortedKeys, key)
         end
-        table.sort(sortedKeys)
+        table.sort(sortedKeys, function(a, b)
+            local orderA = options.args[a].order or 999
+            local orderB = options.args[b].order or 999
+            if orderA == orderB then
+                return a < b
+            end
+            return orderA < orderB
+        end)
         
+        local isFirstGroup = true
         for _, groupKey in ipairs(sortedKeys) do
             local group = options.args[groupKey]
             if group.type == "group" then
+                -- Add separator line between groups (not before the first)
+                if not isFirstGroup then
+                    local sep = self:CreateSeparator(content)
+                    sep:SetPoint("TOPLEFT", 6, yOffset - 4)
+                    yOffset = yOffset - 14
+                    contentHeight = contentHeight + 14
+                end
+                isFirstGroup = false
+                
                 -- Create group header
                 local header = self:CreateHeader(content, group.name)
                 header:SetPoint("TOPLEFT", 6, yOffset)
-                yOffset = yOffset - 40  -- Increased spacing after header
-                contentHeight = contentHeight + 40
+                yOffset = yOffset - 24
+                contentHeight = contentHeight + 24
+                
+                -- Optional group description
+                if group.desc then
+                    local desc = self:CreateDescription(content, group.desc)
+                    desc:SetPoint("TOPLEFT", 8, yOffset)
+                    yOffset = yOffset - 16
+                    contentHeight = contentHeight + 16
+                end
                 
                 -- Process group args
                 if group.args then
@@ -227,29 +381,38 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                         local orderA = group.args[a].order or 999
                         local orderB = group.args[b].order or 999
                         if orderA == orderB then
-                            return a < b -- Alphabetical fallback
+                            return a < b
                         end
                         return orderA < orderB
                     end)
                     
                     for _, key in ipairs(sortedControlKeys) do
                         local opt = group.args[key]
-                        local control = self:CreateControl(content, opt)
-                        if control then
-                            control:SetPoint("TOPLEFT", 6, yOffset)
-                            if opt.type == "range" then
-                                yOffset = yOffset - 60 -- Sliders need more space
-                                contentHeight = contentHeight + 60
-                            else
-                                yOffset = yOffset - 40
-                                contentHeight = contentHeight + 40
+                        -- Skip hidden controls
+                        if evalField(opt.hidden) then
+                            -- do nothing
+                        else
+                            local control = self:CreateControl(content, opt)
+                            if control then
+                                control:SetPoint("TOPLEFT", 6, yOffset)
+                                table.insert(content._trackedControls, { control = control, opt = opt })
+                                if opt.type == "range" then
+                                    yOffset = yOffset - 60
+                                    contentHeight = contentHeight + 60
+                                elseif opt.type == "select" then
+                                    yOffset = yOffset - 55 -- Dropdowns need label + frame space
+                                    contentHeight = contentHeight + 55
+                                else
+                                    yOffset = yOffset - 32
+                                    contentHeight = contentHeight + 32
+                                end
                             end
                         end
                     end
                 end
                 
-                yOffset = yOffset - 10 -- Extra space between groups
-                contentHeight = contentHeight + 10
+                yOffset = yOffset - 8 -- Space after group before separator
+                contentHeight = contentHeight + 8
             end
         end
     end

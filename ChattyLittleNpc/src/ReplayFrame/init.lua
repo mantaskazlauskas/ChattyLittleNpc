@@ -523,6 +523,22 @@ function ReplayFrame:RefreshQueueDataProvider()
 
     -- Feed directly to manual list (no scrolling)
     self:SetQueueData(selected)
+    -- Update scroll indicator
+    if self._scrollIndicator then
+        local totalEntries = #entries
+        if totalEntries > rowsFit and maxOffset > 0 then
+            local listHeight = self.QueueListFrame and self.QueueListFrame:GetHeight() or 100
+            local thumbHeight = math.max(12, listHeight * (rowsFit / totalEntries))
+            local trackHeight = listHeight - thumbHeight
+            local thumbOffset = (trackHeight > 0 and maxOffset > 0) and (trackHeight * (self._scrollOffset / maxOffset)) or 0
+            self._scrollIndicator:SetHeight(thumbHeight)
+            self._scrollIndicator:ClearAllPoints()
+            self._scrollIndicator:SetPoint("TOPRIGHT", self.QueueListFrame, "TOPRIGHT", 0, -thumbOffset)
+            self._scrollIndicator:Show()
+        else
+            self._scrollIndicator:Hide()
+        end
+    end
 end
 
 -- Mark queue data dirty; coalesce refreshes to avoid churn during bursts
@@ -564,7 +580,8 @@ end
 -- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue
 function ReplayFrame:UpdateVisibility()
     local forced = self._forceShow
-    if (not forced) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
+    local alwaysShow = CLN and CLN.db and CLN.db.profile and CLN.db.profile.alwaysShowReplayFrame
+    if (not forced) and (not alwaysShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
@@ -572,7 +589,7 @@ function ReplayFrame:UpdateVisibility()
         return false
     end
 
-    if (not forced) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
+    if (not forced) and (not alwaysShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
         if (self.DisplayFrame) then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
@@ -580,7 +597,7 @@ function ReplayFrame:UpdateVisibility()
         return false
     end
 
-    if (not forced) and (self:IsDisplayFrameHideNeeded()) then
+    if (not forced) and (not alwaysShow) and (self:IsDisplayFrameHideNeeded()) then
         if self.DisplayFrame then self.DisplayFrame:Hide() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end

@@ -15,200 +15,404 @@ local options = {
     handler = CLN,
     type = 'group',
     args = {
-        Debugging = {
-            order = 100,
-            type = 'group',
-            name = 'Debugging',
-            inline = true,
-            args = {
-                debugMode = {
-                    type = 'toggle',
-                    name = 'Enable Debug Logging',
-                    desc = 'Enable debug messages. Use the Logs window (/clnlogs) to view; enable Chat Mirroring to see in chat.',
-                    get = function(info) return CLN.db.profile.debugMode end,
-                    set = function(info, value) 
-                        CLN.db.profile.debugMode = value 
-                    end,
-                },
-                logToChat = {
-                    type = 'toggle',
-                    name = 'Mirror logs to chat',
-                    desc = 'Also print logs in chat. Off keeps chat clean while Logs window captures everything.',
-                    disabled = function() return not CLN.db.profile.debugMode end,
-                    get = function(info) return CLN.db.profile.logToChat end,
-                    set = function(info, value)
-                        CLN.db.profile.logToChat = value
-                    end,
-                },
-                printMissingFiles = {
-                    type = 'toggle',
-                    name = 'Show Missing Files',
-                    desc = 'Log missing voiceover files as warnings. Requires debug mode.',
-                    disabled = function() return not CLN.db.profile.debugMode end,
-                    get = function(info) return CLN.db.profile.printMissingFiles end,
-                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
-                },
-                debugNoAnim = {
-                    type = 'toggle',
-                    name = 'Freeze Animations (Debug Camera)',
-                    desc = 'Freeze all model/emote animations to debug camera framing. Camera logs remain active.',
-                    disabled = function() return not CLN.db.profile.debugMode end,
-                    get = function(info) return CLN.db.profile.debugNoAnim end,
-                    set = function(info, value)
-                        CLN.db.profile.debugNoAnim = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.SetNoAnimDebug then
-                            CLN.ReplayFrame:SetNoAnimDebug(value)
-                            if CLN.ReplayFrame._UpdateModelOnUpdateHook then
-                                CLN.ReplayFrame:_UpdateModelOnUpdateHook()
-                            end
-                        end
-                    end,
-                },
-                debugAnimations = {
-                    type = 'toggle',
-                    name = 'Animation Debug Logs',
-                    desc = 'Enable detailed animation/camera debug logs. Use category filter below to reduce noise.',
-                    disabled = function() return not CLN.db.profile.debugMode end,
-                    get = function(info) return CLN.db.profile.debugAnimations end,
-                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
-                },
-                debugAnimCategories = {
-                    type = 'select',
-                    name = 'Animation Log Filter',
-                    desc = 'Choose which animation debug categories to show. "All" shows everything, "None" disables all animation logs.',
-                    values = function()
-                        local C = CLN and CLN.Utils and CLN.Utils.LogCategories
-                        local values = { 
-                            all = 'All Categories',
-                            none = 'None (Disable All)'
-                        }
-                        if C then
-                            values[C.camera] = 'Camera Only'
-                            values[C.framing] = 'Framing Only'  
-                            values[C.projection] = 'Projection Only'
-                            values[C.host] = 'Host/Backend Only'
-                            values[C.loader] = 'Loader Only'
-                            values[C.animation] = 'Animation Only'
-                            values[C.emotes] = 'Emotes Only'
-                        end
-                        return values
-                    end,
-                    disabled = function() 
-                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations) 
-                    end,
-                    get = function()
-                        local cats = CLN.db.profile.debugAnimCategories
-                        if cats == 'all' or not cats then return 'all' end
-                        if type(cats) == 'table' then
-                            -- Count enabled categories
-                            local count = 0
-                            local lastCat = nil
-                            for k, v in pairs(cats) do
-                                if v then 
-                                    count = count + 1
-                                    lastCat = k
-                                end
-                            end
-                            if count == 0 then return 'none' end
-                            if count == 1 then return lastCat end
-                            return 'all' -- multiple selected, show as "all"
-                        end
-                        return 'all'
-                    end,
-                    set = function(_, value)
-                        if value == 'all' then
-                            CLN.db.profile.debugAnimCategories = 'all'
-                        elseif value == 'none' then
-                            CLN.db.profile.debugAnimCategories = {}
-                        else
-                            -- Single category selection
-                            local cats = {}
-                            cats[value] = true
-                            CLN.db.profile.debugAnimCategories = cats
-                        end
-                    end,
-                },
-            },
-        },
-        DataCollection = {
-            order = 110,
-            type = 'group',
-            name = 'Data Collection',
-            inline = true,
-            args = {
-                logNpcTexts = {
-                    type = 'toggle',
-                    name = 'Track NPC Data',
-                    desc = 'Save all NPC texts to saved variables for voiceover generation. Contact us on Discord if you want to help contribute data.',
-                    get = function(info) return CLN.db.profile.logNpcTexts end,
-                    set = function(info, value)
-                        CLN.db.profile.logNpcTexts = value
-                        if (not value) then
-                            CLN.db.profile.printNpcTexts = false
-                        end
-                    end,
-                },
-                printNpcTexts = {
-                    type = 'toggle',
-                    name = 'Log Collected Data',
-                    desc = 'Print the NPC data being collected (if tracking is enabled).',
-                    disabled = function() return not CLN.db.profile.logNpcTexts end,
-                    get = function(info) return CLN.db.profile.printNpcTexts end,
-                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
-                },
-                overwriteExistingGossipValues = {
-                    type = 'toggle',
-                    name = 'Overwrite Existing Data',
-                    desc = 'Overwrite existing NPC text data when interacting again.',
-                    disabled = function() return not CLN.db.profile.logNpcTexts end,
-                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
-                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
-                },
-            },
-        },
-        DeveloperTools = {
-            order = 120,
-            type = 'group',
-            name = 'Developer Tools',
-            inline = true,
-            args = {
-                showGossipEditor = {
-                    type = 'toggle',
-                    name = 'Show Gossip Editor',
-                    desc = 'Toggle the Gossip Editor window for editing/fixing collected NPC gossip lines.',
-                    get = function(info) return CLN.Editor.Frame:IsShown() end,
-                    set = function(info, value)
-                        if value then
-                            CLN.Editor.Frame:Show()
-                        else
-                            CLN.Editor.Frame:Hide()
-                        end
-                    end,
-                },
-                printLoadedVoiceoverPackMetadata = {
-                    type = 'execute',
-                    name = 'Print VO Pack Info',
-                    desc = 'Print loaded voiceover pack metadata and statistics.',
-                    func = function() CLN:PrintLoadedVoiceoverPacks() end,
-                },
-            },
-        },
-        ReplayFrame = {
+        -- ═══════════════════════════════════════════════
+        -- PLAYBACK — Core functionality users care about
+        -- ═══════════════════════════════════════════════
+        Playback = {
             order = 10,
             type = 'group',
-            name = 'Replay Frame',
+            name = 'Playback',
+            desc = 'Control when and how voiceovers are played.',
             inline = true,
             args = {
-                advancedCameraFitting = {
+                autoPlayVoiceovers = {
+                    order = 1,
                     type = 'toggle',
-                    name = 'Advanced Camera Fitting (ModelScene)',
-                    desc = 'Use projector-based fitting for better framing in ModelScene backend. Disable if you see jitter or prefer the classic fit.',
+                    name = 'Auto-Play Voiceovers',
+                    desc = 'Automatically play voiceovers when opening a quest or gossip window.',
+                    get = function(info) return CLN.db.profile.autoPlayVoiceovers end,
+                    set = function(info, value) CLN.db.profile.autoPlayVoiceovers = value end,
+                },
+                questPlaybackMode = {
+                    order = 2,
+                    type = 'select',
+                    name = 'Quest Playback Mode',
+                    desc = 'Controls how quest voiceovers are handled:\n\n• Queue — plays all lines in order, continues after dialog closes\n• Stop On Close — stops playback when the dialog window closes\n• Manual — only plays when you click the play button',
+                    values = {
+                        queue = 'Queue (play all in order)',
+                        stopOnClose = 'Stop when dialog closes',
+                        manual = 'Manual (play button only)',
+                    },
+                    get = function() return CLN.db.profile.questPlaybackMode or 'queue' end,
+                    set = function(_, value)
+                        CLN.db.profile.questPlaybackMode = value
+                        if CLN._SyncLegacyQuestPlaybackFlags then CLN:_SyncLegacyQuestPlaybackFlags() end
+                    end,
+                },
+                playVoiceoverAfterDelay = {
+                    order = 3,
+                    type = 'range',
+                    name = 'Playback Delay (seconds)',
+                    desc = 'Wait this many seconds before starting voiceover playback after opening a dialog.',
+                    min = 0,
+                    max = 3,
+                    step = 0.1,
+                    get = function(info) return CLN.db.profile.playVoiceoverAfterDelay end,
+                    set = function(info, value) CLN.db.profile.playVoiceoverAfterDelay = value end,
+                },
+                audioChannel = {
+                    order = 4,
+                    type = 'select',
+                    name = 'Audio Channel',
+                    desc = 'Which audio channel voiceovers play through. This determines which volume slider controls voiceover volume.',
+                    values = {
+                        MASTER = 'Master',
+                        DIALOG = 'Dialog',
+                        SFX = 'Sound Effects',
+                        MUSIC = 'Music',
+                        AMBIENCE = 'Ambience',
+                    },
+                    get = function(info) return CLN.db.profile.audioChannel end,
+                    set = function(info, value) CLN.db.profile.audioChannel = value end,
+                },
+                showSpeakButton = {
+                    order = 5,
+                    type = 'toggle',
+                    name = 'Show Play Button on Dialogs',
+                    desc = 'Show a play button next to quest and gossip dialog frames for manual playback.',
+                    get = function(info) return CLN.db.profile.showSpeakButton end,
+                    set = function(info, value) CLN.db.profile.showSpeakButton = value end,
+                },
+            },
+        },
+
+        -- ═══════════════════════════════════════════════════
+        -- VOICEOVER FRAME — The NPC portrait + queue panel
+        -- ═══════════════════════════════════════════════════
+        VoiceoverFrame = {
+            order = 20,
+            type = 'group',
+            name = 'Voiceover Frame',
+            desc = 'Customize the floating NPC portrait and playback queue.',
+            inline = true,
+            args = {
+                showReplayFrame = {
+                    order = 1,
+                    type = 'toggle',
+                    name = 'Enable Voiceover Frame',
+                    desc = 'Show the voiceover frame with NPC portrait and playback queue during voiceover playback.',
+                    get = function(info) return CLN.db.profile.showReplayFrame end,
+                    set = function(info, value)
+                        CLN.db.profile.showReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
+                alwaysShowReplayFrame = {
+                    order = 2,
+                    type = 'toggle',
+                    name = 'Always Visible',
+                    desc = 'Keep the voiceover frame visible even when no voiceover is playing.',
+                    get = function(info) return CLN.db.profile.alwaysShowReplayFrame end,
+                    set = function(info, value)
+                        CLN.db.profile.alwaysShowReplayFrame = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateVisibility then
+                            CLN.ReplayFrame:UpdateVisibility()
+                        end
+                    end,
+                },
+                compactMode = {
+                    order = 3,
+                    type = 'toggle',
+                    name = 'Compact Mode',
+                    desc = 'Hide the NPC portrait and show only the playback queue in a smaller frame.',
+                    get = function(info) return CLN.db.profile.compactMode end,
+                    set = function(info, value)
+                        CLN.db.profile.compactMode = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                    end,
+                },
+                combatAutoCollapse = {
+                    order = 4,
+                    type = 'toggle',
+                    name = 'Auto-Hide in Combat',
+                    desc = 'Automatically hide the voiceover frame when you enter combat and restore it when combat ends.',
+                    get = function(info) return CLN.db.profile.combatAutoCollapse end,
+                    set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
+                },
+                showProgressBar = {
+                    order = 5,
+                    type = 'toggle',
+                    name = 'Show Progress Bar',
+                    desc = 'Display a progress bar showing how far along the current voiceover is.',
+                    get = function(info) return CLN.db.profile.showProgressBar end,
+                    set = function(info, value)
+                        CLN.db.profile.showProgressBar = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateProgressBar then
+                            CLN.ReplayFrame:UpdateProgressBar()
+                        end
+                    end,
+                },
+                showQuestTypeBadges = {
+                    order = 6,
+                    type = 'toggle',
+                    name = 'Show Quest Type Badges',
+                    desc = 'Show type icons and color-coding for quest, gossip, and item entries in the queue.',
+                    get = function(info) return CLN.db.profile.showQuestTypeBadges end,
+                    set = function(info, value)
+                        CLN.db.profile.showQuestTypeBadges = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                    end,
+                },
+                showSubtitles = {
+                    order = 7,
+                    type = 'toggle',
+                    name = 'Show Subtitles',
+                    desc = 'Display subtitle text below the NPC portrait during voiceover playback.',
+                    get = function(info) return CLN.db.profile.showSubtitles end,
+                    set = function(info, value)
+                        CLN.db.profile.showSubtitles = value
+                        if (not value) and CLN.ReplayFrame and CLN.ReplayFrame.HideSubtitle then
+                            CLN.ReplayFrame:HideSubtitle()
+                        end
+                    end,
+                },
+                subtitleFontScale = {
+                    order = 8,
+                    type = 'range',
+                    name = 'Subtitle Text Size',
+                    desc = 'Adjust the size of subtitle text.',
+                    min = 0.5,
+                    max = 2.0,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.subtitleFontScale or 1.0
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.subtitleFontScale = value
+                        -- Apply font change live
+                        if CLN.ReplayFrame and CLN.ReplayFrame.SubtitleText then
+                            local fontScale = math.max(8, math.floor(12 * value))
+                            CLN.ReplayFrame.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", fontScale, "")
+                        end
+                        -- Re-show subtitle if currently playing
+                        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                        if CLN.db.profile.showSubtitles and cur and cur.title and CLN.ReplayFrame and CLN.ReplayFrame.ShowSubtitle then
+                            CLN.ReplayFrame:ShowSubtitle(cur.title)
+                        end
+                    end,
+                },
+                queueHistoryMaxEntries = {
+                    order = 9,
+                    type = 'range',
+                    name = 'Replay History Length',
+                    desc = 'How many completed voiceovers to keep in the replay history. Set to 0 to disable history.',
+                    min = 0,
+                    max = 50,
+                    step = 1,
+                    get = function(info) return CLN.db.profile.queueHistoryMaxEntries or 20 end,
+                    set = function(info, value)
+                        CLN.db.profile.queueHistoryMaxEntries = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                    end,
+                },
+            },
+        },
+
+        -- ═══════════════════════════════════════════════
+        -- FRAME LAYOUT — Positioning, sizing, edit mode
+        -- ═══════════════════════════════════════════════
+        FrameLayout = {
+            order = 30,
+            type = 'group',
+            name = 'Frame Layout',
+            desc = 'Position, resize, and adjust the voiceover frame and play button.',
+            inline = true,
+            args = {
+                editMode = {
+                    order = 1,
+                    type = 'toggle',
+                    name = 'Edit Mode',
+                    desc = 'Enable edit mode to move and resize the voiceover frame. Disable when done.',
+                    get = function(info)
+                        return CLN.ReplayFrame and CLN.ReplayFrame._editMode or false
+                    end,
+                    set = function(info, value)
+                        if not CLN.ReplayFrame then return end
+                        if value then
+                            CLN.ReplayFrame:ShowForEdit()
+                        else
+                            CLN.ReplayFrame:SetEditMode(false)
+                            CLN.ReplayFrame._forceShow = false
+                            if CLN.ReplayFrame.UpdateDisplayFrameState then
+                                CLN.ReplayFrame:UpdateDisplayFrameState()
+                            end
+                        end
+                    end,
+                },
+                editModeGlowHints = {
+                    order = 2,
+                    type = 'toggle',
+                    name = 'Edit Mode Glow Hints',
+                    desc = 'Show a subtle glow pulse around the frame in edit mode to help you find it.',
+                    get = function(info) return CLN.db.profile.editModeGlowHints end,
+                    set = function(info, value) CLN.db.profile.editModeGlowHints = value end,
+                },
+                queueTextScale = {
+                    order = 3,
+                    type = 'range',
+                    name = 'Queue Text Size',
+                    desc = 'Adjust the text size of queue entries and headers in the voiceover frame.',
+                    min = 0.75,
+                    max = 1.5,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.queueTextScale or 1.0
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.queueTextScale = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
+                    end,
+                },
+                frameScale = {
+                    order = 4,
+                    type = 'range',
+                    name = 'Frame Scale',
+                    desc = 'Scale the entire voiceover frame up or down. Useful for high-resolution displays.',
+                    min = 0.5,
+                    max = 2.0,
+                    step = 0.05,
+                    get = function(info)
+                        return CLN.db.profile.frameScale or 1.0
+                    end,
+                    set = function(info, value)
+                        value = math.max(0.5, math.min(2.0, value))
+                        CLN.db.profile.frameScale = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.DisplayFrame then
+                            CLN.ReplayFrame.DisplayFrame:SetScale(value)
+                        end
+                    end,
+                },
+                npcModelFrameHeight = {
+                    order = 5,
+                    type = 'range',
+                    name = 'Portrait Height',
+                    desc = 'Height of the NPC portrait area in pixels. Larger values show more of the NPC model.',
+                    min = 50,
+                    max = 300,
+                    step = 5,
+                    get = function(info)
+                        return CLN.db.profile.npcModelFrameHeight or 140
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.npcModelFrameHeight = value
+                        if CLN.ReplayFrame then
+                            CLN.ReplayFrame.npcModelFrameHeight = value
+                            if CLN.ReplayFrame.ModelContainer then
+                                CLN.ReplayFrame.ModelContainer:SetHeight(value)
+                            end
+                            if CLN.ReplayFrame.NpcModelFrame then
+                                CLN.ReplayFrame.NpcModelFrame:SetHeight(value)
+                            end
+                        end
+                    end,
+                },
+                resetFramePos = {
+                    order = 6,
+                    type = 'execute',
+                    name = 'Reset Frame Position',
+                    desc = 'Reset the voiceover frame to its default position on screen.',
+                    func = function() CLN.ReplayFrame:ResetFramePosition() end,
+                },
+                buttonPosX = {
+                    order = 7,
+                    type = 'range',
+                    name = 'Play Button X Offset',
+                    desc = 'Horizontal offset for the play button on quest/gossip frames.',
+                    min = -200,
+                    max = 200,
+                    step = 1,
+                    get = function(info) return CLN.db.profile.buttonPosX or 0 end,
+                    set = function(info, value)
+                        CLN.db.profile.buttonPosX = value
+                        CLN.PlayButton:UpdateButtonPositions()
+                    end,
+                },
+                buttonPosY = {
+                    order = 8,
+                    type = 'range',
+                    name = 'Play Button Y Offset',
+                    desc = 'Vertical offset for the play button on quest/gossip frames.',
+                    min = -200,
+                    max = 200,
+                    step = 1,
+                    get = function(info) return CLN.db.profile.buttonPosY or 0 end,
+                    set = function(info, value)
+                        CLN.db.profile.buttonPosY = value
+                        CLN.PlayButton:UpdateButtonPositions()
+                    end,
+                },
+                resetButtonPosition = {
+                    order = 9,
+                    type = 'execute',
+                    name = 'Reset Play Button Position',
+                    desc = 'Reset the play button to its default position on dialog frames.',
+                    func = function()
+                        CLN.db.profile.buttonPosX = -15
+                        CLN.db.profile.buttonPosY = -30
+                        CLN.PlayButton:UpdateButtonPositions()
+                    end,
+                },
+            },
+        },
+
+        -- ═══════════════════════════════════════════════
+        -- ADVANCED — NPC model rendering settings
+        -- ═══════════════════════════════════════════════
+        Advanced = {
+            order = 40,
+            type = 'group',
+            name = 'Advanced',
+            desc = 'NPC portrait rendering and camera behavior.',
+            inline = true,
+            args = {
+                renderBackend = {
+                    order = 1,
+                    type = 'select',
+                    name = 'NPC Model Renderer',
+                    desc = 'Which renderer draws the NPC portrait.\n\n• Auto — uses the best option for your game version\n• ModelScene — modern renderer (Retail)\n• PlayerModel — classic/legacy renderer',
+                    values = function()
+                        return {
+                            auto = 'Auto (recommended)',
+                            scene = 'ModelScene (modern)',
+                            player = 'PlayerModel (legacy)',
+                        }
+                    end,
+                    hidden = function()
+                        return not (CLN and CLN.ReplayFrame and CLN.ReplayFrame.IsModelSceneAvailable and CLN.ReplayFrame:IsModelSceneAvailable())
+                    end,
+                    get = function(info)
+                        return CLN.db.profile.renderBackend or 'auto'
+                    end,
+                    set = function(info, value)
+                        CLN.db.profile.renderBackend = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.RebuildModelHost then
+                            CLN.ReplayFrame:RebuildModelHost()
+                        end
+                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+                            CLN.ReplayFrame:UpdateDisplayFrameState()
+                        end
+                    end,
+                },
+                advancedCameraFitting = {
+                    order = 2,
+                    type = 'toggle',
+                    name = 'Enhanced Portrait Framing',
+                    desc = 'Use improved camera positioning for better NPC portrait framing. Disable if you see visual jitter.',
                     get = function(info)
                         return CLN.db.profile.advancedCameraFitting
                     end,
                     set = function(info, value)
                         CLN.db.profile.advancedCameraFitting = value
-                        -- Rebuild host to switch fit delegates and reapply default fit if visible
                         if CLN.ReplayFrame and CLN.ReplayFrame.RebuildModelHost then
                             CLN.ReplayFrame:RebuildModelHost()
                         end
@@ -221,9 +425,10 @@ local options = {
                     end,
                 },
                 disableCameraAnimations = {
+                    order = 3,
                     type = 'toggle',
-                    name = 'Disable Camera Animations',
-                    desc = 'Stop camera zoom/pan easing during playback; model/emote animations still run.',
+                    name = 'Disable Portrait Animations',
+                    desc = 'Stop camera zoom and pan effects on the NPC portrait. The NPC model still animates normally.',
                     get = function(info)
                         return CLN.db.profile.disableCameraAnimations
                     end,
@@ -240,261 +445,197 @@ local options = {
                         end
                     end,
                 },
-                renderBackend = {
-                    type = 'select',
-                    name = 'Render Backend',
-                    desc = 'Choose which model renderer to use for the floating head. Auto prefers ModelScene if available; PlayerModel is the legacy fallback.',
-                    values = function()
-                        return { auto = 'Auto (prefer ModelScene)', scene = 'ModelScene (Retail)', player = 'PlayerModel (Legacy)' }
-                    end,
-                    hidden = function()
-                        -- Only show when ModelScene is available in client
-                        return not (CLN and CLN.ReplayFrame and CLN.ReplayFrame.IsModelSceneAvailable and CLN.ReplayFrame:IsModelSceneAvailable())
-                    end,
-                    get = function(info)
-                        return CLN.db.profile.renderBackend or 'auto'
-                    end,
-                    set = function(info, value)
-                        CLN.db.profile.renderBackend = value
-                        -- Rebuild model host with new backend and refresh
-                        if CLN.ReplayFrame and CLN.ReplayFrame.RebuildModelHost then
-                            CLN.ReplayFrame:RebuildModelHost()
-                        end
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-                            CLN.ReplayFrame:UpdateDisplayFrameState()
-                        end
-                    end,
-                },
-                -- Edit Mode specific settings removed
-                queueTextScale = {
-                    type = 'range',
-                    name = 'Queue Text Scale',
-                    desc = 'Scale the header and queue row text size.',
-                    min = 0.75,
-                    max = 1.5,
-                    step = 0.05,
-                    get = function(info)
-                        return CLN.db.profile.queueTextScale or 1.0
-                    end,
-                    set = function(info, value)
-                        CLN.db.profile.queueTextScale = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
-                    end,
-                },
-                showSubtitles = {
+            },
+        },
+
+        -- ═══════════════════════════════════════════════
+        -- DATA COLLECTION — For community contributors
+        -- ═══════════════════════════════════════════════
+        DataCollection = {
+            order = 80,
+            type = 'group',
+            name = 'Data Collection',
+            desc = 'Help the project by recording NPC dialog text for voiceover generation.',
+            inline = true,
+            args = {
+                logNpcTexts = {
+                    order = 1,
                     type = 'toggle',
-                    name = 'Show Subtitles',
-                    desc = 'Show subtitle captions below the model during playback.',
-                    get = function(info) return CLN.db.profile.showSubtitles end,
+                    name = 'Track NPC Dialog Data',
+                    desc = 'Record NPC dialog text as you play for voiceover generation. Join our Discord if you want to contribute!',
+                    get = function(info) return CLN.db.profile.logNpcTexts end,
                     set = function(info, value)
-                        CLN.db.profile.showSubtitles = value
-                        if (not value) and CLN.ReplayFrame and CLN.ReplayFrame.HideSubtitle then
-                            CLN.ReplayFrame:HideSubtitle()
+                        CLN.db.profile.logNpcTexts = value
+                        if (not value) then
+                            CLN.db.profile.printNpcTexts = false
                         end
                     end,
                 },
-                subtitleFontScale = {
-                    type = 'range',
-                    name = 'Subtitle Font Scale',
-                    desc = 'Adjust subtitle caption text size.',
-                    min = 0.5,
-                    max = 2.0,
-                    step = 0.05,
-                    get = function(info)
-                        return CLN.db.profile.subtitleFontScale or 1.0
-                    end,
-                    set = function(info, value)
-                        CLN.db.profile.subtitleFontScale = value
-                    end,
-                },
-                compactMode = {
+                printNpcTexts = {
+                    order = 2,
                     type = 'toggle',
-                    name = 'Compact Mode (hide NPC model)',
-                    desc = 'Hide the NPC model and shrink the queue frame width.',
-                    get = function(info) return CLN.db.profile.compactMode end,
+                    name = 'Log Collected Data to Chat',
+                    desc = 'Print collected NPC dialog data in the chat window as it is recorded.',
+                    disabled = function() return not CLN.db.profile.logNpcTexts end,
+                    get = function(info) return CLN.db.profile.printNpcTexts end,
+                    set = function(info, value) CLN.db.profile.printNpcTexts = value end,
+                },
+                overwriteExistingGossipValues = {
+                    order = 3,
+                    type = 'toggle',
+                    name = 'Overwrite Existing Data',
+                    desc = 'Replace previously collected dialog data when you talk to the same NPC again.',
+                    disabled = function() return not CLN.db.profile.logNpcTexts end,
+                    get = function(info) return CLN.db.profile.overwriteExistingGossipValues end,
+                    set = function(info, value) CLN.db.profile.overwriteExistingGossipValues = value end,
+                },
+            },
+        },
+
+        -- ═══════════════════════════════════════════════
+        -- DEVELOPER & DEBUG — For developers and testing
+        -- ═══════════════════════════════════════════════
+        DeveloperDebug = {
+            order = 90,
+            type = 'group',
+            name = 'Developer & Debug',
+            desc = 'Diagnostic tools for addon developers and testers.',
+            inline = true,
+            args = {
+                debugMode = {
+                    order = 1,
+                    type = 'toggle',
+                    name = 'Enable Debug Logging',
+                    desc = 'Enable debug messages. View them in the Logs window (/clnlogs) or enable chat mirroring below.',
+                    get = function(info) return CLN.db.profile.debugMode end,
                     set = function(info, value)
-                        CLN.db.profile.compactMode = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                        CLN.db.profile.debugMode = value
                     end,
                 },
-                combatAutoCollapse = {
+                logToChat = {
+                    order = 2,
                     type = 'toggle',
-                    name = 'Auto-hide in Combat',
-                    desc = 'Automatically collapse the replay frame during combat',
-                    get = function(info) return CLN.db.profile.combatAutoCollapse end,
-                    set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
-                },
-                showProgressBar = {
-                    type = 'toggle',
-                    name = 'Show Progress Bar',
-                    desc = 'Show a progress indicator during voiceover playback',
-                    get = function(info) return CLN.db.profile.showProgressBar end,
+                    name = 'Mirror Logs to Chat',
+                    desc = 'Also print debug logs in the chat window. Logs window always captures everything regardless.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.logToChat end,
                     set = function(info, value)
-                        CLN.db.profile.showProgressBar = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateProgressBar then
-                            CLN.ReplayFrame:UpdateProgressBar()
-                        end
+                        CLN.db.profile.logToChat = value
                     end,
                 },
-                resetFramePos = {
-                    type = 'execute',
-                    name = 'Reset Replay Frame Position',
-                    desc = 'Reset the replay frame position to its default values.',
-                    func = function() CLN.ReplayFrame:ResetFramePosition() end,
-                },
-                editMode = {
+                printMissingFiles = {
+                    order = 3,
                     type = 'toggle',
-                    name = 'Edit Mode',
-                    desc = 'Toggle edit mode for the replay frame. When enabled, you can move and resize the frame.',
-                    get = function(info) 
-                        return CLN.ReplayFrame and CLN.ReplayFrame._editMode or false
-                    end,
+                    name = 'Log Missing Voiceover Files',
+                    desc = 'Show warnings when voiceover audio files are missing. Useful for finding gaps in voiceover packs.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.printMissingFiles end,
+                    set = function(info, value) CLN.db.profile.printMissingFiles = value end,
+                },
+                debugNoAnim = {
+                    order = 4,
+                    type = 'toggle',
+                    name = 'Freeze Animations',
+                    desc = 'Freeze all model and emote animations to debug camera framing.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.debugNoAnim end,
                     set = function(info, value)
-                        if not CLN.ReplayFrame then return end
-                        if value then
-                            -- Enter edit mode
-                            CLN.ReplayFrame:ShowForEdit()
-                        else
-                            -- Exit edit mode
-                            CLN.ReplayFrame:SetEditMode(false)
-                            CLN.ReplayFrame._forceShow = false
-                            if CLN.ReplayFrame.UpdateDisplayFrameState then
-                                CLN.ReplayFrame:UpdateDisplayFrameState()
+                        CLN.db.profile.debugNoAnim = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.SetNoAnimDebug then
+                            CLN.ReplayFrame:SetNoAnimDebug(value)
+                            if CLN.ReplayFrame._UpdateModelOnUpdateHook then
+                                CLN.ReplayFrame:_UpdateModelOnUpdateHook()
                             end
                         end
                     end,
                 },
-                editModeGlowHints = {
+                debugAnimations = {
+                    order = 5,
                     type = 'toggle',
-                    name = 'Edit Mode Glow Hints',
-                    desc = 'Show a subtle glow pulse to highlight the frame on first use',
-                    get = function(info) return CLN.db.profile.editModeGlowHints end,
-                    set = function(info, value) CLN.db.profile.editModeGlowHints = value end,
+                    name = 'Animation Debug Logs',
+                    desc = 'Enable detailed animation and camera debug logs. Filter by category below.',
+                    disabled = function() return not CLN.db.profile.debugMode end,
+                    get = function(info) return CLN.db.profile.debugAnimations end,
+                    set = function(info, value) CLN.db.profile.debugAnimations = value end,
                 },
-                showReplayFrame = {
-                    type = 'toggle',
-                    name = 'Show Floating Head Frame (voiceover queue)',
-                    desc = 'Toggle to show the floating head frame (voiceover queue)',
-                    get = function(info) return CLN.db.profile.showReplayFrame end,
-                    set = function(info, value)
-                        CLN.db.profile.showReplayFrame = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
-                    end,
-                },
-                alwaysShowReplayFrame = {
-                    type = 'toggle',
-                    name = 'Always Show Replay Frame',
-                    desc = 'Keep the replay frame visible even when no voiceover is playing.',
-                    get = function(info) return CLN.db.profile.alwaysShowReplayFrame end,
-                    set = function(info, value) CLN.db.profile.alwaysShowReplayFrame = value end,
-                },
-            },
-        },
-        PlaybackOptions = {
-            order = 20,
-            type = 'group',
-            name = 'Playback Options',
-            inline = true,
-            args = {
-                autoPlayVoiceovers = {
-                    type = 'toggle',
-                    name = 'Play on dialog window open',
-                    desc = 'Toggle to play voiceovers when opening the gossip or quest window.',
-                    get = function(info) return CLN.db.profile.autoPlayVoiceovers end,
-                    set = function(info, value) CLN.db.profile.autoPlayVoiceovers = value end,
-                },
-                questPlaybackMode = {
+                debugAnimCategories = {
+                    order = 6,
                     type = 'select',
-                    name = 'Quest Playback Mode',
-                    desc = 'How quest voiceovers behave: Queue (play sequentially), Stop On Close (interrupt when window closes), or Manual (only on button press).',
-                    values = {
-                        queue = 'Queue (sequential, uninterrupted)',
-                        stopOnClose = 'Stop On Close (interrupt when dialog closes)',
-                        manual = 'Manual (never auto queue, only play button)'
-                    },
-                    get = function() return CLN.db.profile.questPlaybackMode or 'queue' end,
+                    name = 'Animation Log Filter',
+                    desc = 'Filter animation debug logs by category.',
+                    values = function()
+                        local C = CLN and CLN.Utils and CLN.Utils.LogCategories
+                        local values = {
+                            all = 'All Categories',
+                            none = 'None (Disable All)',
+                        }
+                        if C then
+                            values[C.camera] = 'Camera Only'
+                            values[C.framing] = 'Framing Only'
+                            values[C.projection] = 'Projection Only'
+                            values[C.host] = 'Host/Backend Only'
+                            values[C.loader] = 'Loader Only'
+                            values[C.animation] = 'Animation Only'
+                            values[C.emotes] = 'Emotes Only'
+                        end
+                        return values
+                    end,
+                    disabled = function()
+                        return not (CLN.db.profile.debugMode and CLN.db.profile.debugAnimations)
+                    end,
+                    get = function()
+                        local cats = CLN.db.profile.debugAnimCategories
+                        if cats == 'all' or not cats then return 'all' end
+                        if type(cats) == 'table' then
+                            local count = 0
+                            local lastCat = nil
+                            for k, v in pairs(cats) do
+                                if v then
+                                    count = count + 1
+                                    lastCat = k
+                                end
+                            end
+                            if count == 0 then return 'none' end
+                            if count == 1 then return lastCat end
+                            return 'all'
+                        end
+                        return 'all'
+                    end,
                     set = function(_, value)
-                        CLN.db.profile.questPlaybackMode = value
-                        if CLN._SyncLegacyQuestPlaybackFlags then CLN:_SyncLegacyQuestPlaybackFlags() end
+                        if value == 'all' then
+                            CLN.db.profile.debugAnimCategories = 'all'
+                        elseif value == 'none' then
+                            CLN.db.profile.debugAnimCategories = {}
+                        else
+                            local cats = {}
+                            cats[value] = true
+                            CLN.db.profile.debugAnimCategories = cats
+                        end
                     end,
                 },
-                playVoiceoverAfterDelay = {
-                    type = 'range',
-                    name = 'Play Voiceover After A Delay',
-                    desc = 'Set the delay (in seconds) before playing voiceovers after talking with questgiver.',
-                    min = 0,
-                    max = 3,
-                    step = 0.1,
-                    get = function(info) return CLN.db.profile.playVoiceoverAfterDelay end,
-                    set = function(info, value) CLN.db.profile.playVoiceoverAfterDelay = value end,
-                },
-                audioChannel = {
-                    type = 'select',
-                    name = 'Audio Channels',
-                    desc = 'Select the audio channel for voiceover playback.',
-                    values = {
-                        MASTER = 'MASTER',
-                        DIALOG = 'DIALOG',
-                        AMBIENCE = 'AMBIENCE',
-                        MUSIC = 'MUSIC',
-                        SFX = 'SFX',
-                    },
-                    get = function(info) return CLN.db.profile.audioChannel end,
-                    set = function(info, value) CLN.db.profile.audioChannel = value end,
-                },
-                showSpeakButton = {
+                showGossipEditor = {
+                    order = 7,
                     type = 'toggle',
-                    name = 'Enable Speak/Play button for dialogs',
-                    desc = 'Toggle to enable or disable Speak/Play button on next to the dialog frame.',
-                    get = function(info) return CLN.db.profile.showSpeakButton end,
-                    set = function(info, value) CLN.db.profile.showSpeakButton = value end,
+                    name = 'Show Gossip Editor',
+                    desc = 'Open the Gossip Editor window for editing and fixing collected NPC gossip lines.',
+                    get = function(info) return CLN.Editor.Frame:IsShown() end,
+                    set = function(info, value)
+                        if value then
+                            CLN.Editor.Frame:Show()
+                        else
+                            CLN.Editor.Frame:Hide()
+                        end
+                    end,
+                },
+                printLoadedVoiceoverPackMetadata = {
+                    order = 8,
+                    type = 'execute',
+                    name = 'Print Voiceover Pack Info',
+                    desc = 'Print metadata and statistics for all loaded voiceover packs.',
+                    func = function() CLN:PrintLoadedVoiceoverPacks() end,
                 },
             },
         },
-        QuestFrameButtonOptions = {
-            order = 30,
-            type = 'group',
-            name = 'Quest And Gossip Frame Button Options',
-            inline = true,
-            args = {
-                buttonPosX = {
-                    type = 'range',
-                    name = 'Button X Position',
-                    desc = 'Set the X coordinate for the button position relative to the frame.',
-                    min = -200,
-                    max = 200,
-                    step = 1,
-                    get = function(info) return CLN.db.profile.buttonPosX or 0 end,
-                    set = function(info, value)
-                        CLN.db.profile.buttonPosX = value
-                        CLN.PlayButton:UpdateButtonPositions()
-                    end,
-                },
-                buttonPosY = {
-                    type = 'range',
-                    name = 'Button Y Position',
-                    desc = 'Set the Y coordinate for the button position relative to the frame.',
-                    min = -200,
-                    max = 200,
-                    step = 1,
-                    get = function(info) return CLN.db.profile.buttonPosY or 0 end,
-                    set = function(info, value)
-                        CLN.db.profile.buttonPosY = value
-                        CLN.PlayButton:UpdateButtonPositions()
-                    end,
-                },
-                resetButtonPosition = {
-                    type = 'execute',
-                    name = 'Reset Button Positions',
-                    desc = 'Reset the X and Y positions to their default values.',
-                    func = function()
-                        CLN.db.profile.buttonPosX = -15  -- Default X position
-                        CLN.db.profile.buttonPosY = -30  -- Default Y position
-                        CLN.PlayButton:UpdateButtonPositions()
-                    end,
-                },
-            },
-        }
     },
 }
 

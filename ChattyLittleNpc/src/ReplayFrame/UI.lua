@@ -1062,6 +1062,12 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         this._scrollOffset = (this._scrollOffset or 0) - delta
         if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
     end)
+    -- Thin scroll position indicator (right edge, only visible when content overflows)
+    local scrollIndicator = list:CreateTexture(nil, "OVERLAY")
+    scrollIndicator:SetWidth(2)
+    scrollIndicator:SetColorTexture(1.0, 0.82, 0.0, 0.4) -- gold, semi-transparent
+    scrollIndicator:Hide()
+    self._scrollIndicator = scrollIndicator
     self.QueueRowHeight = 24
     self.QueueRows = {}
 
@@ -1101,6 +1107,27 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             if text.SetWordWrap then text:SetWordWrap(false) end
             text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
+
+            local clearBtn = CreateFrame("Button", nil, row)
+            clearBtn:SetSize(16, 16)
+            clearBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+            clearBtn:SetNormalFontObject("GameFontNormalSmall")
+            clearBtn:SetText("\xC3\x97") -- × multiplication sign
+            if clearBtn:GetFontString() then clearBtn:GetFontString():SetTextColor(0.6, 0.5, 0.2, 0.8) end
+            clearBtn:SetHighlightFontObject("GameFontHighlightSmall")
+            clearBtn:Hide()
+            clearBtn:SetScript("OnClick", function()
+                if ReplayFrame and ReplayFrame.ClearHistory then
+                    ReplayFrame:ClearHistory()
+                end
+            end)
+            clearBtn:SetScript("OnEnter", function(btn)
+                GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
+                GameTooltip:AddLine("Clear History", 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
+            row.clearHistoryBtn = clearBtn
 
             row:SetScript("OnMouseUp", function(selfBtn, button)
                 local e = selfBtn._element
@@ -1157,12 +1184,15 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     GameTooltip:ClearLines()
                     -- Type badge prefix
                     local typeBadge = ""
-                    if e.entryType == "quest" then
-                        typeBadge = "|cFFFFD100[Quest]|r "
-                    elseif e.entryType == "Gossip" then
-                        typeBadge = "|cFF99CCFF[Gossip]|r "
-                    elseif e.entryType == "GameObject" then
-                        typeBadge = "|cFFD9C08C[Item]|r "
+                    local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
+                    if showBadges then
+                        if e.entryType == "quest" then
+                            typeBadge = "|cFFFFD100[Quest]|r "
+                        elseif e.entryType == "Gossip" then
+                            typeBadge = "|cFF99CCFF[Gossip]|r "
+                        elseif e.entryType == "GameObject" then
+                            typeBadge = "|cFFD9C08C[Item]|r "
+                        end
                     end
                     local lines = ReplayFrame.SplitTooltipIntoSentences and ReplayFrame:SplitTooltipIntoSentences(e.tooltip) or { e.tooltip }
                     for i, line in ipairs(lines) do
@@ -1179,11 +1209,12 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if selfBtn._hl then selfBtn._hl:Hide() end
                 if not selfBtn._isActive and selfBtn.text then
                     local e = selfBtn._element
+                    local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
                     if e and e.isHistory then
                         selfBtn.text:SetTextColor(0.5, 0.5, 0.5)
-                    elseif e and e.entryType == "Gossip" then
+                    elseif showBadges and e and e.entryType == "Gossip" then
                         selfBtn.text:SetTextColor(0.6, 0.8, 1.0)
-                    elseif e and e.entryType == "GameObject" then
+                    elseif showBadges and e and e.entryType == "GameObject" then
                         selfBtn.text:SetTextColor(0.85, 0.75, 0.55)
                     else
                         selfBtn.text:SetTextColor(0.95, 0.86, 0.20)
@@ -1204,7 +1235,8 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.clearHistoryBtn then r.clearHistoryBtn:Hide() end end
+        local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
             local element = entries[i]
@@ -1221,6 +1253,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if row.bulletTex then row.bulletTex:Hide() end
                 if row.typeIcon then row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide() end
                 row:EnableMouse(false)
+                if row.clearHistoryBtn then row.clearHistoryBtn:Show() end
             -- History row (greyed out with replay capability)
             elseif element.isHistory then
                 local label = element.label or "Unknown"
@@ -1230,22 +1263,27 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     row.bulletTex:SetColorTexture(0.5, 0.5, 0.5, 0.5) -- dim bullet
                     row.bulletTex:Show()
                 end
+                if row.clearHistoryBtn then row.clearHistoryBtn:Hide() end
                 -- Type icon for history
                 if row.typeIcon then
-                    local iconAtlas = CLN and CLN.IconAtlas
-                    if iconAtlas and element.entryType then
-                        if element.entryType == "quest" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
-                            row.typeIcon:SetDesaturated(true)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
-                        elseif element.entryType == "Gossip" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
-                            row.typeIcon:SetDesaturated(true)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
-                        elseif element.entryType == "GameObject" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
-                            row.typeIcon:SetDesaturated(true)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                    if showBadges then
+                        local iconAtlas = CLN and CLN.IconAtlas
+                        if iconAtlas and element.entryType then
+                            if element.entryType == "quest" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
+                                row.typeIcon:SetDesaturated(true)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            elseif element.entryType == "Gossip" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
+                                row.typeIcon:SetDesaturated(true)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            elseif element.entryType == "GameObject" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
+                                row.typeIcon:SetDesaturated(true)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            else
+                                row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
+                            end
                         else
                             row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
                         end
@@ -1267,34 +1305,39 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 local label = element.label or "Unknown"
                 row._fullText = label
                 row:EnableMouse(true)
+                if row.clearHistoryBtn then row.clearHistoryBtn:Hide() end
                 -- Apply coloring by type
                 if element.isPlaying then
                     row.text:SetTextColor(0.2, 1.0, 0.2)
-                elseif element.entryType == "quest" then
+                elseif showBadges and element.entryType == "quest" then
                     row.text:SetTextColor(1.0, 0.82, 0.0)
-                elseif element.entryType == "Gossip" then
+                elseif showBadges and element.entryType == "Gossip" then
                     row.text:SetTextColor(0.6, 0.8, 1.0)
-                elseif element.entryType == "GameObject" then
+                elseif showBadges and element.entryType == "GameObject" then
                     row.text:SetTextColor(0.85, 0.75, 0.55)
                 else
                     row.text:SetTextColor(0.95, 0.86, 0.20)
                 end
                 -- Set type icon
                 if row.typeIcon then
-                    local iconAtlas = CLN and CLN.IconAtlas
-                    if iconAtlas and element.entryType then
-                        if element.entryType == "quest" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
-                            row.typeIcon:SetDesaturated(false)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
-                        elseif element.entryType == "Gossip" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
-                            row.typeIcon:SetDesaturated(false)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
-                        elseif element.entryType == "GameObject" then
-                            row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
-                            row.typeIcon:SetDesaturated(false)
-                            row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                    if showBadges then
+                        local iconAtlas = CLN and CLN.IconAtlas
+                        if iconAtlas and element.entryType then
+                            if element.entryType == "quest" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
+                                row.typeIcon:SetDesaturated(false)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            elseif element.entryType == "Gossip" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.gossipBubble))
+                                row.typeIcon:SetDesaturated(false)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            elseif element.entryType == "GameObject" then
+                                row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.itemScroll))
+                                row.typeIcon:SetDesaturated(false)
+                                row.typeIcon:SetSize(14, 14); row.typeIcon:Show()
+                            else
+                                row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
+                            end
                         else
                             row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide()
                         end
