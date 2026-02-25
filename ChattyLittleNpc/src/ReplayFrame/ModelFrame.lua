@@ -153,21 +153,14 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         self.NpcModelFrame:Hide()
         return
     end
-    -- Defensive: ensure we only have one PlayerModel child
+    -- Defensive: ensure only the current model host is visible; hide orphaned frames
+    -- from prior RebuildModelHost calls (WoW frames can't be destroyed, only hidden)
     if self.ModelContainer and self.ModelContainer.GetChildren then
-        local count = 0
         local children = { self.ModelContainer:GetChildren() }
         for _, child in ipairs(children) do
-            if child and child.GetObjectType and child:GetObjectType() == "PlayerModel" then
-                count = count + 1
-            end
-        end
-        if count > 1 then
-            -- hide any extras just in case
-            for _, child in ipairs(children) do
-                if child ~= self.NpcModelFrame and child and child.GetObjectType and child:GetObjectType() == "PlayerModel" then
-                    child:Hide()
-                end
+            if child and child ~= self.NpcModelFrame and child.Hide then
+                if child.ClearModel then pcall(child.ClearModel, child) end
+                child:Hide()
             end
         end
     end

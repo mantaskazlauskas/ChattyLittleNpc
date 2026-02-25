@@ -829,7 +829,11 @@ function M.Attach(host, backend)
         local ok, loaded = pcall(a.IsLoaded, a)
         if ok and loaded then cb(self); return end
         
+        local attempts = 0
+        local maxAttempts = 60 -- ~3s at 50ms intervals
         local function tryOnce()
+            attempts = attempts + 1
+            if attempts > maxAttempts then return true end -- give up, stop polling
             local ok2, loaded2 = pcall(a.IsLoaded, a)
             if ok2 and loaded2 then cb(self); return true end
             return false
