@@ -723,8 +723,8 @@ function ReplayFrame:SetModelAnim(animId)
     -- Skip only if both our cached value and the model's actual state match
     if self._lastAppliedAnimId == animId and curAnim == animId then return end
     -- If switching between different one-shots, clear watcher and cancel any sequence before applying new one
-    local wasOneShot = self._lastAppliedAnimId == 67 or self._lastAppliedAnimId == 185 or self._lastAppliedAnimId == 186
-    local willBeOneShot = animId == 67 or animId == 185 or animId == 186
+    local wasOneShot = self._lastAppliedAnimId == 67 or self._lastAppliedAnimId == 185 or self._lastAppliedAnimId == 186 or self._lastAppliedAnimId == 66 or self._lastAppliedAnimId == 25
+    local willBeOneShot = animId == 67 or animId == 185 or animId == 186 or animId == 66 or animId == 25
     if wasOneShot and (animId ~= self._lastAppliedAnimId) then
         -- Clear one-shot watcher and any pending emote to avoid overlap/races
         self._watchAnimActive = false
@@ -740,7 +740,7 @@ function ReplayFrame:SetModelAnim(animId)
 
     -- Start/stop one-shot finish watcher for specific non-looping emotes when visible
     local visible = m and m.IsShown and m:IsShown()
-    local isOneShot = (animId == 67) or (animId == 185) or (animId == 186)
+    local isOneShot = (animId == 67) or (animId == 185) or (animId == 186) or (animId == 66) or (animId == 25)
     if visible and isOneShot then
         self._watchAnimActive = true
         self._watchAnimId = animId

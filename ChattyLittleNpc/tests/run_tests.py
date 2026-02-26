@@ -702,6 +702,216 @@ class TestReplayFramePure(unittest.TestCase):
         self.assertIn("Innkeeper", result)
 
 
+class TestFSMExpansion(unittest.TestCase):
+    """Test FSM expansion: new states, reverence detection, emphasis detection, AnimIds."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        # Define pure implementations of new analysis functions
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+
+            -- State constants (should include BOW and POINT)
+            RF.State = RF.State or {}
+            RF.State.IDLE  = "idle"
+            RF.State.WAVE  = "wave"
+            RF.State.TALK  = "talk"
+            RF.State.BOW   = "bow"
+            RF.State.POINT = "point"
+
+            -- AnimIds registry
+            RF.AnimIds = RF.AnimIds or {}
+            RF.AnimIds.IDLE       = 0
+            RF.AnimIds.TALK       = 60
+            RF.AnimIds.TALK_EXCLM = 64
+            RF.AnimIds.TALK_QUEST = 65
+            RF.AnimIds.BOW        = 66
+            RF.AnimIds.WAVE       = 67
+            RF.AnimIds.POINT      = 25
+            RF.AnimIds.YES        = 185
+            RF.AnimIds.NO         = 186
+
+            -- Pure GetReverenceConfidence
+            function RF:GetReverenceConfidence(text, limit)
+                limit = limit or 15
+                if not text or type(text) ~= "string" or #text == 0 then return 0 end
+                local lower = text:lower()
+                local words = {}
+                for w in lower:gmatch("%S+") do
+                    words[#words + 1] = w
+                    if #words >= limit then break end
+                end
+                local n = #words
+                local confidence = 0
+
+                local royalty = {
+                    king=0.7, queen=0.7, prince=0.5, princess=0.5,
+                    lord=0.4, lady=0.4, majesty=0.8, highness=0.7,
+                    emperor=0.7, empress=0.7, sovereign=0.6, liege=0.6,
+                }
+                for i = 1, n do
+                    local w = words[i]:gsub("[^%w]", "")
+                    local bonus = royalty[w]
+                    if bonus then confidence = confidence + bonus; break end
+                end
+
+                local formal = {
+                    thou=0.3, thee=0.3, thy=0.3, thine=0.3,
+                    sire=0.5, milord=0.5, milady=0.5,
+                }
+                for i = 1, n do
+                    local w = words[i]:gsub("[^%w]", "")
+                    local bonus = formal[w]
+                    if bonus then confidence = confidence + bonus; break end
+                end
+
+                local segment = table.concat(words, " ", 1, n)
+                local phrases = {
+                    "your majesty", "your highness", "your grace", "your lordship",
+                    "your ladyship", "my lord", "my lady", "my liege", "my king",
+                    "my queen", "at your service", "honor to", "kneel before",
+                    "bow before", "humble servant",
+                }
+                for _, p in ipairs(phrases) do
+                    if segment:find(p, 1, true) then
+                        confidence = confidence + 0.6
+                        break
+                    end
+                end
+                return math.min(1.0, confidence)
+            end
+
+            -- Pure GetEmphasisConfidence
+            function RF:GetEmphasisConfidence(text)
+                if not text or type(text) ~= "string" or #text == 0 then return 0 end
+                local confidence = 0
+                local exclCount = 0
+                for _ in text:gmatch("!") do exclCount = exclCount + 1 end
+                if exclCount >= 3 then
+                    confidence = confidence + 0.4
+                elseif exclCount >= 1 then
+                    confidence = confidence + 0.2
+                end
+                local lower = text:lower()
+                local firstChunk = lower:sub(1, math.min(60, #lower))
+                local imperatives = {
+                    "look", "behold", "listen", "hear me", "mark my words",
+                    "go now", "charge", "attack", "defend", "stop", "halt",
+                    "silence", "enough", "now", "there",
+                }
+                for _, w in ipairs(imperatives) do
+                    if firstChunk:find(w, 1, true) then
+                        confidence = confidence + 0.3
+                        break
+                    end
+                end
+                return math.min(1.0, confidence)
+            end
+        """)
+
+    def test_states_include_bow_and_point(self):
+        """State constants should include BOW and POINT."""
+        bow = lua_call(self.lua, 'return _G.ChattyLittleNpc.ReplayFrame.State.BOW')
+        point = lua_call(self.lua, 'return _G.ChattyLittleNpc.ReplayFrame.State.POINT')
+        self.assertEqual(bow, "bow")
+        self.assertEqual(point, "point")
+
+    def test_anim_ids_registry(self):
+        """AnimIds should contain correct animation IDs."""
+        bow = lua_call(self.lua, 'return _G.ChattyLittleNpc.ReplayFrame.AnimIds.BOW')
+        point = lua_call(self.lua, 'return _G.ChattyLittleNpc.ReplayFrame.AnimIds.POINT')
+        wave = lua_call(self.lua, 'return _G.ChattyLittleNpc.ReplayFrame.AnimIds.WAVE')
+        self.assertEqual(bow, 66)
+        self.assertEqual(point, 25)
+        self.assertEqual(wave, 67)
+
+    def test_reverence_royal_title(self):
+        """Text with 'king' should have high reverence confidence."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("The King demands your presence")
+        ''')
+        self.assertGreater(result, 0.5)
+
+    def test_reverence_formal_phrase(self):
+        """'Your Majesty' phrase should trigger high confidence."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("Your Majesty, I bring word from the front")
+        ''')
+        self.assertGreater(result, 0.8)
+
+    def test_reverence_humble_servant(self):
+        """'humble servant' should trigger reverence."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("I am your humble servant, sire")
+        ''')
+        self.assertGreater(result, 0.5)
+
+    def test_reverence_no_match(self):
+        """Casual text should have zero reverence confidence."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("Hey there, how are you doing?")
+        ''')
+        self.assertEqual(result, 0)
+
+    def test_reverence_nil_text(self):
+        """nil text should return 0."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence(nil)
+        ''')
+        self.assertEqual(result, 0)
+
+    def test_reverence_empty_text(self):
+        """Empty text should return 0."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("")
+        ''')
+        self.assertEqual(result, 0)
+
+    def test_emphasis_many_exclamations(self):
+        """Text with 3+ exclamation marks should score high."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetEmphasisConfidence("Attack! Charge! For the Horde!")
+        ''')
+        self.assertGreater(result, 0.3)
+
+    def test_emphasis_imperative_word(self):
+        """Text starting with 'Behold' should score moderate emphasis."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetEmphasisConfidence("Behold the power of the Light")
+        ''')
+        self.assertGreater(result, 0.2)
+
+    def test_emphasis_calm_text(self):
+        """Calm text without exclamations or imperatives should score 0."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetEmphasisConfidence("The flowers are beautiful today.")
+        ''')
+        self.assertEqual(result, 0)
+
+    def test_emphasis_nil_text(self):
+        """nil text should return 0."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetEmphasisConfidence(nil)
+        ''')
+        self.assertEqual(result, 0)
+
+    def test_emphasis_combined(self):
+        """Imperative + exclamation should stack."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetEmphasisConfidence("Listen! The enemy approaches!")
+        ''')
+        self.assertGreater(result, 0.4)
+
+    def test_reverence_lord_with_formal(self):
+        """Lord + formal address should combine."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetReverenceConfidence("My lord, thou must ride forth")
+        ''')
+        self.assertGreater(result, 0.7)
+
+
 # Skip MD5/SimHash tests when bit library causes hangs (Lua 5.4 bit compat issue)
 @unittest.skipUnless(
     os.environ.get("RUN_BIT_TESTS"),

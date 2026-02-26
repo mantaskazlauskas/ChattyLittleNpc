@@ -103,7 +103,36 @@ local function clamp01(v)
     return v
 end
 
--- Camera targets per state (can be overridden on the frame)
+-- Animation ID constants for named emotes
+ReplayFrame.AnimIds = ReplayFrame.AnimIds or {
+    IDLE       = 0,
+    TALK       = 60,
+    TALK_EXCLM = 64,
+    TALK_QUEST = 65,
+    BOW        = 66,
+    WAVE       = 67,
+    CHEER      = 68,
+    DANCE      = 69,
+    KNEEL      = 70,
+    POINT      = 25,
+    SALUTE     = 113,
+    YES        = 185,
+    NO         = 186,
+}
+
+-- Check if the current model supports a given animation ID.
+-- Uses HasAnimation() WoW API when available; returns true as fallback.
+function ReplayFrame:ModelHasAnimation(animId)
+    if animId == nil then return false end
+    local m = self.NpcModelFrame
+    if not m then return false end
+    if m.HasAnimation then
+        local ok, result = pcall(m.HasAnimation, m, animId)
+        if ok then return result end
+    end
+    -- API unavailable — assume supported to avoid blocking
+    return true
+end
 -- Deprecated helpers for absolute zoom removed; percent-based APIs are used throughout
 
 -- Cancel any running emote
@@ -130,7 +159,10 @@ function ReplayFrame:PlayEmote(name, opts)
         return self:PlayWaveEmote(opts)
     elseif name == "hello" then
         return self:PlayHelloEmote(opts)
-    -- farewell/bye emotes removed
+    elseif name == "bow" or name == "kneel" then
+        return self:PlayBowEmote(opts)
+    elseif name == "point" or name == "salute" then
+        return self:PlayPointEmote(opts)
     elseif name == "nod" or name == "yes" then
         return self:PlayNodEmote(opts)
     elseif name == "no" or name == "shake" or name == "headshake" then
@@ -398,6 +430,68 @@ function ReplayFrame:PlayHeadShakeEmote(opts)
                 self:StartEmoteLoop()
             end
         end)
+    :run()) or false
+end
+
+-- Bow emote: reverential gesture using animation 66 (bow) with HasAnimation gating.
+-- Falls back to nod (185) if the model doesn't support bow.
+function ReplayFrame:PlayBowEmote(opts)
+    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
+    local m = self.NpcModelFrame
+    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
+    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+    if not (m and hasZoom and hasPan) then return false end
+    if not m:IsShown() then return false end
+    opts = opts or {}
+    local duration = tonumber(opts.duration) or 1.8
+
+    local A = ReplayFrame.AnimIds or {}
+    local bowId = A.BOW or 66
+    -- HasAnimation gating: fall back to nod if bow unsupported
+    if not self:ModelHasAnimation(bowId) then
+        bowId = A.YES or 185
+        if not self:ModelHasAnimation(bowId) then return false end
+    end
+
+    return (self.EmoteBuilder and self.EmoteBuilder:new()
+        :name("bow")
+        :preset("Bow", { duration = 0.3, panDur = 0.2 })
+        :anim(bowId)
+        :hold(duration)
+        :preset("Talk", { duration = 0.4, panDur = 0.2 })
+        :hold(0.05)
+        :onComplete(function() end)
+    :run()) or false
+end
+
+-- Point emote: brief emphasis gesture using animation 25 (point) with HasAnimation gating.
+-- Falls back to talk-exclamation (64) if the model doesn't support point.
+function ReplayFrame:PlayPointEmote(opts)
+    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
+    local m = self.NpcModelFrame
+    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
+    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+    if not (m and hasZoom and hasPan) then return false end
+    if not m:IsShown() then return false end
+    opts = opts or {}
+    local duration = tonumber(opts.duration) or 1.2
+
+    local A = ReplayFrame.AnimIds or {}
+    local pointId = A.POINT or 25
+    -- HasAnimation gating: fall back to exclamation talk if point unsupported
+    if not self:ModelHasAnimation(pointId) then
+        pointId = A.TALK_EXCLM or 64
+        if not self:ModelHasAnimation(pointId) then return false end
+    end
+
+    return (self.EmoteBuilder and self.EmoteBuilder:new()
+        :name("point")
+        :preset("Point", { duration = 0.25, panDur = 0.15 })
+        :anim(pointId)
+        :hold(duration)
+        :preset("Talk", { duration = 0.3, panDur = 0.2 })
+        :hold(0.05)
+        :onComplete(function() end)
     :run()) or false
 end
 
@@ -685,22 +779,42 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     local idleMin, idleMax = self._loopIdleMin or 0.2, self._loopIdleMax or 0.5
 
     -- Prefer talking; inject short idle rarely and never twice in a row
+    -- Rare point gesture chance (~5%) during talk segments for emphatic text
     local chooseIdle
+    local choosePoint = false
     if self._emoteFirstSegmentForced then
         chooseIdle = false
         self._emoteFirstSegmentForced = false
     else
         chooseIdle = (not self._loopLastWasIdle) and (math.random() > talkChance)
+        -- Point gesture: only if not idle, not recently pointed, and model supports it
+        if not chooseIdle and not self._loopLastWasPoint and math.random() < 0.05 then
+            local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            if cur2 and cur2.title and self.GetEmphasisConfidence then
+                local emphConf = self:GetEmphasisConfidence(cur2.title)
+                if emphConf > 0.3 and self.ModelHasAnimation and self:ModelHasAnimation((self.AnimIds and self.AnimIds.POINT) or 25) then
+                    choosePoint = true
+                end
+            end
+        end
     end
     local dur
-    if not chooseIdle then
+    if choosePoint then
+        dur = 1.4
+        self._loopLastWasIdle = false
+        self._loopLastWasPoint = true
+        self:PlayPointEmote({ duration = 1.2 })
+        self._emoteSegType = "point"
+    elseif not chooseIdle then
         dur = math.random() * (talkMax - talkMin) + talkMin
         self._loopLastWasIdle = false
-        self:PlayTalkEmote({ duration = 0 }) -- start immediately; duration driven by end time below
+        self._loopLastWasPoint = false
+        self:PlayTalkEmote({ duration = 0 })
         self._emoteSegType = "talk"
     else
         dur = math.random() * (idleMax - idleMin) + idleMin
         self._loopLastWasIdle = true
+        self._loopLastWasPoint = false
         self:PlayIdleEmote({ duration = 0 })
         self._emoteSegType = "idle"
     end
@@ -708,9 +822,9 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     -- Switch to timer-based scheduling; do not rely on per-frame polling
     self._emoteSegEndTime = nil
     
-    -- Safety check: ensure model has an animation set
+    -- Safety check: ensure model has an animation set (skip for point — emote handler owns it)
     local m = self.NpcModelFrame
-    if m then
+    if m and not choosePoint then
         if not chooseIdle then
             -- Force set talk animation in case PlayTalkEmote didn't work
             local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -735,6 +849,7 @@ function ReplayFrame:StopEmoteLoop()
     self._emoteSegEndTime = nil
     self._emoteSegType = nil
     self._loopLastWasIdle = nil
+    self._loopLastWasPoint = nil
     self._emoteFirstSegmentForced = nil
     -- Invalidate and cancel any pending timer
     self._emoteLoopToken = (self._emoteLoopToken or 0) + 1

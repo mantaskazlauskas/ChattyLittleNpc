@@ -12,6 +12,8 @@ ReplayFrame.State = ReplayFrame.State or {
     IDLE = "idle",
     WAVE = "wave",
     TALK = "talk",
+    BOW  = "bow",
+    POINT = "point",
 }
 local S = ReplayFrame.State
 
@@ -60,11 +62,9 @@ function ReplayFrame:InitStateMachine()
         if fsm.state == S.TALK then
             if self.StopEmoteLoop then self:StopEmoteLoop() end
         end
-        if fsm.state == S.WAVE then
-            -- cancel any pending emote sequence
+        if fsm.state == S.WAVE or fsm.state == S.BOW or fsm.state == S.POINT then
             if self.CancelEmote then self:CancelEmote() end
         end
-    -- No farewell state
 
         -- transition
         fsm.state = newState
@@ -75,21 +75,15 @@ function ReplayFrame:InitStateMachine()
             if self.CancelEmote then self:CancelEmote() end
             if self.StopEmoteLoop then self:StopEmoteLoop() end
             if self.AnimStop then self:AnimStop("zoom"); self:AnimStop("pan") end
-            -- Let idle emote own absolute camera targets
             if self.PlayIdleEmote then self:PlayIdleEmote({ duration = 0 }) end
             if self.SetIdleLoop then self:SetIdleLoop() end
             fsm.hideAt = nil
-            
-            -- Check if we have pending context to process after entering idle
             self:_processPendingContext()
         elseif newState == S.WAVE then
-            -- Stop any conversation loop/camera that might override wave choreography
             if self.StopEmoteLoop then self:StopEmoteLoop() end
             if self.AnimStop then self:AnimStop("zoom"); self:AnimStop("pan") end
-            -- play hello and transition on EMOTE_COMPLETE
             local ok = false
             if self.PlayEmote then
-                -- Register one-shot listeners using OnceEmote
                 self:OnceEmote("EMOTE_STARTED", function(payload)
                     if not payload or payload.name ~= "hello" then return end
                     if self.Director and self.Director.MarkWaved then
@@ -98,26 +92,60 @@ function ReplayFrame:InitStateMachine()
                 end)
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "hello" then return end
-                    -- Guard that playback is still current
                     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
                     if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
                         self:_fsm_enter(S.TALK)
                     else
                         self:_fsm_enter(S.IDLE)
                     end
-                    -- Process any pending context after wave completes
                     self:_processPendingContext()
                 end)
                 ok = self:PlayEmote("hello", { duration = 1.5, waveZoom = 0.3, waveOutDur = 0.2, zoomBackDur = 0.5 })
-            else
-                -- no PlayEmote available; fall back below
             end
             if not ok then
-                -- fallback directly to talk
+                self:_fsm_enter(S.TALK)
+            end
+        elseif newState == S.BOW then
+            if self.StopEmoteLoop then self:StopEmoteLoop() end
+            if self.AnimStop then self:AnimStop("zoom"); self:AnimStop("pan") end
+            local ok = false
+            if self.PlayEmote then
+                self:OnceEmote("EMOTE_COMPLETE", function(payload)
+                    if not payload or payload.name ~= "bow" then return end
+                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                        self:_fsm_enter(S.TALK)
+                    else
+                        self:_fsm_enter(S.IDLE)
+                    end
+                    self:_processPendingContext()
+                end)
+                ok = self:PlayEmote("bow", { duration = 1.8 })
+            end
+            if not ok then
+                self:_fsm_enter(S.TALK)
+            end
+        elseif newState == S.POINT then
+            -- Brief emphasis gesture, auto-returns to TALK
+            if self.StopEmoteLoop then self:StopEmoteLoop() end
+            if self.AnimStop then self:AnimStop("zoom"); self:AnimStop("pan") end
+            local ok = false
+            if self.PlayEmote then
+                self:OnceEmote("EMOTE_COMPLETE", function(payload)
+                    if not payload or payload.name ~= "point" then return end
+                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                        self:_fsm_enter(S.TALK)
+                    else
+                        self:_fsm_enter(S.IDLE)
+                    end
+                end)
+                ok = self:PlayEmote("point", { duration = 1.2 })
+            end
+            if not ok then
                 self:_fsm_enter(S.TALK)
             end
         elseif newState == S.TALK then
-            -- Let the conversation loop drive both animation and absolute camera targets
             if self.StartEmoteLoop then self:StartEmoteLoop() end
         end
     end
@@ -162,7 +190,7 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
         
     -- If it's different content or enough time has passed, allow processing
     -- But if we're currently in WAVE state for different content, let it complete first
-    if (fsm.state == S.WAVE) and not isSameHandle then
+    if (fsm.state == S.WAVE or fsm.state == S.BOW) and not isSameHandle then
             if self.Debug then self:Debug("Current state:", fsm.state, "is busy with different content, deferring") end
             -- Store for later processing when current animation completes
             fsm.pendingContext = currentContext
@@ -214,10 +242,19 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     local hasInteractedRecently = self._fsmHasInteractedRecently()
     local canWave = (not hasInteractedRecently) and (recentlyStarted or modelGrace) and self._fsmCanWave()
     local shouldWave = self._fsmLooksLikeGreeting(cur.title)
-    
-    if self.Debug then self:Debug("Wave decision - hasInteractedRecently:", hasInteractedRecently, "canWave:", canWave, "shouldWave:", shouldWave) end
 
-    if shouldWave and canWave then
+    -- Reverence detection: bow takes priority over wave for formal/royal NPC text
+    local shouldBow = false
+    if canWave and self.GetReverenceConfidence then
+        local revConf = self:GetReverenceConfidence(cur.title or "", 15)
+        shouldBow = revConf > 0.5
+    end
+    
+    if self.Debug then self:Debug("Wave decision - hasInteractedRecently:", hasInteractedRecently, "canWave:", canWave, "shouldWave:", shouldWave, "shouldBow:", shouldBow) end
+
+    if shouldBow and canWave and self:ModelHasAnimation((self.AnimIds and self.AnimIds.BOW) or 66) then
+        self:_fsm_enter(S.BOW)
+    elseif shouldWave and canWave then
         self:_fsm_enter(S.WAVE)
     else
         self:_fsm_enter(S.TALK)
@@ -315,8 +352,8 @@ function ReplayFrame:FSM_Tick()
         if self.NpcModelFrame then self.NpcModelFrame:Hide() end
     end
 
-    -- Safety: if state is talk but playback handle changed/ended, transition appropriately
-    if fsm.state == S.TALK then
+    -- Safety: if state is talk/bow/point but playback handle changed/ended, transition appropriately
+    if fsm.state == S.TALK or fsm.state == S.BOW or fsm.state == S.POINT then
         if (not playing) or (cur and fsm.lastHandle and cur.soundHandle ~= fsm.lastHandle) then
             -- Debounce: avoid calling stop repeatedly for the same stale handle
             local staleHandle = fsm.lastHandle

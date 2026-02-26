@@ -284,9 +284,11 @@ end
 
 -- Emote-named presets for readability; include a focus point for panPercent
 ReplayFrame.EmotePresets = ReplayFrame.EmotePresets or {
-    Talk = { p0 = 0.50, p1 = 1.00, focus = 0.75, padding = 0.10 },
-    Wave = { p0 = 0.30, p1 = 0.60, focus = 0.40, padding = 0.15 },
-    Idle = { p0 = 0.00, p1 = 1.00, focus = 0.50, padding = 0.12 },
+    Talk  = { p0 = 0.50, p1 = 1.00, focus = 0.75, padding = 0.10 },
+    Wave  = { p0 = 0.30, p1 = 0.60, focus = 0.40, padding = 0.15 },
+    Idle  = { p0 = 0.00, p1 = 1.00, focus = 0.50, padding = 0.12 },
+    Bow   = { p0 = 0.20, p1 = 0.70, focus = 0.45, padding = 0.12 },
+    Point = { p0 = 0.40, p1 = 0.85, focus = 0.60, padding = 0.10 },
 }
 
 function ReplayFrame:GetEmotePreset(name)
