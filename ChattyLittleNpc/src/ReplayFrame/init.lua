@@ -533,11 +533,13 @@ function ReplayFrame:RefreshQueueDataProvider()
             local thumbHeight = math.max(12, listHeight * (rowsFit / totalEntries))
             local trackHeight = listHeight - thumbHeight
             local thumbOffset = (trackHeight > 0 and maxOffset > 0) and (trackHeight * (self._scrollOffset / maxOffset)) or 0
+            self._scrollMaxOffset = maxOffset
             self._scrollIndicator:SetHeight(thumbHeight)
             self._scrollIndicator:ClearAllPoints()
-            self._scrollIndicator:SetPoint("TOPRIGHT", self.QueueListFrame, "TOPRIGHT", 0, -thumbOffset)
+            self._scrollIndicator:SetPoint("TOPRIGHT", self.QueueListFrame, "TOPRIGHT", 1, -thumbOffset)
             self._scrollIndicator:Show()
         else
+            self._scrollMaxOffset = 0
             self._scrollIndicator:Hide()
         end
     end

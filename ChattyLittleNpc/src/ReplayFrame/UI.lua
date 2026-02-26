@@ -1063,11 +1063,68 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
     end)
     -- Thin scroll position indicator (right edge, only visible when content overflows)
-    local scrollIndicator = list:CreateTexture(nil, "OVERLAY")
-    scrollIndicator:SetWidth(2)
-    scrollIndicator:SetColorTexture(1.0, 0.82, 0.0, 0.4) -- gold, semi-transparent
-    scrollIndicator:Hide()
-    self._scrollIndicator = scrollIndicator
+    -- Use a Frame (not Texture) so it can receive mouse events for drag-to-scroll
+    local scrollThumb = CreateFrame("Frame", nil, list)
+    scrollThumb:SetWidth(6)
+    scrollThumb:SetFrameStrata("HIGH")
+    scrollThumb:EnableMouse(true)
+    scrollThumb:SetMovable(true)
+    scrollThumb:Hide()
+    local scrollTex = scrollThumb:CreateTexture(nil, "ARTWORK")
+    scrollTex:SetAllPoints()
+    scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.4) -- gold, semi-transparent
+
+    -- Widen hit area: hover brightens
+    scrollThumb:SetScript("OnEnter", function(f)
+        scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.7)
+        f:SetWidth(6)
+    end)
+    scrollThumb:SetScript("OnLeave", function(f)
+        if not f._dragging then
+            scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+            f:SetWidth(6)
+        end
+    end)
+
+    -- Drag-to-scroll logic
+    scrollThumb:SetScript("OnMouseDown", function(f, button)
+        if button ~= "LeftButton" then return end
+        f._dragging = true
+        f._dragStartY = select(2, GetCursorPosition()) / (f:GetEffectiveScale() or 1)
+        f._dragStartOffset = this._scrollOffset or 0
+        scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.9)
+    end)
+    scrollThumb:SetScript("OnMouseUp", function(f, button)
+        if button ~= "LeftButton" then return end
+        f._dragging = false
+        if f:IsMouseOver() then
+            scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.7)
+        else
+            scrollTex:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+            f:SetWidth(6)
+        end
+    end)
+    scrollThumb:SetScript("OnUpdate", function(f)
+        if not f._dragging then return end
+        local curY = select(2, GetCursorPosition()) / (f:GetEffectiveScale() or 1)
+        local deltaY = f._dragStartY - curY -- negative = dragged down
+        local listHeight = this.QueueListFrame and this.QueueListFrame:GetHeight() or 100
+        local thumbHeight = f:GetHeight()
+        local trackHeight = listHeight - thumbHeight
+        if trackHeight <= 0 then return end
+        local maxOffset = this._scrollMaxOffset or 0
+        if maxOffset <= 0 then return end
+        -- Map pixel delta to offset delta
+        local offsetDelta = (deltaY / trackHeight) * maxOffset
+        local newOffset = math.floor(f._dragStartOffset + offsetDelta + 0.5)
+        newOffset = math.max(0, math.min(maxOffset, newOffset))
+        if newOffset ~= (this._scrollOffset or 0) then
+            this._scrollOffset = newOffset
+            if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
+        end
+    end)
+
+    self._scrollIndicator = scrollThumb
     self.QueueRowHeight = 24
     self.QueueRows = {}
 
