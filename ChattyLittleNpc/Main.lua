@@ -104,6 +104,8 @@ local defaults = {
         queueHistoryMaxEntries = 20,
         -- Replay UI: edit mode glow hints
         editModeGlowHints = true,
+        -- Accessibility: high-contrast mode for colorblind users
+        highContrastMode = false,
     }
 }
 
@@ -246,6 +248,8 @@ function CLN:OnEnable()
                 end
             elseif key == "showQuestTypeBadges" and self.ReplayFrame and self.ReplayFrame.MarkQueueDirty then
                 self.ReplayFrame:MarkQueueDirty()
+            elseif key == "highContrastMode" and self.ReplayFrame and self.ReplayFrame.MarkQueueDirty then
+                self.ReplayFrame:MarkQueueDirty()
             elseif key == "subtitleFontScale" and self.ReplayFrame then
                 if self.ReplayFrame.SubtitleText then
                     local fontScale = (self.db and self.db.profile and self.db.profile.subtitleFontScale) or 1.0
@@ -300,12 +304,13 @@ function CLN:OnEnable()
             applyKey("editModeGlowHints")
             applyKey("showQuestTypeBadges")
             applyKey("subtitleFontScale")
+            applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self._dbProfileHooked = true
     end

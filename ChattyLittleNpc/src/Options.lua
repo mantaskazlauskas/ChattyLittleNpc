@@ -368,6 +368,38 @@ local options = {
         -- ═══════════════════════════════════════════════
         -- ADVANCED — NPC model rendering settings
         -- ═══════════════════════════════════════════════
+        -- Accessibility
+        -- ═══════════════════════════════════════════════
+        Accessibility = {
+            order = 35,
+            type = 'group',
+            name = 'Accessibility',
+            desc = 'High-contrast mode and keyboard navigation settings.',
+            inline = true,
+            args = {
+                highContrastMode = {
+                    order = 1,
+                    type = 'toggle',
+                    name = 'High-Contrast Mode',
+                    desc = 'Brighten colors and add text type badges ([Q] Quest, [G] Gossip, [I] Item) for colorblind users. Also activates when WoW\'s colorblind mode is enabled.',
+                    width = 'full',
+                    get = function(info) return CLN.db.profile.highContrastMode end,
+                    set = function(info, value)
+                        CLN.db.profile.highContrastMode = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                    end,
+                },
+                keyboardNavHint = {
+                    order = 2,
+                    type = 'description',
+                    name = '\n|cFFFFD100Keyboard Navigation:|r  Tab into queue list, Up/Down arrows to navigate, Enter/Space to activate, Escape to deselect, Home/End to jump.',
+                    fontSize = 'medium',
+                },
+            },
+        },
+        -- ═══════════════════════════════════════════════
+        -- Advanced
+        -- ═══════════════════════════════════════════════
         Advanced = {
             order = 40,
             type = 'group',

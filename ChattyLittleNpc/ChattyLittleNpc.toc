@@ -46,6 +46,8 @@ src/ReplayFrame/Renderers/ScenePresets.lua
 src/ReplayFrame/Renderers/PlayerPresets.lua
 src/ReplayFrame/ModelHost.lua
 src/ReplayFrame/ModelFrame.lua
+src/ReplayFrame/TextAnalysis.lua
+src/ReplayFrame/Accessibility.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua

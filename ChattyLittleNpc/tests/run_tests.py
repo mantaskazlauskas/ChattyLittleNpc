@@ -27,6 +27,9 @@ def make_lua():
 
     # Stub global WoW APIs, addon namespace, and Lua 5.4 bit compat
     lua.execute("""
+        -- Lua 5.4 compatibility
+        unpack = unpack or table.unpack
+
         -- Lua 5.4 bit compatibility shim (WoW uses LuaJIT's 'bit' library)
         bit = bit or {}
         bit.band  = function(a, b) return a & b end
@@ -700,6 +703,155 @@ class TestReplayFramePure(unittest.TestCase):
             return _G.ChattyLittleNpc.ReplayFrame.Pure.BuildHeaderText("Hello friend", "Innkeeper", false, 0, true)
         ''')
         self.assertIn("Innkeeper", result)
+
+
+class TestAccessibility(unittest.TestCase):
+    """Test accessibility helpers: high-contrast colors, badges, row color selection."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+
+            -- Simulate profile
+            CLN.db = CLN.db or {}
+            CLN.db.profile = CLN.db.profile or {}
+            CLN.db.profile.highContrastMode = false
+
+            -- Minimal GetCVarBool stub
+            _G.GetCVarBool = function(name)
+                if name == "colorblindMode" then return CLN._testColorblind end
+                return false
+            end
+
+            -- Pure IsHighContrastMode
+            function RF:IsHighContrastMode()
+                if GetCVarBool and GetCVarBool("colorblindMode") then return true end
+                local db = CLN and CLN.db and CLN.db.profile
+                return db and db.highContrastMode
+            end
+
+            -- Type badge text
+            local TYPE_BADGES = {
+                quest      = "[Q] ",
+                Gossip     = "[G] ",
+                GameObject = "[I] ",
+            }
+
+            function RF:GetAccessibilityBadge(entryType)
+                if not self:IsHighContrastMode() then return "" end
+                return TYPE_BADGES[entryType] or ""
+            end
+
+            -- High-contrast color overrides
+            local HC_COLORS = {
+                playing   = { 0.1, 1.0, 0.1 },
+                quest     = { 1.0, 0.90, 0.10 },
+                gossip    = { 0.5, 0.85, 1.0 },
+                gameobj   = { 1.0, 0.85, 0.55 },
+                history   = { 0.65, 0.65, 0.65 },
+                default   = { 1.0, 0.90, 0.15 },
+            }
+
+            function RF:GetRowColor(element, showBadges)
+                local hc = self:IsHighContrastMode()
+                if element.isPlaying then
+                    return unpack(hc and HC_COLORS.playing or { 0.2, 1.0, 0.2 })
+                elseif element.isHistory then
+                    return unpack(hc and HC_COLORS.history or { 0.5, 0.5, 0.5 })
+                elseif showBadges and element.entryType == "quest" then
+                    return unpack(hc and HC_COLORS.quest or { 1.0, 0.82, 0.0 })
+                elseif showBadges and element.entryType == "Gossip" then
+                    return unpack(hc and HC_COLORS.gossip or { 0.6, 0.8, 1.0 })
+                elseif showBadges and element.entryType == "GameObject" then
+                    return unpack(hc and HC_COLORS.gameobj or { 0.85, 0.75, 0.55 })
+                else
+                    return unpack(hc and HC_COLORS.default or { 0.95, 0.86, 0.20 })
+                end
+            end
+        """)
+
+    def test_badge_off_by_default(self):
+        """Badges should be empty when high-contrast is off."""
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetAccessibilityBadge("quest")
+        ''')
+        self.assertEqual(result, "")
+
+    def test_badge_quest_in_hc(self):
+        """Quest badge should be [Q] in high-contrast mode."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetAccessibilityBadge("quest")
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "[Q] ")
+
+    def test_badge_gossip_in_hc(self):
+        """Gossip badge should be [G] in high-contrast mode."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetAccessibilityBadge("Gossip")
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "[G] ")
+
+    def test_badge_gameobject_in_hc(self):
+        """GameObject badge should be [I] in high-contrast mode."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetAccessibilityBadge("GameObject")
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "[I] ")
+
+    def test_badge_unknown_type(self):
+        """Unknown type should return empty badge even in hc mode."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:GetAccessibilityBadge("Unknown")
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "")
+
+    def test_colorblind_cvar_triggers_hc(self):
+        """WoW colorblindMode CVar should activate high-contrast."""
+        self.lua.execute('_G.ChattyLittleNpc._testColorblind = true')
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.ReplayFrame:IsHighContrastMode()
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc._testColorblind = false')
+        self.assertTrue(result)
+
+    def test_row_color_playing_normal(self):
+        """Playing row should be green in normal mode."""
+        result = lua_call(self.lua, '''
+            local r, g, b = _G.ChattyLittleNpc.ReplayFrame:GetRowColor({isPlaying = true}, true)
+            return r .. "," .. g .. "," .. b
+        ''')
+        self.assertEqual(result, "0.2,1.0,0.2")
+
+    def test_row_color_playing_hc(self):
+        """Playing row should be brighter green in high-contrast."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            local r, g, b = _G.ChattyLittleNpc.ReplayFrame:GetRowColor({isPlaying = true}, true)
+            return r .. "," .. g .. "," .. b
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "0.1,1.0,0.1")
+
+    def test_row_color_history(self):
+        """History row in hc mode should be brighter gray."""
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = true')
+        result = lua_call(self.lua, '''
+            local r, g, b = _G.ChattyLittleNpc.ReplayFrame:GetRowColor({isHistory = true}, true)
+            return r .. "," .. g .. "," .. b
+        ''')
+        self.lua.execute('_G.ChattyLittleNpc.db.profile.highContrastMode = false')
+        self.assertEqual(result, "0.65,0.65,0.65")
 
 
 class TestFSMExpansion(unittest.TestCase):

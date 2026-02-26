@@ -1128,6 +1128,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
     self.QueueRowHeight = 24
     self.QueueRows = {}
 
+    -- Install keyboard navigation for the queue list
+    if this.SetupKeyboardNavigation then this:SetupKeyboardNavigation() end
+
     function this:EnsureQueueRows(n)
         local created = 0
         while #self.QueueRows < n do
@@ -1314,8 +1317,17 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             -- History row (greyed out with replay capability)
             elseif element.isHistory then
                 local label = element.label or "Unknown"
+                if self.GetAccessibilityBadge then
+                    local badge = self:GetAccessibilityBadge(element.entryType)
+                    if badge ~= "" then label = badge .. label end
+                end
                 row._fullText = label
-                row.text:SetTextColor(0.5, 0.5, 0.5) -- grey
+                -- Use accessibility-aware coloring
+                if self.GetRowColor then
+                    row.text:SetTextColor(self:GetRowColor(element, showBadges))
+                else
+                    row.text:SetTextColor(0.5, 0.5, 0.5)
+                end
                 if row.bulletTex then
                     row.bulletTex:SetColorTexture(0.5, 0.5, 0.5, 0.5) -- dim bullet
                     row.bulletTex:Show()
@@ -1360,11 +1372,18 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             -- Active/queued row (existing logic)
             else
                 local label = element.label or "Unknown"
+                -- Prepend accessibility badge in high-contrast mode
+                if self.GetAccessibilityBadge then
+                    local badge = self:GetAccessibilityBadge(element.entryType)
+                    if badge ~= "" then label = badge .. label end
+                end
                 row._fullText = label
                 row:EnableMouse(true)
                 if row.clearHistoryBtn then row.clearHistoryBtn:Hide() end
-                -- Apply coloring by type
-                if element.isPlaying then
+                -- Apply coloring by type (accessibility-aware)
+                if self.GetRowColor then
+                    row.text:SetTextColor(self:GetRowColor(element, showBadges))
+                elseif element.isPlaying then
                     row.text:SetTextColor(0.2, 1.0, 0.2)
                 elseif showBadges and element.entryType == "quest" then
                     row.text:SetTextColor(1.0, 0.82, 0.0)
