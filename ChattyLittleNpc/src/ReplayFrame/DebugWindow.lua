@@ -1179,7 +1179,7 @@ function DW:Create()
                 end
             end
         end
-        -- Camera snapshot if exposed by ModelSceneRenderer
+        -- Camera snapshot if exposed by the renderer
         if s then
             table.insert(lines, string.format("cam pos=(%.2f,%.2f,%.2f)", s.px or 0, s.py or 0, s.pz or 0))
             table.insert(lines, string.format("cam tgt=(%.2f,%.2f,%.2f)", s.tx or 0, s.ty or 0, s.tz or 0))
