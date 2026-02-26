@@ -47,11 +47,15 @@ function M.Attach(host, backend)
 
     function host:ClearModel()
     debugf("host", "PlayerModel.ClearModel()")
+    host._pRef = nil
+    host._zRef = nil
     safeCall(backend.frame, "ClearModel")
     end
 
     function host:SetDisplayInfo(displayID)
     host._currentDisplayID = displayID
+        host._pRef = nil  -- reset per-host ProjectFit refs for new model
+        host._zRef = nil
         debugf("loader", "PlayerModel.SetDisplayInfo(%s)", tostring(displayID))
         safeCall(backend.frame, "SetDisplayInfo", displayID)
     end
@@ -66,6 +70,7 @@ function M.Attach(host, backend)
     end
 
     function host:SetPosition(x, y, z)
+        self._targetZ = z or self._targetZ or 0
         safeCall(backend.frame, "SetPosition", x, y, z)
     end
 
@@ -95,6 +100,8 @@ function M.Attach(host, backend)
 
     function host:SetUnit(unit)
     debugf("loader", "PlayerModel.SetUnit(%s)", tostring(unit))
+    host._pRef = nil
+    host._zRef = nil
     safeCall(backend.frame, "SetUnit", unit)
     end
 
@@ -187,19 +194,20 @@ function M.Attach(host, backend)
             meta = ReplayFrame:GetModelMeta(host._currentDisplayID, nil, false)
         end
         if meta and meta.scaleD10 and meta.center then
-            -- Record reference zoom if first time
-            meta._pRef = meta._pRef or self:GetPortraitZoom() or 0.65
-            meta._zRef = meta._zRef or (targetCenter and targetCenter.z) or self._targetZ or 0
+            -- Record reference zoom per-host (NOT in shared meta) to avoid
+            -- contaminating metadata when two hosts render the same displayID.
+            host._pRef = host._pRef or self:GetPortraitZoom() or 0.65
+            host._zRef = host._zRef or (targetCenter and targetCenter.z) or self._targetZ or 0
             -- Compute zoom proportional to scale
             local targetScale = tonumber(scale) or self._scale or 1.0
             targetScale = math.max(0.05, math.min(10, targetScale))
-            local pRef = meta._pRef
+            local pRef = host._pRef
             local sRef = tonumber(meta.scaleD10) or 1.0
             local zoom = math.max(0.0, math.min(1.5, pRef * (sRef / targetScale)))
             self:SetPortraitZoom(zoom)
             -- Adjust Z so that center.z tracks with scale (Δz scaled by 1/scale)
             local cz = (targetCenter and targetCenter.z) or self._targetZ or 0
-            local z = (meta._zRef or 0) + ((cz - (meta.center.z or 0)) / targetScale)
+            local z = (host._zRef or 0) + ((cz - (meta.center.z or 0)) / targetScale)
             self:SetPosition(0, 0, z)
             -- Keep yaw and emulated distance mapping
             self:SetRotation(self._yaw or 0)

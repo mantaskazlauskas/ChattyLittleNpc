@@ -11,40 +11,28 @@ ReplayFrame = ReplayFrame or {}
 ReplayFrame.PlayerPresets = {}
 local P = ReplayFrame.PlayerPresets
 
--- Utility: safe call
-local function sc(frame, method, ...)
-    if not (frame and method and frame[method]) then return end
-    pcall(frame[method], frame, ...)
-end
-
 -- Full Body
 function P.FullBody(host)
-    local f = host and host._backend and host._backend.frame
-    if not f then return end
-    -- Use a conservative zoom for full body
+    if not host then return end
     if host.SetPortraitZoom then host:SetPortraitZoom(0.3) end
-    -- Reset position and rotation
-    sc(f, "SetPosition", 0, 0, 0)
-    sc(f, "SetRotation", 0)
+    if host.SetPosition then host:SetPosition(0, 0, 0) end
+    if host.SetRotation then host:SetRotation(0) end
 end
 
 -- Upper Body
 function P.UpperBody(host)
-    local f = host and host._backend and host._backend.frame
-    if not f then return end
-    -- Closer zoom for upper body
+    if not host then return end
     if host.SetPortraitZoom then host:SetPortraitZoom(0.75) end
-    sc(f, "SetPosition", 0, 0, 0.15)
-    sc(f, "SetRotation", 0)
+    if host.SetPosition then host:SetPosition(0, 0, 0.15) end
+    if host.SetRotation then host:SetRotation(0) end
 end
 
 -- Wave (slight zoom-out, more verticality)
 function P.Wave(host)
-    local f = host and host._backend and host._backend.frame
-    if not f then return end
+    if not host then return end
     if host.SetPortraitZoom then host:SetPortraitZoom(0.5) end
-    sc(f, "SetPosition", 0, 0, 0.05)
-    sc(f, "SetRotation", 0)
+    if host.SetPosition then host:SetPosition(0, 0, 0.05) end
+    if host.SetRotation then host:SetRotation(0) end
 end
 
 return P
