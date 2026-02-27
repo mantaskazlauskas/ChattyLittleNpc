@@ -204,28 +204,59 @@ function CLN:OnEnable()
 
     -- Quest Log play button: QuestMapFrame is a load-on-demand Blizzard addon
     -- so it may not exist yet.  Try immediately, else defer until it loads.
-    local function tryAttachQuestLogButtons()
-        if not QuestMapFrame then return false end
-        self.PlayButton:AttachQuestLogAndDetailsButtons()
+    -- In modern WoW (11.x), DetailsFrame may be created lazily after the
+    -- addon loads, so we also retry when QuestMapFrame is first shown.
+    local questLogAttached = false
+    local function installQuestLogHooks()
         if type(QuestMapFrame_UpdateAll) == "function" then
             hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
         end
-        QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
         if QuestMapFrame.DetailsFrame then
             QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
         end
+    end
+    local function tryAttachQuestLogButtons()
+        if not QuestMapFrame then return false end
+        if not QuestMapFrame.DetailsFrame then
+            -- Frame exists but DetailsFrame not yet created — hook OnShow to retry
+            QuestMapFrame:HookScript("OnShow", function()
+                if not questLogAttached and QuestMapFrame.DetailsFrame then
+                    questLogAttached = true
+                    self.PlayButton:AttachQuestLogAndDetailsButtons()
+                    installQuestLogHooks()
+                    self.PlayButton:UpdatePlayButton()
+                end
+            end)
+            return true -- stop listening for ADDON_LOADED; OnShow will handle it
+        end
+        questLogAttached = true
+        self.PlayButton:AttachQuestLogAndDetailsButtons()
+        installQuestLogHooks()
+        QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
         return true
     end
     if not tryAttachQuestLogButtons() then
-        local waitFrame = CreateFrame("Frame")
-        waitFrame:RegisterEvent("ADDON_LOADED")
-        waitFrame:SetScript("OnEvent", function(f)
-            if QuestMapFrame then
-                f:UnregisterEvent("ADDON_LOADED")
-                f:SetScript("OnEvent", nil)
+        -- Use modern EventUtil if available (WoW 11.x+), with ADDON_LOADED fallback
+        if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+            EventUtil.ContinueOnAddOnLoaded("Blizzard_QuestLog", function()
                 tryAttachQuestLogButtons()
-            end
-        end)
+            end)
+        else
+            local waitFrame = CreateFrame("Frame")
+            waitFrame:RegisterEvent("ADDON_LOADED")
+            waitFrame:SetScript("OnEvent", function(f, event, addonName)
+                if addonName == "Blizzard_QuestLog" or QuestMapFrame then
+                    f:UnregisterEvent("ADDON_LOADED")
+                    f:SetScript("OnEvent", nil)
+                    -- Defer one frame to allow lazy initialization
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, tryAttachQuestLogButtons)
+                    else
+                        tryAttachQuestLogButtons()
+                    end
+                end
+            end)
+        end
     end
 
     self:GetLoadedExpansionVoiceoverPacks()
