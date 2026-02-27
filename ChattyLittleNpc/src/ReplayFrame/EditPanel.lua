@@ -11,9 +11,19 @@ local ReplayFrame = CLN.ReplayFrame
 function ReplayFrame:CreateEditPanel()
     if self._editPanel then return self._editPanel end
 
-    local panel = CreateFrame("Frame", "ChattyLittleNpcEditPanel", UIParent, "BasicFrameTemplateWithInset")
+    local panel = CreateFrame("Frame", "ChattyLittleNpcEditPanel", UIParent, "BackdropTemplate")
     panel:SetClampedToScreen(true)
-    panel:SetSize(370, 480)
+    panel:SetSize(340, 440)
+    panel:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    panel:SetBackdropColor(0.07, 0.07, 0.09, 0.92)
+    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)
     panel:EnableMouse(true)
@@ -39,12 +49,17 @@ function ReplayFrame:CreateEditPanel()
     end)
     panel:SetFrameStrata("DIALOG")
     panel:Hide()
+
+    local closeBtn = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -2, -2)
+    closeBtn:SetScript("OnClick", function() panel:Hide() end)
+    panel.CloseButton = closeBtn
     
     -- Title
     panel.title = panel:CreateFontString(nil, "OVERLAY")
     panel.title:SetFontObject("GameFontHighlightLarge")
     panel.title:ClearAllPoints()
-    panel.title:SetPoint("TOP", 0, -14)
+    panel.title:SetPoint("TOP", 0, -18)
     panel.title:SetText("Frame Settings")
     -- Dirty asterisk (hidden until something changes)
     panel._dirtyAsterisk = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
@@ -53,55 +68,13 @@ function ReplayFrame:CreateEditPanel()
     panel._dirtyAsterisk:SetTextColor(1.0,0.82,0.0)
     panel._dirtyAsterisk:Hide()
 
-    -- Layout badge (shows active layout + override flag)
-    panel.layoutBadge = CreateFrame("Frame", nil, panel, "BackdropTemplate")
-    panel.layoutBadge:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 8, insets = {left=2,right=2,top=2,bottom=2} })
-    panel.layoutBadge:SetBackdropColor(0,0,0,0.45)
-    panel.layoutBadge:SetBackdropBorderColor(0.66,0.86,0.93,0.7)
-    panel.layoutBadge:SetPoint("TOP", 0, -62)
-    panel.layoutBadge:SetHeight(18)
-    panel.layoutBadge.text = panel.layoutBadge:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    panel.layoutBadge.text:SetPoint("LEFT", 6, 0)
-    panel.layoutBadge.text:SetPoint("RIGHT", -6, 0)
-    panel.layoutBadge:Hide()
     function panel:RefreshLayoutBadge()
-        if not self.layoutBadge or not ReplayFrame.EditModeIntegration then return end
-        local name = ReplayFrame.EditModeIntegration:GetActiveLayoutName()
-        if not name then self.layoutBadge:Hide() return end
-        local bucket = CLN.db.profile.editModeLayouts and CLN.db.profile.editModeLayouts[name]
-        local txt = name .. (bucket and " · overrides" or "")
-        self.layoutBadge.text:SetText(txt)
-        self.layoutBadge:SetWidth(self.layoutBadge.text:GetStringWidth() + 20)
-        self.layoutBadge:Show()
+        return
     end
     if panel.title.SetWordWrap then panel.title:SetWordWrap(false) end
 
-    -- Description (smaller font, constrained width to avoid overlap with close button)
-    panel.desc = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
-    panel.desc:SetPoint("TOPLEFT", 20, -36)
-    panel.desc:SetPoint("TOPRIGHT", -20, -36)
-    panel.desc:SetJustifyH("CENTER")
-    panel.desc:SetJustifyV("TOP")
-    panel.desc:SetSpacing(1)
-    -- Description text removed per request (was explanatory string about scale/text/model adjustments)
-    panel.desc:SetTextColor(0.82, 0.82, 0.82)
-
-    -- Thin divider under header/description for visual separation
-    if not panel.headerDivider then
-        local div = panel:CreateTexture(nil, "ARTWORK")
-        div:SetColorTexture(1,1,1,0.08)
-        div:SetPoint("TOPLEFT", 12, -58)
-        div:SetPoint("TOPRIGHT", -12, -58)
-        div:SetHeight(1)
-        panel.headerDivider = div
-    else
-        panel.headerDivider:ClearAllPoints()
-        panel.headerDivider:SetPoint("TOPLEFT", 12, -58)
-        panel.headerDivider:SetPoint("TOPRIGHT", -12, -58)
-    end
-
-    local yOffset = -90  -- shifted down for layout badge
-    local spacing = 32
+    local yOffset = -38
+    local spacing = 28
 
     -- Helper: tooltip attachment
     local function attachTooltip(widget, title, text)
@@ -163,24 +136,7 @@ function ReplayFrame:CreateEditPanel()
         end
     end
     
-    -- Section header helper
-    local function addSectionHeader(label)
-        yOffset = yOffset - 18
-        local fs = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", 14, yOffset)
-        fs:SetText(label)
-        fs:SetTextColor(0.95,0.95,0.95,0.9)
-        local line = panel:CreateTexture(nil, "ARTWORK")
-        line:SetColorTexture(1,1,1,0.10)
-        line:SetPoint("LEFT", fs, "RIGHT", 6, -1)
-        line:SetPoint("RIGHT", -14, -1)
-        line:SetHeight(1)
-        return fs
-    end
-
     -- Comprehensive FormBuilder (all rows)
-    addSectionHeader("Appearance")
-    yOffset = yOffset - 10
     local FormBuilder = {}
     function FormBuilder.new(panelRef, opts)
         opts = opts or {}
@@ -239,7 +195,8 @@ function ReplayFrame:CreateEditPanel()
         local function makeReset(row)
             local btn = CreateFrame("Button", nil, panelRef)
             btn:SetSize(16,16)
-            btn:SetPoint("RIGHT", panelRef, "RIGHT", -self.layout.resetRightPad, 0)
+            -- Anchor vertically to the row's label so each reset button aligns with its slider
+            btn:SetPoint("TOPRIGHT", panelRef, "TOPRIGHT", -self.layout.resetRightPad, self.y)
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints();
             local IconAtlas = CLN and CLN.IconAtlas
@@ -296,8 +253,7 @@ function ReplayFrame:CreateEditPanel()
                 self.y = self.y - self.rowSpacing
             else
                 self._started = true
-                -- small initial gap under a section header
-                self.y = self.y - 8
+                self.y = self.y - 4
             end
             local label = panelRef:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             label:SetPoint("TOPLEFT", self.layout.labelX, self.y)
@@ -333,57 +289,71 @@ function ReplayFrame:CreateEditPanel()
     panel._formBuilder = FormBuilder.new(panel, { rowSpacing = spacing })
     -- Scale row
     panel._formBuilder:AddSlider{ key="scale", label="Frame Scale:", min=0.5, max=2.0, step=0.05, valueFormat="%.2f", excludeKey="frameScale" }
-    -- Dimensions section — sync yOffset from FormBuilder before adding header
-    yOffset = panel._formBuilder:GetCurrentY() - spacing
-    addSectionHeader("Dimensions")
-    panel._formBuilder.y = yOffset
     local widthRow = panel._formBuilder:AddSlider{ key="width", label="Width:", min=200, max=1000, step=5, hasInput=true, excludeKey="frameSize" }
     local heightRow = panel._formBuilder:AddSlider{ key="height", label="Height:", min=100, max=600, step=5, hasInput=true } -- inherits exclude visual via width
     panel._formBuilder:AddSlider{ key="modelHeight", label="Model Height:", min=50, max=300, step=5, hasInput=true, excludeKey="npcModelFrameHeight" }
-    -- Text section — sync yOffset from FormBuilder before adding header
-    yOffset = panel._formBuilder:GetCurrentY() - spacing
-    addSectionHeader("Text")
-    panel._formBuilder.y = yOffset
     panel._formBuilder:AddSlider{ key="textScale", label="Text Scale:", min=0.75, max=1.5, step=0.05, valueFormat="%.2f", excludeKey="queueTextScale" }
     yOffset = panel._formBuilder:GetCurrentY()
     
+    local function CreateEditModeButton(parent, text, width, height)
+        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        btn:SetSize(width or 120, height or 22)
+        btn:SetBackdrop({
+            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+            tile = true,
+            tileSize = 16,
+            edgeSize = 10,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        })
+        btn:SetBackdropColor(0.12, 0.12, 0.14, 0.9)
+        btn:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.8)
+        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fs:SetPoint("CENTER")
+        fs:SetText(text or "")
+        btn.Text = fs
+        btn:SetScript("OnEnter", function(self)
+            self:SetBackdropColor(0.2, 0.2, 0.24, 0.95)
+            self:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.9)
+        end)
+        btn:SetScript("OnLeave", function(self)
+            self:SetBackdropColor(0.12, 0.12, 0.14, 0.9)
+            self:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.8)
+        end)
+        function btn:SetText(t) self.Text:SetText(t) end
+        function btn:GetText() return self.Text:GetText() end
+        local origEnable = btn.Enable
+        local origDisable = btn.Disable
+        function btn:Enable() if origEnable then origEnable(self) end; self:SetAlpha(1.0) end
+        function btn:Disable() if origDisable then origDisable(self) end; self:SetAlpha(0.5) end
+        return btn
+    end
+
     -- Buttons (Blizzard-style row)
-    panel.acceptButton = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.acceptButton:SetSize(92, 24)
+    panel.acceptButton = CreateEditModeButton(panel, "Accept", 92, 24)
     panel.acceptButton:SetPoint("BOTTOMRIGHT", -18, 48)
-    panel.acceptButton:SetText("Accept")
 
-    panel.cancelButton = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.cancelButton:SetSize(92, 24)
+    panel.cancelButton = CreateEditModeButton(panel, "Cancel", 92, 24)
     panel.cancelButton:SetPoint("RIGHT", panel.acceptButton, "LEFT", -8, 0)
-    panel.cancelButton:SetText("Cancel")
 
-    panel.revertButton = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.revertButton:SetSize(108, 24)
+    panel.revertButton = CreateEditModeButton(panel, "Revert", 108, 24)
     panel.revertButton:SetPoint("BOTTOMLEFT", 18, 48)
-    panel.revertButton:SetText("Revert")
     panel.revertButton:Disable()
 
-    panel.resetButton = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.resetButton:SetSize(340, 24)
+    panel.resetButton = CreateEditModeButton(panel, "Restore All Defaults", 304, 24)
     panel.resetButton:SetPoint("BOTTOM", 0, 14)
-    panel.resetButton:SetText("Restore All Defaults")
 
     -- (Legacy exclude + per-row reset creation removed; handled inside FormBuilder)
 
     -- Layout Manager & Import/Export (secondary row above reset for spacing)
-    panel.layoutBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.layoutBtn:SetSize(136, 22)
+    panel.layoutBtn = CreateEditModeButton(panel, "Layouts", 136, 22)
     panel.layoutBtn:SetPoint("BOTTOMLEFT", panel.resetButton, "TOPLEFT", 0, 8)
-    panel.layoutBtn:SetText("Layouts")
     panel.layoutBtn:SetScript("OnClick", function()
         if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowLayoutManager() end
     end)
 
-    panel.bundleBtn = CreateFrame("Button", nil, panel, "GameMenuButtonTemplate")
-    panel.bundleBtn:SetSize(136, 22)
+    panel.bundleBtn = CreateEditModeButton(panel, "Bundle\226\128\166", 136, 22)
     panel.bundleBtn:SetPoint("LEFT", panel.layoutBtn, "RIGHT", 10, 0)
-    panel.bundleBtn:SetText("Bundle…")
     panel.bundleBtn:SetScript("OnClick", function()
         if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowBundleDialog() end
     end)
@@ -580,7 +550,7 @@ function ReplayFrame:CreateEditPanel()
         if not self._formBuilder then return end
         local lastY = self._formBuilder:GetCurrentY() or -250
         -- lastY is negative offset from top to top of LAST row; estimate content depth
-        local contentDepth = math.abs(lastY) + 170 -- 170 = space for slider row height + buttons + padding
+        local contentDepth = math.abs(lastY) + 148 -- compact panel padding + controls
         local minHeight = 300
         local desired = math.max(minHeight, contentDepth)
         if math.abs(desired - self:GetHeight()) > 1 then
