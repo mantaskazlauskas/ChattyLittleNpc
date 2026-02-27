@@ -275,37 +275,42 @@ end
 
 function NpcDialogTracker:GatherTooltipInfo()
     local f = CreateFrame("Frame")
+    local lastGuid = nil
     f:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     f:SetScript("OnEvent", function()
-        if not UnitIsPlayer("mouseover") then
-            local unitGuid = UnitGUID("mouseover")
-            if (unitGuid) then
-                local unitID = select(6, strsplit("-", unitGuid))
-                local unitIdAsNumber = tonumber(unitID)
-                local npcTooltipInfo = {
-                    Id = unitIdAsNumber,
-                    tooltip_info = {}
-                }
+        if UnitIsPlayer("mouseover") then return end
+        local unitGuid = UnitGUID("mouseover")
+        if not unitGuid then return end
+        -- Skip if we already processed this exact unit
+        if unitGuid == lastGuid then return end
+        lastGuid = unitGuid
 
-                local lineIndex = 1
-                while true do
-                    local line = _G["GameTooltipTextLeft" .. lineIndex]
-                    if not line then
-                        break
-                    end
-                    local text = line:GetText()
-                    if text then
-                        -- Remove color codes from the text
-                        text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-                        table.insert(npcTooltipInfo.tooltip_info, text)
-                    end
-                    lineIndex = lineIndex + 1
-                end
+        local unitID = select(6, strsplit("-", unitGuid))
+        local unitIdAsNumber = tonumber(unitID)
+        -- Early-out: skip tooltip scanning if NPC isn't tracked
+        if not NpcInfoDB or not NpcInfoDB[unitIdAsNumber] then return end
 
-                if (CLN.db.profile.logNpcTexts) then
-                    NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
-                end
+        local npcTooltipInfo = {
+            Id = unitIdAsNumber,
+            tooltip_info = {}
+        }
+
+        local lineIndex = 1
+        while true do
+            local line = _G["GameTooltipTextLeft" .. lineIndex]
+            if not line then
+                break
             end
+            local text = line:GetText()
+            if text then
+                text = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                table.insert(npcTooltipInfo.tooltip_info, text)
+            end
+            lineIndex = lineIndex + 1
+        end
+
+        if (CLN.db.profile.logNpcTexts) then
+            NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
         end
     end)
 end
