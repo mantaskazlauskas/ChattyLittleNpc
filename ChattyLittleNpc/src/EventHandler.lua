@@ -411,8 +411,21 @@ end
 function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
     -- Extract NPC ID from GUID when available (format: "Creature-0-...-NPCID-...")
     local npcId = nil
-    if guid and type(guid) == "string" then
-        local idStr = select(6, strsplit("-", guid))
+    -- Try the event guid first, then fall back to nearby unit GUIDs
+    local resolvedGuid = guid
+    if (not resolvedGuid or resolvedGuid == "") and UnitGUID then
+        -- Try "npc" unit (quest dialog NPC) or "target" as fallbacks
+        local npcGuid = UnitGUID("npc")
+        local targetGuid = UnitGUID("target")
+        -- Match by name to avoid attributing to the wrong unit
+        if npcGuid and UnitName and UnitName("npc") == npcName then
+            resolvedGuid = npcGuid
+        elseif targetGuid and UnitName and UnitName("target") == npcName then
+            resolvedGuid = targetGuid
+        end
+    end
+    if resolvedGuid and type(resolvedGuid) == "string" then
+        local idStr = select(6, strsplit("-", resolvedGuid))
         npcId = tonumber(idStr)
     end
 
