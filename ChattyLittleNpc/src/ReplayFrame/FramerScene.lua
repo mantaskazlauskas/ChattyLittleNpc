@@ -66,10 +66,10 @@ function FS.FitDefault(host, displayID, padding)
     local min,max = b.min,b.max
     local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
     local sz = math.abs((max.z or 0) - (min.z or 0))
-    -- Focus on face area: target ~80% up the model height
-    local faceZ = (min.z or 0) + sz * 0.80
-    -- Compute distance to fit the upper ~40% of the model
-    local upperFrac = 0.40
+    -- Focus on face area: target ~87.5% up the model height
+    local faceZ = (min.z or 0) + sz * 0.875
+    -- Compute distance to fit the upper ~25% of the model (bust portrait)
+    local upperFrac = 0.25
     local visibleHeight = sz * upperFrac
     local pad = math.max(0, tonumber(padding) or 0.10)
     local vfov = host.GetFovV and host:GetFovV() or 0.8
@@ -95,9 +95,9 @@ function FS.ShowUpper(host, displayID, frac, padding)
     local min,max = b.min,b.max
     local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
     local sz = math.abs((max.z or 0) - (min.z or 0))
-    -- Target ~85% up the model height for head focus
-    local headZ = (min.z or 0) + sz * 0.85
-    local useFrac = tonumber(frac) or 0.7
+    -- Target ~87.5% up the model height for bust portrait
+    local headZ = (min.z or 0) + sz * 0.875
+    local useFrac = tonumber(frac) or 0.25
     local vfov = host.GetFovV and host:GetFovV() or 0.8
     local aspect = host.GetAspect and host:GetAspect() or 1.0
     local t = math.tan((vfov) * 0.5)

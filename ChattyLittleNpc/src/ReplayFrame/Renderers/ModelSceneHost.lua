@@ -527,7 +527,7 @@ function M.Attach(host, backend)
         -- Target head area: ~85% up the bounding box height
         local baseZ
         if b and b.min and b.max then
-            baseZ = b.min.z + (b.max.z - b.min.z) * 0.85
+            baseZ = b.min.z + (b.max.z - b.min.z) * 0.875
         else
             local s = self._lastCamSnapshot or {}
             baseZ = s.tz or (self._camBaseZ or 1.0)
@@ -670,9 +670,9 @@ function M.Attach(host, backend)
         if not b then return end
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
-        -- Use upper-body visible height consistent with FrameFullBodyFront_Immediate
+        -- Use bust-portrait visible height consistent with FrameFullBodyFront_Immediate
         local totalHeight = b.size.z or 0
-        local visibleHeight = totalHeight * 0.40
+        local visibleHeight = totalHeight * 0.25
         local padZ = visibleHeight * (tonumber(paddingFrac) or 0.12)
         local padX = (b.size.x or 0) * (tonumber(paddingFrac) or 0.12)
         local tanHalfV = math.tan((fov / 2))
@@ -715,11 +715,11 @@ function M.Attach(host, backend)
         local aspect = self:GetAspect()
     self:_DebugLog("framing", "Bounds c=(%.2f,%.2f,%.2f) min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)", b.center.x or 0, b.center.y or 0, b.center.z or 0, b.min.x or 0, b.min.y or 0, b.min.z or 0, b.max.x or 0, b.max.y or 0, b.max.z or 0)
         -- Focus on the upper body (head/shoulders) rather than framing the full body.
-        -- Target ~80% up the model height (face area) and fit the top ~40%.
+        -- Target ~87.5% up the model height (face area) and fit the top ~25%.
         local totalHeight = b.size.z or 0
-        local upperFrac = 0.40
+        local upperFrac = 0.25
         local visibleHeight = totalHeight * upperFrac
-        local faceZ = b.min.z + totalHeight * 0.80
+        local faceZ = b.min.z + totalHeight * 0.875
         local padZ = visibleHeight * paddingFrac
         local padX = (b.size.x or 0) * paddingFrac
         local tanHalfV = math.tan((fov / 2))
