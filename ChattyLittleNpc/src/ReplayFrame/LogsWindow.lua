@@ -79,6 +79,21 @@ local function pushLine(cat, text, sess, src, lvl)
     if LW._frame and LW._frame:IsShown() and LW._auto then LW:_Refresh() end
 end
 
+-- Insert a visible bookmark separator into the log buffer
+LW._markCount = LW._markCount or 0
+function LW:Mark(label)
+    self._markCount = self._markCount + 1
+    local tag = label or ("MARK " .. self._markCount)
+    local buf = CLN._AnimLogBuffer
+    local ts = now()
+    table.insert(buf.lines, { t = ts, c = "mark", m = tag, r = "mark", lvl = SEV.INFO, mark = true })
+    if #buf.lines > (buf.max or 2000) then table.remove(buf.lines, 1) end
+    buf.version = (buf.version or 0) + 1
+    if self._frame and self._frame:IsShown() then
+        self._lastBufVersion = nil; self:_Refresh(true)
+    end
+end
+
 -- Install a single global hook on Utils to capture all anim logs
 local function ensureHook()
     local U = CLN and CLN.Utils
@@ -293,7 +308,12 @@ function LW:_FormatLines()
     local sevLetters = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
     for i = 1, #CLN._AnimLogBuffer.lines do
         local L = CLN._AnimLogBuffer.lines[i]
-        if lineMatchesFilters(L) then
+        if L.mark then
+            -- Render bookmark as a visible separator
+            count = count + 1
+            local ts = self._showTime ~= false and fmtTime(L.t) or ""
+            out[#out + 1] = "|cffffff00════ " .. tostring(L.m) .. (ts ~= "" and (" (" .. ts .. ")") or "") .. " ════|r"
+        elseif lineMatchesFilters(L) then
             count = count + 1
             local sevColor = SEV_COLORS[L.lvl] or "|cffcccccc"
             local sevLetter = sevLetters[L.lvl] or "I"
@@ -635,9 +655,21 @@ function LW:Create()
     LW._catButtons = {}
 
     -- ── Left bottom controls ──
+    local markBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
+    markBtn:SetSize(52, 22)
+    markBtn:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 0, 4)
+    markBtn:SetText("Mark")
+    markBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Insert a bookmark separator into the log.\nUse to mark before/after an action you're debugging.")
+        GameTooltip:Show()
+    end)
+    markBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    markBtn:SetScript("OnClick", function() LW:Mark() end)
+
     local refreshBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
-    refreshBtn:SetSize(68, 22)
-    refreshBtn:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 0, 4)
+    refreshBtn:SetSize(60, 22)
+    refreshBtn:SetPoint("LEFT", markBtn, "RIGHT", 4, 0)
     refreshBtn:SetText("Refresh")
     refreshBtn:SetScript("OnClick", function() LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh(true) end)
 
@@ -884,8 +916,14 @@ function LW:Hide()
     if self._frame then self._frame:Hide() end
 end
 
--- Slash command
+-- Slash commands
 SLASH_CLNLOGS1 = "/clnlogs"
 SlashCmdList["CLNLOGS"] = function()
     if not LW._frame or not LW._frame:IsShown() then LW:Show() else LW:Hide() end
+end
+
+SLASH_CLNMARK1 = "/clnmark"
+SlashCmdList["CLNMARK"] = function(msg)
+    local label = (msg and msg ~= "") and msg or nil
+    LW:Mark(label)
 end
