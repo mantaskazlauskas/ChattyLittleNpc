@@ -62,10 +62,17 @@ end
 ---@param event string Event name
 ---@param ... any Event arguments
 function EventSystem:DispatchEvent(event, ...)
-    if not self.events[event] then return end
+    local cbs = self.events[event]
+    if not cbs then return end
+    
+    -- Fast path: single callback (common case) avoids snapshot allocation
+    if #cbs == 1 then
+        cbs[1](event, ...)
+        return
+    end
     
     -- Snapshot the callback list so unregisters during dispatch don't skip entries
-    local snapshot = {unpack(self.events[event])}
+    local snapshot = {unpack(cbs)}
     for _, callback in ipairs(snapshot) do
         callback(event, ...)
     end
@@ -106,10 +113,17 @@ end
 ---@param message string Message name
 ---@param ... any Message arguments
 function EventSystem:SendMessage(message, ...)
-    if not self.messages[message] then return end
+    local cbs = self.messages[message]
+    if not cbs then return end
+    
+    -- Fast path: single callback (common case) avoids snapshot allocation
+    if #cbs == 1 then
+        cbs[1](message, ...)
+        return
+    end
     
     -- Snapshot the callback list so unregisters during dispatch don't skip entries
-    local snapshot = {unpack(self.messages[message])}
+    local snapshot = {unpack(cbs)}
     for _, callback in ipairs(snapshot) do
         callback(message, ...)
     end
