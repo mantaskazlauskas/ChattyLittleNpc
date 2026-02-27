@@ -463,7 +463,11 @@ end
 -- Native NPC Voiceover Detection (Experimental)
 -- ============================================================================
 
--- Estimate how long a spoken line of text takes at ~80 words per minute.
+-- Extra settle buffer (seconds) added to native VO resume timers to handle
+-- gaps between multi-line NPC conversations.
+local NATIVE_VO_SETTLE_SEC = 8
+
+-- Estimate how long a spoken line of text takes (~75 WPM / 12.9 chars/sec).
 ---@param text string
 ---@return number seconds
 local function EstimateVODuration(text)
@@ -530,7 +534,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         local isPaused = cp and cp._pausedForNativeVO
         if not (isActive or isPaused) then return end
 
-        local dur = EstimateVODuration(text)
+        local dur = EstimateVODuration(text) + NATIVE_VO_SETTLE_SEC
         if isPaused then
             if CLN.VoiceoverPlayer._nativeVOResumeTimer then
                 CLN.VoiceoverPlayer._nativeVOResumeTimer:Cancel()
@@ -593,7 +597,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
 
     -- Already paused? Extend the timer instead of double-pausing
     if isPaused then
-        local dur = EstimateVODuration(text)
+        local dur = EstimateVODuration(text) + NATIVE_VO_SETTLE_SEC
         if CLN.VoiceoverPlayer._nativeVOResumeTimer then
             CLN.VoiceoverPlayer._nativeVOResumeTimer:Cancel()
         end
@@ -608,7 +612,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         return
     end
 
-    local duration = EstimateVODuration(text)
+    local duration = EstimateVODuration(text) + NATIVE_VO_SETTLE_SEC
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ", " .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
             false, CLN.Utils.LogCategories.loader)
