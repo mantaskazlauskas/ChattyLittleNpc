@@ -1653,6 +1653,10 @@ function ReplayFrame:SetupFrameResize()
         -- Layout the model area via extracted module
         if this.LayoutModelArea then this:LayoutModelArea(frame) end
 
+        -- Recompute hasModel AFTER LayoutModelArea which may show/hide the container.
+        -- Using IsShown() ensures ContentFrame anchors match actual visibility.
+        hasModel = this.ModelContainer and this.ModelContainer:IsShown() and not compact
+
         -- Ensure minimum content space when model is visible
         -- Header (~24px) + divider (5px) + at least 1 row (24px) + padding = ~60px
         local MIN_CONTENT_HEIGHT = 60
