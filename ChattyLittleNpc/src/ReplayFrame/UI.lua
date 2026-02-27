@@ -800,76 +800,53 @@ function ReplayFrame:EnsureCompactBadge()
     self.CompactBadge = badge
 end
 
--- Create the playback notification bar (anchored above or below the main frame)
+-- Create the playback bar as an inline row inside ContentFrame, between header and queue.
+-- Styled like the queue rows: same font, colors, row height.
 function ReplayFrame:EnsurePlaybackBar()
     if self.PlaybackBar then return end
-    if not self.DisplayFrame then return end
-    local this = self
+    if not self.ContentFrame then return end
 
-    local bar = CreateFrame("Frame", "CLN_PlaybackBar", self.DisplayFrame, "BackdropTemplate")
-    bar:SetHeight(32)
-    bar:SetBackdrop({
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        edgeSize = 12,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    bar:SetBackdropColor(0.06, 0.06, 0.10, 0.94)
-    bar:SetBackdropBorderColor(0.30, 0.28, 0.24, 0.7)
-    bar:SetFrameStrata("MEDIUM")
-    bar:SetFrameLevel((self.DisplayFrame:GetFrameLevel() or 0) + 5)
+    local bar = CreateFrame("Frame", "CLN_PlaybackBar", self.ContentFrame)
+    bar:SetHeight(24)
     bar:Hide()
 
-    -- Speaker icon
+    -- Subtle highlight background (same as queue row hover)
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetTexture("Interface/QuestFrame/UI-QuestTitleHighlight")
+    bg:SetAlpha(0.08)
+    bar._bg = bg
+
+    -- Speaker icon (gold, matching bullet style)
     local icon = bar:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(16, 16)
+    icon:SetSize(14, 14)
     icon:SetPoint("LEFT", bar, "LEFT", 8, 0)
     icon:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.speaker) or "Interface/COMMON/VOICECHAT-SPEAKER")
     icon:SetVertexColor(1.0, 0.82, 0.0, 1)
     bar.Icon = icon
 
-    -- Title text
+    -- Title text (same font and color as queue rows)
     local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", icon, "RIGHT", 6, 0)
     title:SetJustifyH("LEFT")
     if title.SetWordWrap then title:SetWordWrap(false) end
-    title:SetTextColor(1.0, 1.0, 1.0, 0.92)
+    title:SetTextColor(0.95, 0.86, 0.20)
     bar.Title = title
 
-    -- Helper to make a compact button
-    local function makeBarBtn(size, texPath)
-        local b = CreateFrame("Button", nil, bar)
-        b:SetSize(size, size)
-        local bg = b:CreateTexture(nil, "BACKGROUND")
-        bg:SetPoint("CENTER"); bg:SetSize(size + 4, size + 4)
-        bg:SetTexture("Interface/Tooltips/UI-Tooltip-Background")
-        bg:SetVertexColor(1, 1, 1, 0.10)
-        b._bg = bg
-        local t = b:CreateTexture(nil, "ARTWORK")
-        t:SetPoint("CENTER"); t:SetSize(size - 4, size - 4)
-        t:SetTexture(texPath)
-        b.tex = t
-        b:SetScript("OnEnter", function(self) self._bg:SetVertexColor(1, 1, 1, 0.25) end)
-        b:SetScript("OnLeave", function(self)
-            self._bg:SetVertexColor(1, 1, 1, 0.10)
-            if GameTooltip_Hide then GameTooltip_Hide() end
-        end)
-        return b
-    end
-
-    -- Stop button (right side)
-    local stopBtn = makeBarBtn(20, "Interface/Buttons/UI-GroupLoot-Pass-Up")
+    -- Stop button (right side, small inline)
+    local stopBtn = CreateFrame("Button", nil, bar)
+    stopBtn:SetSize(16, 16)
     stopBtn:SetPoint("RIGHT", bar, "RIGHT", -8, 0)
-    stopBtn.tex:SetVertexColor(0.85, 0.35, 0.35)
+    local stopTex = stopBtn:CreateTexture(nil, "ARTWORK")
+    stopTex:SetAllPoints()
+    stopTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
+    stopTex:SetVertexColor(0.8, 0.3, 0.3)
     stopBtn:SetScript("OnEnter", function(self)
-        self._bg:SetVertexColor(1, 1, 1, 0.25)
-        stopBtn.tex:SetVertexColor(1, 0.5, 0.5)
+        stopTex:SetVertexColor(1, 0.5, 0.5)
         GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Stop"); GameTooltip:Show()
     end)
-    stopBtn:SetScript("OnLeave", function(self)
-        self._bg:SetVertexColor(1, 1, 1, 0.10)
-        stopBtn.tex:SetVertexColor(0.85, 0.35, 0.35)
-        GameTooltip_Hide()
+    stopBtn:SetScript("OnLeave", function()
+        stopTex:SetVertexColor(0.8, 0.3, 0.3); GameTooltip_Hide()
     end)
     stopBtn:SetScript("OnClick", function()
         if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
@@ -877,57 +854,42 @@ function ReplayFrame:EnsurePlaybackBar()
     bar.StopBtn = stopBtn
 
     -- Pause/Resume button
-    local pauseBtn = makeBarBtn(20, "Interface/TimeManager/PauseButton")
+    local pauseBtn = CreateFrame("Button", nil, bar)
+    pauseBtn:SetSize(16, 16)
     pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
+    pauseBtn.tex = pauseBtn:CreateTexture(nil, "ARTWORK")
+    pauseBtn.tex:SetAllPoints()
+    pauseBtn.tex:SetTexture("Interface/TimeManager/PauseButton")
     pauseBtn:SetScript("OnEnter", function(self)
-        self._bg:SetVertexColor(1, 1, 1, 0.25)
         local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText(paused and "Resume" or "Pause"); GameTooltip:Show()
     end)
-    pauseBtn:SetScript("OnLeave", function(self)
-        self._bg:SetVertexColor(1, 1, 1, 0.10)
-        GameTooltip_Hide()
-    end)
+    pauseBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     pauseBtn:SetScript("OnClick", function()
         if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
     end)
     bar.PauseBtn = pauseBtn
 
-    -- Title right anchor
-    title:SetPoint("RIGHT", pauseBtn, "LEFT", -8, 0)
-
-    -- Progress line (thin gold bar at bottom)
-    local prog = bar:CreateTexture(nil, "OVERLAY")
-    prog:SetPoint("BOTTOMLEFT", bar, "BOTTOMLEFT", 3, 2)
-    prog:SetHeight(2)
-    prog:SetWidth(0)
-    prog:SetColorTexture(1.0, 0.82, 0.0, 0.7)
-    prog:Hide()
-    bar.ProgressLine = prog
+    -- Title right anchor (stop at buttons)
+    title:SetPoint("RIGHT", pauseBtn, "LEFT", -6, 0)
 
     self.PlaybackBar = bar
 end
 
--- Position the playback bar above or below the main frame based on screen location
+-- Anchor the playback bar inside ContentFrame, just above the queue list
 function ReplayFrame:AnchorPlaybackBar()
     local bar = self.PlaybackBar
-    if not (bar and self.DisplayFrame) then return end
+    if not bar then return end
     bar:ClearAllPoints()
 
-    -- Determine if the frame is in the upper or lower half of the screen
-    local _, frameTop = self.DisplayFrame:GetCenter()
-    local screenH = UIParent and UIParent:GetHeight() or 768
-    local gap = 2
-
-    if frameTop and frameTop > (screenH * 0.5) then
-        -- Frame is in upper half → bar goes BELOW
-        bar:SetPoint("TOPLEFT", self.DisplayFrame, "BOTTOMLEFT", 0, -gap)
-        bar:SetPoint("TOPRIGHT", self.DisplayFrame, "BOTTOMRIGHT", 0, -gap)
-    else
-        -- Frame is in lower half → bar goes ABOVE
-        bar:SetPoint("BOTTOMLEFT", self.DisplayFrame, "TOPLEFT", 0, gap)
-        bar:SetPoint("BOTTOMRIGHT", self.DisplayFrame, "TOPRIGHT", 0, gap)
+    -- Position below HeaderDivider (or HeaderText), above QueueListFrame
+    if self.HeaderDivider then
+        bar:SetPoint("TOPLEFT", self.HeaderDivider, "BOTTOMLEFT", 0, -2)
+        bar:SetPoint("TOPRIGHT", self.HeaderDivider, "BOTTOMRIGHT", 0, -2)
+    elseif self.HeaderText then
+        bar:SetPoint("TOPLEFT", self.HeaderText, "BOTTOMLEFT", 0, -6)
+        bar:SetPoint("TOPRIGHT", self.HeaderText, "BOTTOMRIGHT", 0, -6)
     end
 end
 
@@ -976,15 +938,6 @@ function ReplayFrame:UpdatePauseButton()
                         bar.PauseBtn.tex:SetTexture("Interface/TimeManager/PauseButton")
                         bar.Icon:SetVertexColor(1.0, 0.82, 0.0, 1)
                     end
-                end
-
-                -- Progress line
-                if bar.ProgressLine and playing then
-                    local maxW = math.max(1, (bar:GetWidth() or 200) - 6)
-                    bar.ProgressLine:SetWidth(maxW)
-                    bar.ProgressLine:Show()
-                elseif bar.ProgressLine then
-                    bar.ProgressLine:Hide()
                 end
 
                 bar:Show()
