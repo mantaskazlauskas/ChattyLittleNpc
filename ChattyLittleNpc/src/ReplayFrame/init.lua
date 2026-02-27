@@ -193,9 +193,20 @@ function ReplayFrame:WorldZFromPercent(p)
     if b then
         return b.bottomZ + pn * b.height
     end
-    -- Fallback: base on current offset if meta is missing
+    -- Try live bounds from the host (same coordinate system as scene camera)
+    local host = self.NpcModelFrame
+    if host and host.GetBounds then
+        local lb = host:GetBounds()
+        if lb and lb.min and lb.max then
+            local bottomZ = math.min(lb.min.z or 0, lb.max.z or 0)
+            local height = math.abs((lb.max.z or 0) - (lb.min.z or 0))
+            if height > 0.01 then
+                return bottomZ + pn * height
+            end
+        end
+    end
+    -- Last-resort fallback
     local base = (self.modelZOffset ~= nil) and self.modelZOffset or (self._currentZOffset or 0)
-    -- Assume ~2.0m humanoid if unknown
     return base + (pn - 0.5) * 2.0
 end
 
@@ -445,18 +456,27 @@ function ReplayFrame:PushHistory(entry)
     while #self._replayHistory > max do
         table.remove(self._replayHistory)
     end
-    -- Prune entries older than 5 minutes
+    -- Prune entries older than configured TTL
     self:PruneOldHistory()
 end
 
-local HISTORY_TTL = 300 -- 5 minutes in seconds
+local HISTORY_TTL_DEFAULT = 300 -- 5 minutes in seconds (fallback)
+
+function ReplayFrame:GetHistoryTTL()
+    local minutes = CLN and CLN.db and CLN.db.profile and CLN.db.profile.historyTTLMinutes
+    if type(minutes) == "number" and minutes > 0 then
+        return minutes * 60
+    end
+    return HISTORY_TTL_DEFAULT
+end
 
 function ReplayFrame:PruneOldHistory()
     if not self._replayHistory then return end
     local now = GetTime and GetTime() or 0
+    local ttl = self:GetHistoryTTL()
     for i = #self._replayHistory, 1, -1 do
         local h = self._replayHistory[i]
-        if h.completedAt and (now - h.completedAt) > HISTORY_TTL then
+        if h.completedAt and (now - h.completedAt) > ttl then
             table.remove(self._replayHistory, i)
         end
     end
@@ -497,24 +517,7 @@ function ReplayFrame:BuildQueueEntries()
     elseif now and (now.title or now.questId) and now.soundHandle then
         -- Stale currentlyPlaying: sound finished but object wasn't cleared.
         -- Push to history and clear it now.
-        if self.PushHistory then
-            local title = now.title
-            if not title and now.questId then
-                title = CLN.GetTitleForQuestID and CLN:GetTitleForQuestID(now.questId) or nil
-            end
-            if title then
-                self:PushHistory({
-                    title = title,
-                    npcId = now.npcId,
-                    questId = now.questId,
-                    phase = now.phase,
-                    entryType = now.entryType or "unknown",
-                    gender = now.gender,
-                    displayID = now.displayID,
-                    completedAt = GetTime and GetTime() or 0,
-                })
-            end
-        end
+        CLN.VoiceoverPlayer:PushToHistory(now)
         CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
     end
 

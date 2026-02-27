@@ -512,7 +512,18 @@ function M.Attach(host, backend)
         self._zoom = tonumber(v) or self._zoom or 0.65
         local d = math.max(1.2, 3.2 - (self._zoom * 2.6))
         self._camDist = d
-        self:PointCameraAtHead()
+        -- Preserve current camera target instead of resetting to head.
+        -- PointCameraAtHead reads animated bounds which shift during
+        -- emote animations, causing the camera to drift away from the
+        -- intended framing (e.g., sliding down to feet during a bow).
+        local s = self._lastCamSnapshot or {}
+        if s.tx and s.ty and s.tz then
+            local px, py, pz = s.tx, s.ty + d, s.tz
+            self:_ApplyCameraLookAt(px, py, pz, s.tx, s.ty, s.tz)
+            self:_UpdateSnapshot({ px = px, py = py, pz = pz })
+        else
+            self:PointCameraAtHead()
+        end
     end
     
     function host:GetPortraitZoom()
@@ -568,7 +579,10 @@ function M.Attach(host, backend)
     function host:SetTarget(vec3)
         if backend.kind ~= "scene" or not backend.frame then return end
         vec3 = vec3 or {}
-        self._userControlledCamera = true
+        -- Only mark as user-controlled if NOT called from internal animation pan
+        if not self._internalPanActive then
+            self._userControlledCamera = true
+        end
         -- Current camera pos/target (from last basis if getters missing)
         local px, py, pz = 0, (self._camDist or 2.5), (self._camBaseZ or 1.0)
         if backend.frame.GetCameraPosition then

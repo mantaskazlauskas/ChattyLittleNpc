@@ -36,13 +36,16 @@ function HC.Attach(host)
     if not host then return host end
 
     -- SetPosition should pan target Z while preserving X/Y when omitted
+    -- Mark as internal pan so SetTarget doesn't block auto-framing
     if not has(host.SetPosition) and has(host.SetTarget) then
         host.SetPosition = function(self, x, y, z)
             local tz = tonumber(z)
             if tz == nil then return end
             local tx = (self._targetX ~= nil) and self._targetX or 0
             local ty = (self._targetY ~= nil) and self._targetY or 0
-            self:SetTarget({ x = tx, y = ty, z = tz })
+            self._internalPanActive = true
+            pcall(self.SetTarget, self, { x = tx, y = ty, z = tz })
+            self._internalPanActive = nil
         end
     end
 

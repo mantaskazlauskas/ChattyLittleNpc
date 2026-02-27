@@ -687,8 +687,8 @@ function ReplayFrame:PlayTalkEmote(opts)
         return ok
     else
         -- For zero or no duration, just use the direct animation we already set
-    -- Move camera to TALK targets using preset helper
-    if self.ApplyEmotePreset then self:ApplyEmotePreset("Talk", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
+    -- Move camera to TALK targets unless caller requested skip (e.g. emote loop re-entry)
+    if not opts.skipCamera and self.ApplyEmotePreset then self:ApplyEmotePreset("Talk", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
         return true
     end
 end
@@ -715,8 +715,8 @@ function ReplayFrame:PlayIdleEmote(opts)
     else
         -- Direct idle animation, let system handle what comes next
         if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
-    -- Move camera to IDLE targets using preset helper
-    if self.ApplyEmotePreset then self:ApplyEmotePreset("Idle", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
+    -- Move camera to IDLE targets unless caller requested skip (e.g. emote loop brief pause)
+    if not opts.skipCamera and self.ApplyEmotePreset then self:ApplyEmotePreset("Idle", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
         return true
     end
 end
@@ -809,13 +809,15 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
         dur = math.random() * (talkMax - talkMin) + talkMin
         self._loopLastWasIdle = false
         self._loopLastWasPoint = false
-        self:PlayTalkEmote({ duration = 0 })
+        -- Emote loop re-entry: change animation only, camera already at Talk position
+        self:PlayTalkEmote({ duration = 0, skipCamera = true })
         self._emoteSegType = "talk"
     else
         dur = math.random() * (idleMax - idleMin) + idleMin
         self._loopLastWasIdle = true
         self._loopLastWasPoint = false
-        self:PlayIdleEmote({ duration = 0 })
+        -- Brief idle pause in emote loop: change animation only, don't pan camera
+        self:PlayIdleEmote({ duration = 0, skipCamera = true })
         self._emoteSegType = "idle"
     end
     local nowT = now or (GetTime and GetTime() or 0)
