@@ -102,6 +102,7 @@ local defaults = {
         showQuestTypeBadges = true,
         -- Replay UI: history
         queueHistoryMaxEntries = 20,
+        historyTTLMinutes = 5,
         -- Replay UI: edit mode glow hints
         editModeGlowHints = true,
         -- Accessibility: high-contrast mode for colorblind users
@@ -194,6 +195,9 @@ function CLN:OnInitialize()
     self.locale = GetLocale()
     self.gameVersion = select(4, GetBuildInfo())
     self.useNamespaces = self.gameVersion >= 90000 -- namespaces were added in starting Shadowlands
+
+    -- Merge baked-in known voiced NPCs into user's whitelist (zero friction)
+    self:MergeKnownVoicedNpcs()
 
     if (self.db.profile.debugMode) then
         local version, build, date, tocVersion = GetBuildInfo()
@@ -461,6 +465,12 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
             local addon = _G[voiceoverPackName]
             if addon then
                 self.VoiceoverPacks[voiceoverPackName] = addon
+                if addon.Voiceovers then
+                    addon._voiceoverIndex = {}
+                    for _, name in ipairs(addon.Voiceovers) do
+                        addon._voiceoverIndex[name] = true
+                    end
+                end
             end
         end      
     end
@@ -487,8 +497,7 @@ end
 ]]
 function CLN:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
-    local npcId = select(6, self:GetUnitInfo("npc"))
-    local gender = select(2, self:GetUnitInfo("npc"))
+    local _, gender, _, _, _, npcId = self:GetUnitInfo("npc")
     -- Capture display ID now while the NPC unit is available (for queued playback later)
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc"))
         and UnitCreatureDisplayID("npc") or nil
@@ -583,4 +592,75 @@ end
 ---@param callback function|nil Specific callback to remove, or nil to remove all
 function CLN:UnregisterMessage(message, callback)
     self._sharedEvents:UnregisterMessage(message, callback)
+end
+
+-- ============================================================================
+-- Known Voiced NPC Management
+-- ============================================================================
+
+--- Merge the baked-in KnownVoicedNpcsDB into the user's whitelist.
+--- Called once on init. Only adds entries the user hasn't explicitly dismissed.
+function CLN:MergeKnownVoicedNpcs()
+    if not (self.db and self.db.profile) then return end
+    local baked = _G.KnownVoicedNpcsDB
+    if not baked then return end
+
+    -- Only merge if whitelist mode is active
+    if (self.db.profile.nativeVOMode or "off") == "off" then return end
+
+    local wl = self.db.profile.nativeVOWhitelist
+    if not wl then wl = {}; self.db.profile.nativeVOWhitelist = wl end
+    local dismissed = self.db.profile.nativeVODismissed or {}
+    local added = 0
+
+    for name, data in pairs(baked) do
+        -- Skip if user explicitly dismissed this NPC
+        if not dismissed[name] then
+            if not wl[name] then
+                wl[name] = true
+                added = added + 1
+            end
+            -- Also add any known IDs
+            if data.ids then
+                for _, id in ipairs(data.ids) do
+                    if not wl[id] and not dismissed[id] then
+                        wl[id] = true
+                    end
+                end
+            end
+        end
+    end
+
+    if added > 0 and self.Logger then
+        self.Logger:debug("Merged " .. added .. " known voiced NPCs into whitelist", false,
+            self.Utils and self.Utils.LogCategories and self.Utils.LogCategories.loader or "misc")
+    end
+end
+
+--- Record a user-confirmed voiced NPC to the global contributions SavedVariable.
+--- Only collects when logNpcTexts is enabled.
+---@param npcName string
+---@param npcIds table Array of creature IDs
+function CLN:ContributeVoicedNpc(npcName, npcIds)
+    if not (self.db and self.db.profile and self.db.profile.logNpcTexts) then return end
+    if not npcName then return end
+
+    -- Initialize the global SavedVariable table
+    if not _G.VoicedNpcContributions then _G.VoicedNpcContributions = {} end
+    local contrib = _G.VoicedNpcContributions
+
+    if not contrib[npcName] then
+        contrib[npcName] = { ids = {} }
+    end
+
+    -- Merge any new IDs
+    if npcIds then
+        local existing = {}
+        for _, id in ipairs(contrib[npcName].ids or {}) do existing[id] = true end
+        for _, id in ipairs(npcIds) do
+            if not existing[id] then
+                table.insert(contrib[npcName].ids, id)
+            end
+        end
+    end
 end

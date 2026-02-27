@@ -125,6 +125,10 @@ function ReplayFrame:OnWhitelistPopupAccept(checks)
                 if npc.npcName then wl[npc.npcName] = true end
                 local ids = npc.npcIds or {}
                 for _, id in ipairs(ids) do wl[id] = true end
+                -- Contribute to global collection for community baking
+                if CLN.ContributeVoicedNpc then
+                    CLN:ContributeVoicedNpc(npc.npcName, ids)
+                end
                 if CLN.Logger then
                     local idStr = #ids > 0 and table.concat(ids, ",") or "nil"
                     CLN.Logger:info("Whitelisted NPC: " .. tostring(npc.npcName) .. " (ids=" .. idStr .. ")", false, CLN.Utils.LogCategories.loader)

@@ -3,7 +3,7 @@
 ## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
 ## Version: 3.1.0
-## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB
+## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB, VoicedNpcContributions
 
 Core/Print.lua
 Core/Events.lua
@@ -65,6 +65,7 @@ Utils/SimHash.lua
 
 # Database
 Db/NpcDisplayIdDB.lua
+Db/KnownVoicedNpcs.lua
 
 # Initialization - MUST load last
 Init.lua
