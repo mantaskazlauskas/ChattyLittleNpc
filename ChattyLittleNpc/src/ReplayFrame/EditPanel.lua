@@ -19,11 +19,11 @@ function ReplayFrame:CreateEditPanel()
         edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
         tile = true,
         tileSize = 16,
-        edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    panel:SetBackdropColor(0.07, 0.07, 0.09, 0.92)
-    panel:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.8)
+    panel:SetBackdropColor(0.04, 0.06, 0.10, 0.78)
+    panel:SetBackdropBorderColor(0.0, 0.70, 0.82, 0.85)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)
     panel:EnableMouse(true)
@@ -297,28 +297,28 @@ function ReplayFrame:CreateEditPanel()
     
     local function CreateEditModeButton(parent, text, width, height)
         local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
-        btn:SetSize(width or 120, height or 22)
+        btn:SetSize(width or 120, height or 26)
         btn:SetBackdrop({
             bgFile = "Interface/Tooltips/UI-Tooltip-Background",
             edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
             tile = true,
             tileSize = 16,
-            edgeSize = 10,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 },
+            edgeSize = 12,
+            insets = { left = 3, right = 3, top = 3, bottom = 3 },
         })
-        btn:SetBackdropColor(0.12, 0.12, 0.14, 0.9)
-        btn:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.8)
+        btn:SetBackdropColor(0.06, 0.08, 0.12, 0.85)
+        btn:SetBackdropBorderColor(0.0, 0.55, 0.65, 0.7)
         local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetPoint("CENTER")
         fs:SetText(text or "")
         btn.Text = fs
         btn:SetScript("OnEnter", function(self)
-            self:SetBackdropColor(0.2, 0.2, 0.24, 0.95)
-            self:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.9)
+            self:SetBackdropColor(0.10, 0.14, 0.20, 0.95)
+            self:SetBackdropBorderColor(0.0, 0.75, 0.85, 0.9)
         end)
         btn:SetScript("OnLeave", function(self)
-            self:SetBackdropColor(0.12, 0.12, 0.14, 0.9)
-            self:SetBackdropBorderColor(0.35, 0.35, 0.35, 0.8)
+            self:SetBackdropColor(0.06, 0.08, 0.12, 0.85)
+            self:SetBackdropBorderColor(0.0, 0.55, 0.65, 0.7)
         end)
         function btn:SetText(t) self.Text:SetText(t) end
         function btn:GetText() return self.Text:GetText() end
@@ -329,34 +329,32 @@ function ReplayFrame:CreateEditPanel()
         return btn
     end
 
-    -- Buttons (Blizzard-style row)
-    panel.acceptButton = CreateEditModeButton(panel, "Accept", 92, 24)
-    panel.acceptButton:SetPoint("BOTTOMRIGHT", -18, 48)
-
-    panel.cancelButton = CreateEditModeButton(panel, "Cancel", 92, 24)
-    panel.cancelButton:SetPoint("RIGHT", panel.acceptButton, "LEFT", -8, 0)
-
-    panel.revertButton = CreateEditModeButton(panel, "Revert", 108, 24)
-    panel.revertButton:SetPoint("BOTTOMLEFT", 18, 48)
+    -- Bottom buttons: primary action row
+    panel.revertButton = CreateEditModeButton(panel, "Revert All Changes", 150, 26)
+    panel.revertButton:SetPoint("BOTTOMLEFT", 14, 14)
     panel.revertButton:Disable()
 
-    panel.resetButton = CreateEditModeButton(panel, "Restore All Defaults", 304, 24)
-    panel.resetButton:SetPoint("BOTTOM", 0, 14)
+    panel.acceptButton = CreateEditModeButton(panel, "Save", 150, 26)
+    panel.acceptButton:SetPoint("BOTTOMRIGHT", -14, 14)
 
-    -- (Legacy exclude + per-row reset creation removed; handled inside FormBuilder)
-
-    -- Layout Manager & Import/Export (secondary row above reset for spacing)
-    panel.layoutBtn = CreateEditModeButton(panel, "Layouts", 136, 22)
-    panel.layoutBtn:SetPoint("BOTTOMLEFT", panel.resetButton, "TOPLEFT", 0, 8)
+    -- Secondary buttons row above primary
+    panel.layoutBtn = CreateEditModeButton(panel, "Layouts", 150, 24)
+    panel.layoutBtn:SetPoint("BOTTOMLEFT", panel.revertButton, "TOPLEFT", 0, 6)
     panel.layoutBtn:SetScript("OnClick", function()
         if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowLayoutManager() end
     end)
 
-    panel.bundleBtn = CreateEditModeButton(panel, "Bundle\226\128\166", 136, 22)
-    panel.bundleBtn:SetPoint("LEFT", panel.layoutBtn, "RIGHT", 10, 0)
+    panel.bundleBtn = CreateEditModeButton(panel, "Bundle\226\128\166", 150, 24)
+    panel.bundleBtn:SetPoint("BOTTOMRIGHT", panel.acceptButton, "TOPRIGHT", 0, 6)
     panel.bundleBtn:SetScript("OnClick", function()
         if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowBundleDialog() end
     end)
+
+    -- Alias cancelButton to revertButton to satisfy Cancel OnClick handler
+    panel.cancelButton = panel.revertButton
+
+    panel.resetButton = CreateEditModeButton(panel, "Reset Defaults", 304, 24)
+    panel.resetButton:SetPoint("BOTTOM", 0, 80)
     
     -- Event handlers
     -- Live preview helpers (do not commit to DB until Accept)
@@ -407,6 +405,7 @@ function ReplayFrame:CreateEditPanel()
     end
 
     panel.acceptButton:SetScript("OnClick", function()
+        panel._accepted = true
         ReplayFrame:ApplyEditPanelSettings(panel)
         local snap = {}
         for _, row in ipairs(panel._formBuilder.rows) do
@@ -426,32 +425,37 @@ function ReplayFrame:CreateEditPanel()
         panel:Hide()
     end)
 
-    panel.cancelButton:SetScript("OnClick", function()
-        if panel._orig and panel._formBuilder then
-            panel._suppressDirty = true
-            for _, row in ipairs(panel._formBuilder.rows) do
+    -- OnHide: revert live previews unless Accept was pressed
+    panel:HookScript("OnHide", function(self)
+        if self._accepted then
+            self._accepted = nil
+            return
+        end
+        if self._orig and self._formBuilder then
+            self._suppressDirty = true
+            for _, row in ipairs(self._formBuilder.rows) do
                 if row.type == "slider" and row.slider then
-                    local v = panel._orig[row.origKey or row.key]
+                    local v = self._orig[row.origKey or row.key]
                     if v ~= nil then row.slider:SetValue(v) end
                 end
             end
-            local s = panel._orig.scale or 1.0
+            local s = self._orig.scale or 1.0
             if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetScale(s) end
-            if CLN and CLN.db and CLN.db.profile and panel._orig.textScale then
-                local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = panel._orig.textScale
+            if CLN and CLN.db and CLN.db.profile and self._orig.textScale then
+                local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = self._orig.textScale
                 if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
                 CLN.db.profile.queueTextScale = old
             end
-            local w = panel._orig.width or 475
-            local h = panel._orig.height or 165
+            local w = self._orig.width or 475
+            local h = self._orig.height or 165
             if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(w,h) end
-            if ReplayFrame and ReplayFrame.NpcModelFrame and panel._orig.modelHeight then
-                ReplayFrame.NpcModelFrame:SetHeight(panel._orig.modelHeight)
+            if ReplayFrame and ReplayFrame.NpcModelFrame and self._orig.modelHeight then
+                ReplayFrame.NpcModelFrame:SetHeight(self._orig.modelHeight)
             end
             if ReplayFrame and ReplayFrame.Relayout then ReplayFrame:Relayout() end
-            panel._suppressDirty = nil
+            self._suppressDirty = nil
         end
-        panel:RefreshDirtyIndicators()
+        self:RefreshDirtyIndicators()
         if ReplayFrame._dummyPreviewActive then
             ReplayFrame._dummyPreviewActive = nil
             if ReplayFrame.SetQueueData then
@@ -459,8 +463,9 @@ function ReplayFrame:CreateEditPanel()
                 if ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
             end
         end
-        panel:Hide()
     end)
+
+    closeBtn:SetScript("OnClick", function() panel:Hide() end)
 
     panel.revertButton:SetScript("OnClick", function()
         if not panel._orig or not panel._formBuilder then return end
@@ -550,7 +555,7 @@ function ReplayFrame:CreateEditPanel()
         if not self._formBuilder then return end
         local lastY = self._formBuilder:GetCurrentY() or -250
         -- lastY is negative offset from top to top of LAST row; estimate content depth
-        local contentDepth = math.abs(lastY) + 148 -- compact panel padding + controls
+        local contentDepth = math.abs(lastY) + 130 -- padding for three button rows at bottom
         local minHeight = 300
         local desired = math.max(minHeight, contentDepth)
         if math.abs(desired - self:GetHeight()) > 1 then

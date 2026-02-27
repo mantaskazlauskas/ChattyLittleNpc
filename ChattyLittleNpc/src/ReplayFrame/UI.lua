@@ -1309,27 +1309,6 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
 
-            local clearBtn = CreateFrame("Button", nil, row)
-            clearBtn:SetSize(16, 16)
-            clearBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-            clearBtn:SetNormalFontObject("GameFontNormalSmall")
-            clearBtn:SetText("\195\151") -- × multiplication sign (UTF-8)
-            if clearBtn:GetFontString() then clearBtn:GetFontString():SetTextColor(0.6, 0.5, 0.2, 0.8) end
-            clearBtn:SetHighlightFontObject("GameFontHighlightSmall")
-            clearBtn:Hide()
-            clearBtn:SetScript("OnClick", function()
-                if ReplayFrame and ReplayFrame.ClearHistory then
-                    ReplayFrame:ClearHistory()
-                end
-            end)
-            clearBtn:SetScript("OnEnter", function(btn)
-                GameTooltip:SetOwner(btn, "ANCHOR_RIGHT")
-                GameTooltip:AddLine("Clear History", 1, 1, 1)
-                GameTooltip:Show()
-            end)
-            clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-            row.clearHistoryBtn = clearBtn
-
             row:SetScript("OnMouseUp", function(selfBtn, button)
                 local e = selfBtn._element
                 if not e then return end
@@ -1453,7 +1432,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.clearHistoryBtn then r.clearHistoryBtn:Hide() end end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
         local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
@@ -1471,7 +1450,6 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if row.bulletTex then row.bulletTex:Hide() end
                 if row.typeIcon then row.typeIcon:SetSize(0.001, 14); row.typeIcon:Hide() end
                 row:EnableMouse(false)
-                if row.clearHistoryBtn then row.clearHistoryBtn:Show() end
             -- History row (greyed out with replay capability)
             elseif element.isHistory then
                 local label = element.label or "Unknown"
@@ -1490,7 +1468,6 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     row.bulletTex:SetColorTexture(0.5, 0.5, 0.5, 0.5) -- dim bullet
                     row.bulletTex:Show()
                 end
-                if row.clearHistoryBtn then row.clearHistoryBtn:Hide() end
                 -- Type icon for history
                 if row.typeIcon then
                     if showBadges then
@@ -1537,7 +1514,6 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 end
                 row._fullText = label
                 row:EnableMouse(true)
-                if row.clearHistoryBtn then row.clearHistoryBtn:Hide() end
                 -- Apply coloring by type (accessibility-aware)
                 if self.GetRowColor then
                     row.text:SetTextColor(self:GetRowColor(element, showBadges))
