@@ -547,7 +547,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
             else
                 if this.HeaderDivider then this.HeaderDivider:Show() end
                 if this.QueueScrollBox then this.QueueScrollBox:Show() end
-                if frame and frame.SetHeight and this._preCollapseHeight then frame:SetHeight(this._preCollapseHeight) end
+                if frame and frame.SetHeight then frame:SetHeight(this:GetSafeExpandHeight()) end
             end
             if this.UpdateDisplayFrame then this:UpdateDisplayFrame() end
             if this.Relayout then this:Relayout() end
@@ -732,6 +732,24 @@ function ReplayFrame:EnsureCompactBadge()
     stopBtn:SetPoint("RIGHT", badge, "RIGHT", -38, 0)
     badge.PlayBtn = stopBtn
 
+    -- Pause/Resume button
+    local pauseBtn = makeBtn(badge, 22, "Interface/TimeManager/PauseButton", "Pause playback", function()
+        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
+    end)
+    pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
+    -- Override tooltip to be dynamic (pause/resume)
+    pauseBtn:SetScript("OnEnter", function(btn)
+        btn.bg:SetVertexColor(1, 1, 1, 0.25)
+        if GameTooltip and GameTooltip.SetOwner then
+            local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+            GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(paused and "Resume playback" or "Pause playback", 1, 1, 1)
+            GameTooltip:Show()
+        end
+    end)
+    badge.PauseBtn = pauseBtn
+
     -- Expand button
     local expandBtn = makeBtn(badge, 22, "Interface/Buttons/UI-Panel-ExpandButton-Up", "Expand", function()
         if self.CollapseButton then self.CollapseButton:Click() end
@@ -741,7 +759,7 @@ function ReplayFrame:EnsureCompactBadge()
 
     -- Queue count badge (small pill, between title and buttons)
     local queuePill = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    queuePill:SetPoint("RIGHT", stopBtn, "LEFT", -8, 0)
+    queuePill:SetPoint("RIGHT", pauseBtn, "LEFT", -8, 0)
     queuePill:SetJustifyH("RIGHT")
     queuePill:SetTextColor(0.75, 0.75, 0.75, 0.9)
     badge.QueueCount = queuePill
@@ -775,6 +793,21 @@ function ReplayFrame:EnsureCompactBadge()
     end)
 
     self.CompactBadge = badge
+end
+
+function ReplayFrame:UpdatePauseButton()
+    local badge = self.CompactBadge
+    if badge and badge.PauseBtn then
+        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+        local tex = badge.PauseBtn.tex
+        if tex then
+            if paused then
+                tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+            else
+                tex:SetTexture("Interface/TimeManager/PauseButton")
+            end
+        end
+    end
 end
 
 function ReplayFrame:UpdateCompactBadge(force)
@@ -866,6 +899,14 @@ end
 -- =============================================================
 -- Animated collapse / expand (fade + subtle scale) for badge UI
 -- =============================================================
+
+-- Safe fallback height when _preCollapseHeight is nil
+function ReplayFrame:GetSafeExpandHeight()
+    return self._preCollapseHeight
+        or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
+        or 165
+end
+
 function ReplayFrame:ApplyImmediateCollapseState(collapsed)
     -- Fallback non-animated logic (mirrors prior behavior but refactored)
     if not self.DisplayFrame then return end
@@ -873,6 +914,7 @@ function ReplayFrame:ApplyImmediateCollapseState(collapsed)
     local frame = self.DisplayFrame
     if collapsed then
         if frame and frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
+        if self.HideSubtitle then self:HideSubtitle() end
         if self.HeaderText then self.HeaderText:Hide() end
         if self.HeaderDivider then self.HeaderDivider:Hide() end
         if self.QueueScrollBox then self.QueueScrollBox:Hide() end
@@ -896,7 +938,7 @@ function ReplayFrame:ApplyImmediateCollapseState(collapsed)
             end
             if self.CompactBadge.IconGlow then self.CompactBadge.IconGlow:Hide() end
         end
-        if frame and frame.SetHeight and self._preCollapseHeight then frame:SetHeight(self._preCollapseHeight) end
+        if frame and frame.SetHeight then frame:SetHeight(self:GetSafeExpandHeight()) end
     end
     if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
     if self.Relayout then self:Relayout() end
@@ -915,7 +957,7 @@ function ReplayFrame:AnimateCollapseTransition(collapsed)
     local elapsed = 0
     local startH = frame:GetHeight() or 0
     if collapsed and frame.GetHeight then self._preCollapseHeight = startH end
-    local endH = collapsed and 56 or (self._preCollapseHeight or startH)
+    local endH = collapsed and 56 or self:GetSafeExpandHeight()
     local contentFrames = { self.HeaderText, self.HeaderDivider, self.QueueScrollBox, (self.ModelContainer or self.NpcModelFrame) }
     local badge = self.CompactBadge
     if collapsed then
@@ -1078,8 +1120,8 @@ function ReplayFrame:AnimateCollapse(collapse, duration)
     end
 
     local startH = frame:GetHeight() or 0
-    local endH = collapse and HeaderOnlyHeight() or (self._preCollapseHeight or startH)
-    if endH <= 0 then endH = startH end
+    local endH = collapse and HeaderOnlyHeight() or self:GetSafeExpandHeight()
+    if endH <= 0 then endH = 165 end
 
     -- Simple tween via OnUpdate
     frame._animatingCollapse = true
