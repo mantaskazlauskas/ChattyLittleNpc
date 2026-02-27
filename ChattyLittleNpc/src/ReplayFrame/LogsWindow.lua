@@ -88,14 +88,18 @@ local function ensureHook()
     U._origLogAnimDebugEx = U._origLogAnimDebugEx or U.LogAnimDebugEx
     U._origLogDebug = U._origLogDebug or U.LogDebug
     U.LogAnimDebug = function(utils, a, b)
+        CLN._insideUtilsLogHook = true
         if U._origLogAnimDebug then pcall(U._origLogAnimDebug, utils, a, b) end
+        CLN._insideUtilsLogHook = false
         local hasCat = (b ~= nil)
         local cat = hasCat and tostring(a) or nil
         local msg = hasCat and tostring(b) or tostring(a)
         pushLine(cat, msg, nil, "anim")
     end
     U.LogAnimDebugEx = function(utils, a, b, session)
+        CLN._insideUtilsLogHook = true
         if U._origLogAnimDebugEx then pcall(U._origLogAnimDebugEx, utils, a, b, session) end
+        CLN._insideUtilsLogHook = false
         local cat, msg, sess
         if b ~= nil then
             cat = tostring(a); msg = tostring(b); sess = session and tostring(session) or nil
@@ -106,7 +110,9 @@ local function ensureHook()
     end
     if type(U.LogDebug) == "function" then
         U.LogDebug = function(utils, text)
+            CLN._insideUtilsLogHook = true
             if U._origLogDebug then pcall(U._origLogDebug, utils, text) end
+            CLN._insideUtilsLogHook = false
             pushLine("debug", tostring(text), nil, "debug")
         end
     end
@@ -114,19 +120,23 @@ local function ensureHook()
     if CLN and type(CLN.Print) == "function" and not CLN._origAddonPrint then
         CLN._origAddonPrint = CLN.Print
         CLN.Print = function(self, ...)
-            local parts = {}
-            for i = 1, select('#', ...) do parts[#parts+1] = tostring(select(i, ...)) end
-            local msg = table.concat(parts, " ")
-            if not (string.find(msg, "[ANIM]", 1, true) or string.find(msg, "[DEBUG]", 1, true)) then
-                -- Detect severity before stripping the color-coded prefix
+            -- Reentrancy guard: Utils hooks (LogAnimDebug, LogDebug) already push
+            -- to LogsWindow directly, then call Logger:debug which calls CLN:Print.
+            -- Skip the pushLine here when we're already inside a Utils hook to avoid
+            -- duplicate entries.
+            if not CLN._insideUtilsLogHook then
+                local parts = {}
+                for i = 1, select('#', ...) do parts[#parts+1] = tostring(select(i, ...)) end
+                local msg = table.concat(parts, " ")
                 local lvl = detectSeverity(msg)
-                -- Extract the real Logger category (e.g. "ui", "system") from the prefix
                 local cat = extractLoggerCategory(msg) or "app"
-                -- Strip the redundant color-coded severity+category prefix
                 local clean = stripLoggerPrefix(msg)
                 pushLine(cat, clean, nil, "addon", lvl)
             end
-            return
+            -- Always call the original Print so messages reach the chat frame
+            if CLN._origAddonPrint then
+                CLN._origAddonPrint(self, ...)
+            end
         end
     end
     -- Hook global print to capture instrumentation
