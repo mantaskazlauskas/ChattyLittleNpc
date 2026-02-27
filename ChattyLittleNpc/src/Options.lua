@@ -88,8 +88,17 @@ local options = {
                     get = function(info) return CLN.db.profile.showSpeakButton end,
                     set = function(info, value) CLN.db.profile.showSpeakButton = value end,
                 },
-                nativeVOMode = {
+                gossipCooldownEnabled = {
                     order = 6,
+                    type = 'toggle',
+                    width = 'full',
+                    name = 'Gossip Cooldown',
+                    desc = 'When enabled, the same gossip voiceover will not be played again for the rest of the session (until reload/logout).',
+                    get = function(info) return CLN.db.profile.gossipCooldownEnabled end,
+                    set = function(info, value) CLN.db.profile.gossipCooldownEnabled = value end,
+                },
+                nativeVOMode = {
+                    order = 7,
                     type = 'toggle',
                     width = 'full',
                     name = 'Pause for Voiced NPCs',

@@ -6,6 +6,35 @@ local VoiceoverPlayer = {}
 CLN.VoiceoverPlayer = VoiceoverPlayer
 
 -- ============================================================================
+-- Gossip Cooldown
+-- ============================================================================
+
+-- Session-local set of played gossip hashes (cleared on reload/logout)
+VoiceoverPlayer._gossipCooldowns = {}
+
+--- Check whether any of the given hashes have already been played this session.
+---@param hashes string[]
+---@return boolean
+function VoiceoverPlayer:IsGossipOnCooldown(hashes)
+    if not CLN.db.profile.gossipCooldownEnabled then return false end
+    for _, hash in ipairs(hashes) do
+        if self._gossipCooldowns[hash] then
+            return true
+        end
+    end
+    return false
+end
+
+--- Record that a gossip line was just played.
+---@param hashes string[]
+function VoiceoverPlayer:RecordGossipCooldown(hashes)
+    if not CLN.db.profile.gossipCooldownEnabled then return end
+    for _, hash in ipairs(hashes) do
+        self._gossipCooldowns[hash] = true
+    end
+end
+
+-- ============================================================================
 -- Queue Integrity Helpers
 -- ============================================================================
 --- Check if a quest/phase combo is already queued.
@@ -723,6 +752,15 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
     local success = false
     local newSoundHandle
     local hashes = CLN.Utils:GetHashes(npcId, text)
+
+    -- Gossip cooldown: skip if this line was recently played
+    if soundType == "Gossip" and self:IsGossipOnCooldown(hashes) then
+        if CLN.db.profile.debugMode and CLN.Logger then
+            CLN.Logger:debug("Gossip on cooldown, skipping: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+        end
+        return
+    end
+
     local pathToFile = CLN.Utils:GetPathToNonQuestFile(npcId, soundType, hashes, gender)
     if (pathToFile and not CLN.Utils:IsNilOrEmpty(pathToFile)) then
         -- Only stop current sound once we know we have a replacement
@@ -739,6 +777,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
 
         success, newSoundHandle = PlaySoundFile(pathToFile, CLN.db.profile.audioChannel)
         if (success) then
+            -- Record gossip cooldown on successful playback
+            if soundType == "Gossip" then
+                self:RecordGossipCooldown(hashes)
+            end
             VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
             VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
             VoiceoverPlayer.currentlyPlaying.npcId = npcId

@@ -107,6 +107,8 @@ local defaults = {
         editModeGlowHints = true,
         -- Accessibility: high-contrast mode for colorblind users
         highContrastMode = false,
+        -- Gossip cooldown: don't replay the same gossip line within a session
+        gossipCooldownEnabled = false,
         -- Native VO handling: "off" (ignore), "all" (pause on any), "whitelist" (user-curated)
         nativeVOMode = "off",
         -- Whitelisted NPCs: keyed by NPC ID (number) or name (string) → true
