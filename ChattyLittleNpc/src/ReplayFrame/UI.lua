@@ -1356,13 +1356,26 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                             end
                         end
                     elseif e.isHistory then
-                        -- Replay from history
+                        -- Replay from history: remove from history so it shows as current playback
                         if InCombatLockdown and InCombatLockdown() then return end
+                        -- Remove by identity match (safe against stale indices)
+                        if ReplayFrame._replayHistory then
+                            for i = #ReplayFrame._replayHistory, 1, -1 do
+                                local h = ReplayFrame._replayHistory[i]
+                                if h.npcId == e.npcId and h.title == e.title
+                                   and (h.questId or "") == (e.questId or "")
+                                   and (h.phase or "") == (e.phase or "") then
+                                    table.remove(ReplayFrame._replayHistory, i)
+                                    break
+                                end
+                            end
+                        end
                         if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
                             CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId)
                         elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
                             CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
                         end
+                        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
                     end
                 end
             end)
