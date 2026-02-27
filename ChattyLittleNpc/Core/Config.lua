@@ -464,8 +464,9 @@ end
 -- Open the settings panel
 function ConfigSystem:Open()
     if Settings and Settings.OpenToCategory and self.category then
-        -- Modern API needs category ID, not the object itself
-        local id = self.category.GetID and self.category:GetID() or self.category
+        -- Modern API needs the numeric category ID, not the object
+        local id = self.category.ID or (self.category.GetID and self.category:GetID())
+        if type(id) == "table" then id = id.ID end -- safety: unwrap if GetID returns object
         Settings.OpenToCategory(id)
     elseif InterfaceOptionsFrame_OpenToCategory then
         InterfaceOptionsFrame_OpenToCategory(self.panel)
