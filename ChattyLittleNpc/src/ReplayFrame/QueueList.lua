@@ -281,7 +281,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
                         CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID)
                     elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
-                        CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
+                        CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender, e.displayID)
                     end
                     if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
                 end

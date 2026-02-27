@@ -183,8 +183,10 @@ function EventHandler:GOSSIP_SHOW()
         return
     end
 
+    local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+
     CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.GossipButton ,function()
-        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", text, gender)
+        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", text, gender, displayID)
     end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
@@ -363,7 +365,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
             elseif nextItem.npcId and nextItem.title and nextItem.entryType then
                 table.remove(CLN.questsQueue, 1)
                 if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-                CLN.VoiceoverPlayer:PlayNonQuestSound(nextItem.npcId, nextItem.entryType, nextItem.title, nextItem.gender)
+                CLN.VoiceoverPlayer:PlayNonQuestSound(nextItem.npcId, nextItem.entryType, nextItem.title, nextItem.gender, nextItem.displayID)
             else
                 -- Unknown entry type; discard and try next
                 table.remove(CLN.questsQueue, 1)

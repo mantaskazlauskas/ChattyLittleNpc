@@ -220,7 +220,13 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         else
             -- Same displayID: skip full reload if model is still loaded
             local be = self.NpcModelFrame and self.NpcModelFrame._backend
-            local stillLoaded = be and be.actor and be.actor.IsLoaded and be.actor:IsLoaded()
+            local stillLoaded = false
+            if be and be.actor and be.actor.IsLoaded then
+                stillLoaded = be.actor:IsLoaded()
+            elseif be and be.kind == "player" and be.frame then
+                local fid = be.frame.GetModelFileID and be.frame:GetModelFileID()
+                stillLoaded = fid and fid ~= 0
+            end
             if stillLoaded then
                 if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
                     self.NpcModelFrame:Show()
@@ -297,7 +303,13 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         end
         if self._lastUnitNpcId == npcId then
             local be = self.NpcModelFrame and self.NpcModelFrame._backend
-            local stillLoaded = be and be.actor and be.actor.IsLoaded and be.actor:IsLoaded()
+            local stillLoaded = false
+            if be and be.actor and be.actor.IsLoaded then
+                stillLoaded = be.actor:IsLoaded()
+            elseif be and be.kind == "player" and be.frame then
+                local fid = be.frame.GetModelFileID and be.frame:GetModelFileID()
+                stillLoaded = fid and fid ~= 0
+            end
             if stillLoaded then
                 if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
                     self.NpcModelFrame:Show()
@@ -319,6 +331,11 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             pcall(self.NpcModelFrame.SetUnit, self.NpcModelFrame, "npc")
             self._lastUnitNpcId = npcId
             self._lastDisplayID = nil
+            -- Snapshot displayID while "npc" is valid for later fallback
+            if not (currentlyPlaying and currentlyPlaying.displayID) then
+                local did = UnitCreatureDisplayID and UnitCreatureDisplayID("npc") or nil
+                if did and currentlyPlaying then currentlyPlaying.displayID = did end
+            end
             -- Build metadata and apply default fit when unit is loaded
             if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(nil) end
             if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
@@ -329,14 +346,28 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             -- Mark as having a model so animation path can proceed
             self._hasValidModel = true
         else
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
-                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
+            -- Unit gone but we may have a cached displayID from currentlyPlaying
+            local cpDid = currentlyPlaying and currentlyPlaying.displayID
+            if cpDid and self.NpcModelFrame and self.NpcModelFrame.SetDisplayInfo then
+                self.NpcModelFrame:ClearModel()
+                if self.ModelContainer then self.ModelContainer:Show() end
+                self.NpcModelFrame:Show()
+                self.NpcModelFrame:SetDisplayInfo(cpDid)
+                self._lastDisplayID = cpDid
+                self._lastUnitNpcId = nil
+                if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(cpDid) end
+                if self.ApplyDefaultFit then self:ApplyDefaultFit(cpDid) end
+                self._hasValidModel = true
+            else
+                if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
+                end
+                self.NpcModelFrame:ClearModel()
+                self.NpcModelFrame:Hide()
+                if self.ModelContainer then self.ModelContainer:Hide() end
+                self._lastUnitNpcId = nil
+                self._hasValidModel = false
             end
-            self.NpcModelFrame:ClearModel()
-            self.NpcModelFrame:Hide()
-            if self.ModelContainer then self.ModelContainer:Hide() end
-            self._lastUnitNpcId = nil
-            self._hasValidModel = false
         end
     end
     if self.Relayout then self:Relayout() end

@@ -289,7 +289,7 @@ function VoiceoverPlayer:ResumeAfterNativeVO()
     elseif cp.npcId and cp.title and cp.entryType then
         -- Non-quest (gossip/item): resume from the beginning
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender)
+        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender, cp.displayID)
     else
         -- Can't identify the entry; clear state
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
@@ -477,7 +477,7 @@ function VoiceoverPlayer:ProcessQueueAfterResume()
         elseif next.npcId and next.title and next.entryType then
             table.remove(CLN.questsQueue, 1)
             if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-            self:PlayNonQuestSound(next.npcId, next.entryType, next.title, next.gender)
+            self:PlayNonQuestSound(next.npcId, next.entryType, next.title, next.gender, next.displayID)
         else
             table.remove(CLN.questsQueue, 1)
         end
@@ -600,7 +600,7 @@ function VoiceoverPlayer:ResumeSuspendedPlayback()
     if saved.entryType == "quest" and saved.questId and saved.phase then
         self:PlayQuestSound(saved.questId, saved.phase, saved.npcId, saved.displayID)
     elseif saved.npcId and saved.title and saved.entryType then
-        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender)
+        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender, saved.displayID)
     end
 
     -- If playback didn't actually start (file missing/unavailable), the

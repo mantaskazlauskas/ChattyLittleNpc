@@ -544,11 +544,15 @@ end
 ]]
 function CLN:HandleGossipPlaybackStart(id, text, type, gender)
     if (id > 0 and text) then
+        -- Capture display ID immediately while the gossip unit is valid
+        local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc"))
+            and UnitCreatureDisplayID("npc") or nil
+            
         self._gossipTimerGen = (self._gossipTimerGen or 0) + 1
         local gen = self._gossipTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             if self._gossipTimerGen ~= gen then return end
-            self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender, displayID)
         end)
     end
 end
