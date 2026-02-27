@@ -67,6 +67,7 @@ function ReplayFrame:LayoutModelArea(frame)
                     self.NpcModelFrame:Hide()
                 end
                 if self.ModelContainer then self.ModelContainer:Hide() end
+                self._hasValidModel = false
                 if self.ResetAnimationState then self:ResetAnimationState() end
             end)
             frame:HookScript("OnShow", function()
@@ -191,7 +192,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     end
 
     local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
-    if (not (self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId == npcId)) then
+    if not (currentlyPlaying and currentlyPlaying.npcId == npcId) then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
         self._hasValidModel = false
@@ -350,10 +351,12 @@ function ReplayFrame:CheckAndShowModel()
         return
     end
     if (not self:IsCompactModeEnabled() and self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
-    self:ExpandForNpcModel()
+    -- Update model first (sets _hasValidModel), then expand frame, then show container
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
-    -- Ensure the container is shown so the model's OnShow fires and IsShown() is true
-    if self.ModelContainer then self.ModelContainer:Show() end
+    if self._hasValidModel then
+        self:ExpandForNpcModel()
+        if self.ModelContainer and not self.ModelContainer:IsShown() then self.ModelContainer:Show() end
+    end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 

@@ -355,6 +355,10 @@ function EventHandler:QUEST_FINISHED()
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
     end
+    -- In queue mode, refresh UI so frame/model recover after dialog close
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
+    end
 end
 
 function EventHandler:GOSSIP_CLOSED()
@@ -365,6 +369,10 @@ function EventHandler:GOSSIP_CLOSED()
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
         CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
+    end
+    -- In queue mode, refresh UI so frame/model recover after dialog close
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
     end
 end
 
