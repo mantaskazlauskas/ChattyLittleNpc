@@ -75,7 +75,7 @@ local defaults = {
             xOfs = 500,
             yOfs = 0
         },
-        frameSize = { width = 310 + 165, height = 165 },
+        frameSize = { width = 310 + 165, height = 310 },
         buttonPosX = -15,
         buttonPosY = -30,
         -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"

@@ -496,7 +496,7 @@ function ReplayFrame:CreateEditPanel()
 
     panel.resetButton:SetScript("OnClick", function()
         panel._suppressDirty = true
-        local defaults = { scale=1.0, textScale=1.0, width=475, height=165, modelHeight=140 }
+        local defaults = { scale=1.0, textScale=1.0, width=475, height=310, modelHeight=140 }
         for _, row in ipairs(panel._formBuilder.rows) do
             if row.type == "slider" and row.slider then
                 local def = defaults[row.origKey or row.key]
