@@ -1269,8 +1269,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
     self.QueueRowHeight = 24
     self.QueueRows = {}
 
-    -- Install keyboard navigation for the queue list
-    if this.SetupKeyboardNavigation then this:SetupKeyboardNavigation() end
+    -- Keyboard navigation removed: was stealing Tab/focus during gameplay
 
     function this:EnsureQueueRows(n)
         local created = 0
