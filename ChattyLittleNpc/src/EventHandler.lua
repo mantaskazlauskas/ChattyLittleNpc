@@ -406,7 +406,9 @@ local function EstimateVODuration(text)
 end
 
 --- Fires for CHAT_MSG_MONSTER_SAY / YELL / WHISPER / EMOTE.
---- Checks the isSubtitle flag to detect voiced NPC speech.
+--- Pauses addon voiceover when any NPC chat message fires (the game fires
+--- these for both voiced and unvoiced NPC speech — we can't distinguish
+--- reliably, so we pause conservatively when the feature is enabled).
 --- Note: EventSystem dispatches (event, ...) so the first arg here is the event name.
 function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
     -- Always log NPC messages when debug mode is on (regardless of pauseOnNativeVO)
@@ -426,11 +428,13 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     end
 
     if not CLN.db.profile.pauseOnNativeVO then return end
-    -- isSubtitle = true means this text accompanies voiced audio
-    if not isSubtitle then return end
     -- Don't pause if nothing is playing
     local cp = CLN.VoiceoverPlayer.currentlyPlaying
     if not (cp and cp.soundHandle and cp:isPlaying()) then return end
+
+    -- Skip emotes — they're ambient flavor text, almost never voiced
+    if event == "CHAT_MSG_MONSTER_EMOTE" then return end
+
     -- Already paused? Extend the timer instead of double-pausing
     if cp._pausedForNativeVO then
         local dur = EstimateVODuration(text)
@@ -441,14 +445,14 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
             CLN.VoiceoverPlayer:ResumeAfterNativeVO()
         end)
         if CLN and CLN.Logger then
-            CLN.Logger:debug("Extended native VO pause for subtitle from " .. tostring(npcName), false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName), false, CLN.Utils.LogCategories.loader)
         end
         return
     end
 
     local duration = EstimateVODuration(text)
     if CLN and CLN.Logger then
-        CLN.Logger:debug("Native VO detected (subtitle) from " .. tostring(npcName) .. " — pausing for ~" .. string.format("%.1f", duration) .. "s",
+        CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (" .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
             false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)
