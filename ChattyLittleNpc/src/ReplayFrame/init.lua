@@ -477,14 +477,45 @@ end
 function ReplayFrame:BuildQueueEntries()
     local entries = {}
     local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+
+    -- Only show "now playing" if the sound is actually still active (playing or paused)
+    local isActive = false
     if now and (now.title or now.questId) then
-    local isQuest = not not now.questId
-    local npcName = self:GetNpcNameById(now.npcId)
-    local content = now.title
-    local label = ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
-    local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
+        local stillPlaying = now.isPlaying and now:isPlaying()
+        local isPaused = CLN.VoiceoverPlayer._paused or (now._pausedForNativeVO)
+        isActive = stillPlaying or isPaused
+    end
+
+    if isActive then
+        local isQuest = not not now.questId
+        local npcName = self:GetNpcNameById(now.npcId)
+        local content = now.title
+        local label = ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
+        local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
 
         table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip, entryType = now.entryType or (isQuest and "quest" or "unknown") })
+    elseif now and (now.title or now.questId) and now.soundHandle then
+        -- Stale currentlyPlaying: sound finished but object wasn't cleared.
+        -- Push to history and clear it now.
+        if self.PushHistory then
+            local title = now.title
+            if not title and now.questId then
+                title = CLN:GetTitleForQuestID and CLN:GetTitleForQuestID(now.questId) or nil
+            end
+            if title then
+                self:PushHistory({
+                    title = title,
+                    npcId = now.npcId,
+                    questId = now.questId,
+                    phase = now.phase,
+                    entryType = now.entryType or "unknown",
+                    gender = now.gender,
+                    displayID = now.displayID,
+                    completedAt = GetTime and GetTime() or 0,
+                })
+            end
+        end
+        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
     end
 
     if CLN.questsQueue then
