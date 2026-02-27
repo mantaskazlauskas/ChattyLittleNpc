@@ -206,15 +206,26 @@ local function lineMatchesFilters(line)
         local sess = line.s and tostring(line.s) or ""
         if not string.find(sess, sf, 1, true) then return false end
     end
-    -- 5. Text search
+    -- 5. Text search (prefix with ! to exclude matches)
     if LW._textFilter and LW._textFilter ~= "" then
-        local needle = LW._textFilter
+        local raw = LW._textFilter
+        local exclude = false
+        if raw:sub(1, 1) == "!" and #raw > 1 then
+            exclude = true
+            raw = raw:sub(2)
+        end
+        local needle = raw
         local hay = tostring(line.m)
         if not LW._filterCaseSensitive then
             needle = string.lower(needle)
             hay = string.lower(hay)
         end
-        if not string.find(hay, needle, 1, true) then return false end
+        local found = string.find(hay, needle, 1, true) ~= nil
+        if exclude then
+            if found then return false end
+        else
+            if not found then return false end
+        end
     end
     return true
 end
@@ -588,7 +599,7 @@ function LW:Create()
     -- ── Search section ──
     local searchLabel = left:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     searchLabel:SetPoint("TOPLEFT", sessBox, "BOTTOMLEFT", -4, -8)
-    searchLabel:SetText("Search")
+    searchLabel:SetText("Search  |cff888888!  = exclude|r")
 
     local searchBox = CreateFrame("EditBox", nil, left, "InputBoxTemplate")
     searchBox:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 4, -2)
