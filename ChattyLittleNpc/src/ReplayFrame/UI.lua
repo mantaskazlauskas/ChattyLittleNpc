@@ -534,6 +534,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
             local frame = this.DisplayFrame
             if targetCollapsed then
                 if frame and frame.GetHeight then this._preCollapseHeight = frame:GetHeight() end
+                if this.HideSubtitle then this:HideSubtitle() end
                 if this.QueueScrollBox then this.QueueScrollBox:Hide() end
                 if this.HeaderDivider then this.HeaderDivider:Hide() end
                 if frame and frame.SetHeight then
@@ -998,6 +999,7 @@ function ReplayFrame:AnimateCollapseTransition(collapsed)
             if collapsed then
                 for _, f in ipairs(contentFrames) do if f and f.Hide then f:Hide() end end
                 if badge then badge:SetAlpha(1); badge:SetScale(1.0) end
+                if self.HideSubtitle then self:HideSubtitle() end
             else
                 if badge then badge:Hide() end
                 for _, f in ipairs(contentFrames) do if f and f.Show then f:Show(); if f.SetAlpha then f:SetAlpha(1) end end end
@@ -1157,6 +1159,7 @@ function ReplayFrame:AnimateCollapse(collapse, duration)
                 if frame._animCollapse then
                     if self.QueueScrollBox then self.QueueScrollBox:Hide() end
                     if self.HeaderDivider then self.HeaderDivider:Hide() end
+                    if self.HideSubtitle then self:HideSubtitle() end
                 else
                     if self.HeaderDivider then self.HeaderDivider:Show() end
                     if self.QueueScrollBox then self.QueueScrollBox:Show() end
@@ -1321,7 +1324,24 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if not e then return end
                 if button == "LeftButton" then
                     if e.isPlaying then
-                        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
+                        -- Push to history before stopping so it's available for replay
+                        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                        if cp and (cp.title or cp.questId) and ReplayFrame.PushHistory then
+                            local title = cp.title
+                            if not title and cp.questId then
+                                title = CLN:GetTitleForQuestID(cp.questId)
+                            end
+                            ReplayFrame:PushHistory({
+                                title = title,
+                                npcId = cp.npcId,
+                                questId = cp.questId,
+                                phase = cp.phase,
+                                entryType = cp.entryType or (cp.questId and "quest" or "unknown"),
+                                gender = cp.gender,
+                                completedAt = GetTime and GetTime() or 0,
+                            })
+                        end
+                        CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
                     elseif e.queueIndex then
