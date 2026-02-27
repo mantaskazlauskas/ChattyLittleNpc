@@ -240,6 +240,17 @@ function VoiceoverPlayer:PauseForNativeVO(estimatedDuration)
     cp._pausedSoundHandle = cp.soundHandle
     cp.soundHandle = nil -- Clear handle so watcher ignores us
 
+    -- Suspend watcher and history-prune timers while paused
+    if CLN.EventHandler and CLN.EventHandler.SuspendTimers then
+        CLN.EventHandler:SuspendTimers()
+    end
+
+    -- Freeze model animations
+    if CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame then
+        local m = CLN.ReplayFrame.NpcModelFrame
+        if m and m.SetScript then m:SetScript("OnUpdate", nil) end
+    end
+
     -- Schedule auto-resume
     if self._nativeVOResumeTimer then
         self._nativeVOResumeTimer:Cancel()
@@ -258,6 +269,11 @@ function VoiceoverPlayer:ResumeAfterNativeVO()
 
     cp._pausedForNativeVO = nil
     cp._pausedSoundHandle = nil
+
+    -- Resume watcher and history-prune timers
+    if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
+        CLN.EventHandler:ResumeTimers()
+    end
 
     if CLN and CLN.Logger then
         CLN.Logger:debug("Resuming addon VO after native NPC speech", false, CLN.Utils.LogCategories.loader)
@@ -287,7 +303,14 @@ function VoiceoverPlayer:CancelNativeVOResume()
         self._nativeVOResumeTimer = nil
     end
     local cp = self.currentlyPlaying
-    if cp then
+    if cp and cp._pausedForNativeVO then
+        cp._pausedForNativeVO = nil
+        cp._pausedSoundHandle = nil
+        -- Resume timers that were suspended during native VO pause
+        if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
+            CLN.EventHandler:ResumeTimers()
+        end
+    elseif cp then
         cp._pausedForNativeVO = nil
         cp._pausedSoundHandle = nil
     end
@@ -311,7 +334,7 @@ function VoiceoverPlayer:PausePlayback()
             and CLN.Utils.EstimateVODuration(cp.title) or 0
         if estimated > 0 then
             local remaining = estimated - elapsed
-            if remaining < 1.5 then
+            if remaining >= 0 and remaining < 1.5 then
                 if CLN.db.profile.debugMode and CLN.Logger then
                     CLN.Logger:debug("Pause skipped: ~" .. string.format("%.1f", remaining) .. "s remaining", false, CLN.Utils.LogCategories.loader)
                 end
@@ -322,10 +345,21 @@ function VoiceoverPlayer:PausePlayback()
 
     self._paused = true
 
+    -- Suspend watcher and history-prune timers while paused
+    if CLN.EventHandler and CLN.EventHandler.SuspendTimers then
+        CLN.EventHandler:SuspendTimers()
+    end
+
     if cp and cp.soundHandle then
         StopSound(cp.soundHandle, 0)
         cp._pausedByUser = true
         cp.soundHandle = nil -- hide from watcher so VOICEOVER_STOP doesn't fire
+    end
+
+    -- Freeze model animations
+    if CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame then
+        local m = CLN.ReplayFrame.NpcModelFrame
+        if m and m.SetScript then m:SetScript("OnUpdate", nil) end
     end
 
     if CLN and CLN.Logger then
@@ -344,6 +378,11 @@ end
 function VoiceoverPlayer:ResumePlayback()
     if not self._paused then return end
     self._paused = false
+
+    -- Resume watcher and history-prune timers
+    if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
+        CLN.EventHandler:ResumeTimers()
+    end
 
     local cp = self.currentlyPlaying
     -- Try to re-play the paused entry (restarts from beginning)

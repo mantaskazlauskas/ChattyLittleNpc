@@ -72,6 +72,25 @@ function EventHandler:UnregisterEvents()
     end
 end
 
+-- Suspend watcher and history-prune timers (called during pause)
+function EventHandler:SuspendTimers()
+    if self.watcherTimer then
+        timer:CancelTimer(self.watcherTimer)
+        self.watcherTimer = nil
+    end
+    if self._historyPruneTimer then
+        timer:CancelTimer(self._historyPruneTimer)
+        self._historyPruneTimer = nil
+    end
+end
+
+-- Resume watcher and history-prune timers (called on unpause)
+function EventHandler:ResumeTimers()
+    if not self.watcherTimer then
+        self:StartWatcher()
+    end
+end
+
 -- Register a job that triggers events
 function EventHandler:StartWatcher()
     -- Latch to avoid sending VOICEOVER_STOP repeatedly for the same sound handle
@@ -523,6 +542,8 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         if CLN.db.profile.debugMode and CLN.Logger then
             CLN.Logger:debug("Subtitle VO from " .. tostring(npcName) .. " — auto-pausing (bypasses whitelist)", false, CLN.Utils.LogCategories.loader)
         end
+        -- Surface any new (unknown) NPCs detected during subtitle auto-pause
+        self:ScheduleWhitelistPopup()
         return
     end
 
@@ -580,6 +601,8 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         if CLN.db.profile.debugMode and CLN.Logger then
             CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName) .. " (+" .. string.format("%.1f", dur) .. "s)", false, CLN.Utils.LogCategories.loader)
         end
+        -- Surface any new (unknown) NPCs detected during extended pause
+        self:ScheduleWhitelistPopup()
         return
     end
 
@@ -589,6 +612,9 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
             false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)
+
+    -- Surface any new (unknown) NPCs speaking alongside the whitelisted NPC
+    self:ScheduleWhitelistPopup()
 end
 
 --- Fires for TALKINGHEAD_REQUESTED. Talking heads always have voiceover.
