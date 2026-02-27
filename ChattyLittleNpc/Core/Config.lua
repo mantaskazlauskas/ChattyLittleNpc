@@ -254,14 +254,19 @@ end
 
 -- Create a description text under a group header
 ---@param parent table Parent frame
----@param text string Description text
+---@param textOrFn string|function Description text or function returning text
 ---@return table
-function ConfigSystem:CreateDescription(parent, text)
+function ConfigSystem:CreateDescription(parent, textOrFn)
     local desc = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local text = type(textOrFn) == "function" and textOrFn() or (textOrFn or "")
     desc:SetText(text)
     desc:SetTextColor(0.7, 0.7, 0.7)
     desc:SetJustifyH("LEFT")
     desc:SetWidth(540)
+    -- If name is a function, refresh on show to pick up dynamic content
+    if type(textOrFn) == "function" then
+        desc:SetScript("OnShow", function(self) self:SetText(textOrFn()) end)
+    end
     return desc
 end
 
@@ -442,6 +447,35 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
     return panel
 end
 
+-- Create an input text box
+---@param parent table Parent frame
+---@param info table Setting info {name, desc, get, set}
+---@return table
+function ConfigSystem:CreateInput(parent, info)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(540, 28)
+
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", 0, 0)
+    label:SetText(info.name or "")
+    label:SetTextColor(1, 0.82, 0)
+
+    local eb = CreateFrame("EditBox", nil, container, "InputBoxTemplate")
+    eb:SetSize(200, 20)
+    eb:SetPoint("LEFT", label, "RIGHT", 8, 0)
+    eb:SetAutoFocus(false)
+    eb:SetScript("OnEnterPressed", function(self)
+        local val = self:GetText()
+        if info.set then info.set(nil, val) end
+        self:SetText("")
+        self:ClearFocus()
+    end)
+    eb:SetScript("OnEscapePressed", function(self) self:SetText(""); self:ClearFocus() end)
+
+    attachTooltip(container, info)
+    return container
+end
+
 -- Create a control based on type
 ---@param parent table Parent frame
 ---@param opt table Option definition
@@ -457,6 +491,10 @@ function ConfigSystem:CreateControl(parent, opt)
         return self:CreateButton(parent, opt)
     elseif opt.type == "description" then
         return self:CreateDescription(parent, opt.name or "")
+    elseif opt.type == "header" then
+        return self:CreateHeader(parent, opt.name or "")
+    elseif opt.type == "input" then
+        return self:CreateInput(parent, opt)
     end
     return nil
 end
