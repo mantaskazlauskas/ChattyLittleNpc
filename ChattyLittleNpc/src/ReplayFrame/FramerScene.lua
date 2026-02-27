@@ -61,6 +61,31 @@ end
 -- Public: FitDefault with projector-based tweaks
 function FS.FitDefault(host, displayID, padding)
     if not host then return end
+    -- Prefer canonical bbox for animation-resistant framing
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+        and displayID and MS.CanonicalBbox.GetCached(displayID)
+    if canonEntry and MS.BodyRegions then
+        local cbox = canonEntry.bbox
+        local class = canonEntry.class or MS.BodyRegions.Classify(cbox)
+        local region = MS.BodyRegions.GetRegion(class, "bust")
+        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
+        local vfov = host.GetFovV and host:GetFovV() or 0.8
+        local aspect = host.GetAspect and host:GetAspect() or 1.0
+        local t = math.tan(vfov * 0.5)
+        local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
+        local pad = math.max(0, tonumber(padding) or 0.10)
+        local halfH = math.max(1e-3, (world.visibleH * 0.5) * (1 + pad))
+        local halfW = math.max(1e-3, (world.fitWidth * 0.5) * (1 + (pad + 0.03)))
+        local dH = halfH / math.tan(vfov * 0.5)
+        local dW = halfW / math.tan(hfov * 0.5)
+        local dist = math.max(dH, dW)
+        placeCamera(host, dist, world.targetX, world.targetY, world.targetZ)
+        if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
+        debugf("framing", "FramerScene.FitDefault(canonical): class=%s dist=%.3f targetZ=%.3f", class, dist or -1, world.targetZ or -1)
+        return
+    end
+    -- Fallback: live bbox path
     local b = host.GetBounds and host:GetBounds() or nil
     if not b then return end
     local min,max = b.min,b.max
@@ -92,6 +117,31 @@ end
 -- Public: Show upper portion (head/shoulders)
 function FS.ShowUpper(host, displayID, frac, padding)
     if not host then return end
+    -- Prefer canonical bbox for animation-resistant framing
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+        and displayID and MS.CanonicalBbox.GetCached(displayID)
+    if canonEntry and MS.BodyRegions then
+        local cbox = canonEntry.bbox
+        local class = canonEntry.class or MS.BodyRegions.Classify(cbox)
+        local region = MS.BodyRegions.GetRegion(class, "upper_body")
+        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
+        local vfov = host.GetFovV and host:GetFovV() or 0.8
+        local aspect = host.GetAspect and host:GetAspect() or 1.0
+        local t = math.tan(vfov * 0.5)
+        local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
+        local pad = math.max(0, tonumber(padding) or 0.10)
+        local halfH = math.max(1e-3, (world.visibleH * 0.5) * (1 + pad))
+        local halfW = math.max(1e-3, (world.fitWidth * 0.5) * (1 + (pad + 0.03)))
+        local dH = halfH / math.tan(vfov * 0.5)
+        local dW = halfW / math.tan(hfov * 0.5)
+        local dist = math.max(dH, dW)
+        placeCamera(host, dist, world.targetX, world.targetY, world.targetZ)
+        if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
+        debugf("framing", "FramerScene.ShowUpper(canonical): class=%s dist=%.3f", class, dist or -1)
+        return
+    end
+    -- Fallback: live bbox path
     local b = host.GetBounds and host:GetBounds() or nil
     if not b then return end
     local min,max = b.min,b.max

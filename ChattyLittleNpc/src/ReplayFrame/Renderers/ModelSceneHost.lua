@@ -271,6 +271,14 @@ function M.Attach(host, backend)
     self._userControlledCamera = false
         self._sessionId = string.format("displayID:%s@%.3f", tostring(displayID), now())
         self:_BumpModelVersion()
+        -- Invalidate canonical bbox cache when displayID changes
+        if MS and MS.CanonicalBbox and MS.CanonicalBbox.Invalidate then
+            local prevID = self._currentDisplayID
+            if prevID and prevID ~= displayID then
+                MS.CanonicalBbox.Invalidate(prevID)
+            end
+        end
+        self._currentDisplayID = displayID
         
         -- Delegate to Loader module
         if MS and MS.Loader and MS.Loader.loadByDisplayID then
@@ -345,6 +353,15 @@ function M.Attach(host, backend)
             self:OnModelLoadedOnce(function(h)
                 if (h._modelVersion or 0) ~= vAtReg then return end
                 self:_DebugLog("host", "OnModelLoadedOnce fired (displayID)")
+                -- Sample canonical bbox before framing (idle pose, stable AABB)
+                if MS and MS.CanonicalBbox and MS.CanonicalBbox.SampleCanonical then
+                    local getVer = function() return h._modelVersion or 0 end
+                    MS.CanonicalBbox.SampleCanonical(backend.actor, displayID, vAtReg, getVer, h._animCtrl, function(bbox)
+                        if (h._modelVersion or 0) ~= vAtReg then return end
+                        h:_DebugLog("canonical", "Canonical bbox ready for displayID=%s", tostring(displayID))
+                        h:_RequestAutoFrame(0.12, { reason = "canonicalReady" })
+                    end)
+                end
                 if h and h._animCtrl and h._animCtrl.apply then
                     h._animCtrl:apply(backend.actor)
                 end
@@ -721,6 +738,15 @@ function M.Attach(host, backend)
     -- Immediate framing implementation (called by coordinator)
     function host:FrameFullBodyFront_Immediate(paddingFrac)
         paddingFrac = tonumber(paddingFrac) or 0.12
+
+        -- Prefer canonical bbox (animation-resistant) when available
+        local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+            and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
+        if canonEntry and MS.BodyRegions and MS.BodyRegions.GetRegion and MS.BodyRegions.ToWorldCoords then
+            return self:FrameRegion("bust", paddingFrac)
+        end
+
+        -- Fallback: live bbox path (pre-canonical or uncached models)
         local b = self:GetBounds()
     self._lastBounds = b or self._lastBounds
         if not b then
@@ -765,6 +791,113 @@ function M.Attach(host, backend)
     -- Persist snapshot so subsequent head-point/zoom keep this base
     self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
     if self._DumpState then self:_DumpState("after-framing") end
+    end
+
+    -- Frame a named body region using the canonical (idle-pose) bounding box.
+    -- Deterministic: does not read the live animated bbox.
+    function host:FrameRegion(regionName, paddingFrac)
+        paddingFrac = tonumber(paddingFrac) or 0.12
+        regionName = regionName or "bust"
+        local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+            and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
+        if not (canonEntry and MS.BodyRegions) then
+            self:_DebugLog("framing", "FrameRegion: no canonical data, fallback for %s", regionName)
+            -- Fall through to live-bbox framing below
+            local b = self:GetBounds()
+            self._lastBounds = b or self._lastBounds
+            if not b then return self:PointCameraAtHead() end
+            -- Use the live-bbox inline math (same as fallback in FrameFullBodyFront_Immediate)
+            -- by setting the canonical entry to nil and recursing would loop; just return.
+            return
+        end
+
+        local cbox = canonEntry.bbox
+        local class = canonEntry.class or (MS.BodyRegions.Classify and MS.BodyRegions.Classify(cbox) or "tall_humanoid")
+        local region = MS.BodyRegions.GetRegion(class, regionName)
+        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
+
+        local fov = self:GetFovV()
+        local aspect = self:GetAspect()
+        local tanHalfV = math.tan(fov * 0.5)
+        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
+        local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
+
+        local padZ = world.visibleH * paddingFrac
+        local padX = world.fitWidth * paddingFrac
+        local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
+        local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
+        local d = math.max(needDistV, needDistH)
+        d = math.max(d, 1.0)
+
+        self._camDist = d
+        self._camBaseZ = world.targetZ
+        self._lastBounds = cbox
+
+        local px, py, pz = world.targetX, world.targetY + d, world.targetZ
+        local tx, ty, tz = world.targetX, world.targetY, world.targetZ
+
+        self:_DebugLog("framing", "FrameRegion(%s) class=%s dist=%.2f targetZ=%.2f visH=%.2f fitW=%.2f",
+            regionName, class, d, world.targetZ, world.visibleH, world.fitWidth)
+
+        self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
+        self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
+        if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
+            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or 0)
+        end
+        self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
+
+        -- Optional: projection verification for ModelScene (refine distance)
+        if MS.ProjectionVerifier and MS.ProjectionVerifier.RefineDistance and backend.frame then
+            local fw, fh = 0, 0
+            if self.GetSize then fw, fh = self:GetSize() end
+            if (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
+                local refined = MS.ProjectionVerifier.RefineDistance(backend.frame, self, world, d, fw, fh)
+                if refined and math.abs(refined - d) > 0.05 then
+                    self:_DebugLog("framing", "FrameRegion: projection refined dist %.2f -> %.2f", d, refined)
+                    d = refined
+                    self._camDist = d
+                    px, py, pz = tx, ty + d, tz
+                    self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
+                    self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
+                    self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
+                end
+            end
+        end
+
+        if self._DumpState then self:_DumpState("after-FrameRegion/" .. regionName) end
+    end
+
+    -- Smooth transition to a named body region (delegates to AnimPanTo/AnimZoomTo)
+    function host:TransitionToRegion(regionName, duration)
+        local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+            and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
+        if not (canonEntry and MS.BodyRegions) then
+            return self:FrameFullBodyFront_Immediate(0.12)
+        end
+
+        local cbox = canonEntry.bbox
+        local class = canonEntry.class or "tall_humanoid"
+        local region = MS.BodyRegions.GetRegion(class, regionName or "bust")
+        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
+
+        local fov = self:GetFovV()
+        local aspect = self:GetAspect()
+        local tanHalfV = math.tan(fov * 0.5)
+        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
+        local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
+        local padZ = world.visibleH * 0.12
+        local padX = world.fitWidth * 0.12
+        local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
+        local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
+        local d = math.max(math.max(needDistV, needDistH), 1.0)
+
+        local dur = tonumber(duration) or 0.3
+        local r = CLN and CLN.ReplayFrame
+        if r then
+            if r.AnimPanTo then r:AnimPanTo(world.targetZ, dur) end
+            if r.AnimZoomTo then r:AnimZoomTo(d, dur) end
+        end
+        self:_DebugLog("framing", "TransitionToRegion(%s) dist=%.2f targetZ=%.2f dur=%.2f", regionName or "bust", d, world.targetZ, dur)
     end
 
     -- Public entry point routed through coordinator

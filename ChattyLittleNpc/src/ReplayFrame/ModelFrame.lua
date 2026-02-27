@@ -479,6 +479,13 @@ function ReplayFrame:BuildModelMetadataOnce(displayID)
     meta.fovV = host.GetFovV and host:GetFovV() or (meta.fovV or math.rad(60))
     meta.aspect = host.GetAspect and host:GetAspect() or (meta.aspect or 1.0)
     meta.scaleD10 = ReplayFrame.Framer.FitScale(meta, 10, 0.05)
+    -- Store canonical bbox and morphology class in meta if available
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached and tonumber(displayID) and MS.CanonicalBbox.GetCached(displayID)
+    if canonEntry then
+        meta.canonicalBbox = canonEntry.bbox
+        meta.morphologyClass = canonEntry.class
+    end
     meta._built = true
     self:SetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, meta)
     -- Log once

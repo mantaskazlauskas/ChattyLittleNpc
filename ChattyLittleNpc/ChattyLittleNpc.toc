@@ -43,6 +43,9 @@ src/ReplayFrame/Renderers/ModelScene/Stabilizer.lua
 src/ReplayFrame/Renderers/ModelScene/Loader.lua
 src/ReplayFrame/Renderers/ModelScene/CameraController.lua
 src/ReplayFrame/Renderers/ModelScene/Framing.lua
+src/ReplayFrame/Renderers/ModelScene/CanonicalBbox.lua
+src/ReplayFrame/Renderers/ModelScene/BodyRegions.lua
+src/ReplayFrame/Renderers/ModelScene/ProjectionVerifier.lua
 src/ReplayFrame/Renderers/ModelSceneHost.lua
 src/ReplayFrame/Renderers/PlayerModelRenderer.lua
 src/ReplayFrame/Renderers/PlayerPresets.lua
