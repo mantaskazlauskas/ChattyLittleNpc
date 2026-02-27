@@ -149,13 +149,25 @@ local function fmtTime(t)
 end
 
 local function lineMatchesFilters(line)
-    -- Severity filter
+    -- 1. Severity
     local lvl = line.lvl or SEV.INFO
     if lvl == SEV.ERROR and LW._showError == false then return false end
-    if lvl == SEV.WARN and LW._showWarn == false then return false end
-    if lvl == SEV.INFO and LW._showInfo == false then return false end
+    if lvl == SEV.WARN  and LW._showWarn  == false then return false end
+    if lvl == SEV.INFO  and LW._showInfo  == false then return false end
     if lvl == SEV.DEBUG and LW._showDebug == false then return false end
-    -- Session filter
+    -- 2. Source type
+    local src = line.r or "addon"
+    if src == "addon" and LW._showSrcAddon == false then return false end
+    if src == "anim"  and LW._showSrcAnim  == false then return false end
+    if src == "debug" and LW._showSrcDebug == false then return false end
+    if src == "print" and LW._showSrcPrint == false then return false end
+    -- 3. Category (local to LogsWindow, never reads profile)
+    local cf = LW._catFilter
+    if cf and cf.all ~= true then
+        local key = line.c and string.lower(line.c) or "uncategorized"
+        if cf[key] ~= true then return false end
+    end
+    -- 4. Session
     if LW._followSession then
         local cur = getActiveSessionId()
         if cur and line.s and tostring(line.s) ~= tostring(cur) then return false end
@@ -164,26 +176,7 @@ local function lineMatchesFilters(line)
         local sess = line.s and tostring(line.s) or ""
         if not string.find(sess, sf, 1, true) then return false end
     end
-    -- Category filters
-    local U = CLN and CLN.Utils
-    local useGlobal = (LW._useGlobal ~= false)
-    local src = line.r
-    local bypassCats = (src == "print" or src == "debug" or src == "addon")
-    if (not bypassCats) and useGlobal and U and U.ShouldLogAnimDebug then
-        local ok, pass = pcall(U.ShouldLogAnimDebug, U, line.c)
-        if ok and not pass then return false end
-    else
-        local cats = LW._localCats
-        if cats then
-            if cats.all ~= true then
-                local key = line.c and string.lower(line.c) or "uncategorized"
-                if cats[key] ~= true then return false end
-            end
-        end
-    end
-    -- Uncategorized toggle
-    if (line.c == nil or line.c == "") and LW._includeUncat == false then return false end
-    -- Text search
+    -- 5. Text search
     if LW._textFilter and LW._textFilter ~= "" then
         local needle = LW._textFilter
         local hay = tostring(line.m)
@@ -197,17 +190,19 @@ local function lineMatchesFilters(line)
 end
 
 function LW:_RebuildCategoryList()
+    -- Gather all categories from buffer + known LogCategories
     local set = {}
     for k, _ in pairs(CLN._AnimLogBuffer.cats or {}) do set[k] = true end
-    local profCats = CLN.db and CLN.db.profile and CLN.db.profile.debugAnimCategories
-    if type(profCats) == "table" then
-        for k, v in pairs(profCats) do if v == true and k ~= "all" then set[k] = true end end
-    elseif type(profCats) == "string" then
-        for token in string.lower(profCats):gmatch("[^,%s]+") do set[token] = true end
+    local U = CLN and CLN.Utils
+    if U and U.LogCategories then
+        for _, v in pairs(U.LogCategories) do set[v] = true end
     end
     if not self._catContainer then return end
     for i = 1, #(self._catButtons or {}) do if self._catButtons[i] then self._catButtons[i]:Hide() end end
     self._catButtons = {}
+    -- Initialize local category filter (default: show all)
+    if not self._catFilter then self._catFilter = { all = true } end
+    local cf = self._catFilter
     local y = -4
     local function addCheck(text, getter, setter)
         local cb = CreateFrame("CheckButton", nil, self._catContainer, "UICheckButtonTemplate")
@@ -215,30 +210,35 @@ function LW:_RebuildCategoryList()
         cb.text = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         cb.text:SetPoint("LEFT", cb, "RIGHT", 2, 0)
         cb.text:SetText(text)
-        cb:SetScript("OnShow", function(self) if getter then self:SetChecked(getter()) end end)
-        cb:SetScript("OnClick", function(self) if setter then setter(self:GetChecked()) end end)
+        local get = getter
+        local set = setter
+        cb:SetScript("OnShow", function(self) if get then self:SetChecked(get()) end end)
+        cb:SetScript("OnClick", function(self) if set then set(self:GetChecked()) end end)
+        if get then cb:SetChecked(get()) end
         table.insert(self._catButtons, cb)
         y = y - 22
     end
+    -- "All" toggle
     addCheck("All", function()
-        local cats = CLN.db and CLN.db.profile and CLN.db.profile.debugAnimCategories
-        return type(cats) == "table" and cats.all == true or (type(cats) == "string" and string.lower(cats) == "all")
+        return cf.all == true
     end, function(v)
-        CLN.db.profile.debugAnimCategories = { all = v and true or false }
-        LW._lastBufVersion = nil; LW:_Refresh()
+        cf.all = v and true or false
+        if v then
+            for k, _ in pairs(set) do cf[string.lower(k)] = true end
+        end
+        LW._lastBufVersion = nil; LW:_RebuildCategoryList()
     end)
-    for name, _ in pairs(set) do
-        local key = tostring(name)
+    -- Individual categories, sorted alphabetically
+    local sorted = {}
+    for name, _ in pairs(set) do sorted[#sorted + 1] = tostring(name) end
+    table.sort(sorted)
+    for _, key in ipairs(sorted) do
+        local lk = string.lower(key)
         addCheck(key, function()
-            local cats = CLN.db and CLN.db.profile and CLN.db.profile.debugAnimCategories
-            if type(cats) == "table" then return cats[key] == true end
-            if type(cats) == "string" then return string.find("," .. string.lower(cats) .. ",", "," .. string.lower(key) .. ",", 1, true) ~= nil end
-            return true
+            return cf.all == true or cf[lk] == true
         end, function(v)
-            local cats = CLN.db.profile.debugAnimCategories
-            if type(cats) ~= "table" then cats = {}; CLN.db.profile.debugAnimCategories = cats end
-            cats.all = false
-            cats[key] = v and true or nil
+            cf.all = false
+            cf[lk] = v and true or nil
             LW._lastBufVersion = nil; LW:_Refresh()
         end)
     end
@@ -413,24 +413,9 @@ function LW:Create()
         end
     end)
 
-    -- ── Use global category filter ──
-    local useGlobal = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
-    useGlobal:SetPoint("TOPLEFT", enableDbg, "BOTTOMLEFT", 0, -2)
-    useGlobal.text = useGlobal:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    useGlobal.text:SetPoint("LEFT", useGlobal, "RIGHT", 2, 0)
-    useGlobal.text:SetText("Use global category filter")
-    useGlobal:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Respect Utils.ShouldLogAnimDebug categories from Options.")
-        GameTooltip:Show()
-    end)
-    useGlobal:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    useGlobal:SetScript("OnShow", function(self) self:SetChecked(LW._useGlobal ~= false) end)
-    useGlobal:SetScript("OnClick", function(self) LW._useGlobal = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
-
     -- ── Severity section ──
     local sevLabel = left:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sevLabel:SetPoint("TOPLEFT", useGlobal, "BOTTOMLEFT", 0, -8)
+    sevLabel:SetPoint("TOPLEFT", enableDbg, "BOTTOMLEFT", 0, -8)
     sevLabel:SetText("Severity")
 
     local sevErrChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
@@ -465,9 +450,70 @@ function LW:Create()
     sevDbgChk:SetScript("OnShow", function(self) self:SetChecked(LW._showDebug ~= false) end)
     sevDbgChk:SetScript("OnClick", function(self) LW._showDebug = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
+    -- ── Source section ──
+    local srcLabel = left:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    srcLabel:SetPoint("TOPLEFT", sevInfoChk, "BOTTOMLEFT", 0, -8)
+    srcLabel:SetText("Source")
+
+    local srcAddonChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    srcAddonChk:SetPoint("TOPLEFT", srcLabel, "BOTTOMLEFT", 0, -2)
+    srcAddonChk.text = srcAddonChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    srcAddonChk.text:SetPoint("LEFT", srcAddonChk, "RIGHT", 0, 0)
+    srcAddonChk.text:SetText("Addon")
+    srcAddonChk:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Log lines from the addon's Logger (CLN:Print).")
+        GameTooltip:Show()
+    end)
+    srcAddonChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    srcAddonChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcAddon ~= false) end)
+    srcAddonChk:SetScript("OnClick", function(self) LW._showSrcAddon = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
+
+    local srcAnimChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    srcAnimChk:SetPoint("LEFT", srcAddonChk, "RIGHT", 60, 0)
+    srcAnimChk.text = srcAnimChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    srcAnimChk.text:SetPoint("LEFT", srcAnimChk, "RIGHT", 0, 0)
+    srcAnimChk.text:SetText("Anim")
+    srcAnimChk:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Animation debug lines (camera, framing, etc.).")
+        GameTooltip:Show()
+    end)
+    srcAnimChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    srcAnimChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcAnim ~= false) end)
+    srcAnimChk:SetScript("OnClick", function(self) LW._showSrcAnim = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
+
+    local srcDebugChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    srcDebugChk:SetPoint("TOPLEFT", srcAddonChk, "BOTTOMLEFT", 0, -2)
+    srcDebugChk.text = srcDebugChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    srcDebugChk.text:SetPoint("LEFT", srcDebugChk, "RIGHT", 0, 0)
+    srcDebugChk.text:SetText("Debug")
+    srcDebugChk:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("General debug lines from Utils:LogDebug.")
+        GameTooltip:Show()
+    end)
+    srcDebugChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    srcDebugChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcDebug ~= false) end)
+    srcDebugChk:SetScript("OnClick", function(self) LW._showSrcDebug = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
+
+    local srcPrintChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    srcPrintChk:SetPoint("LEFT", srcDebugChk, "RIGHT", 60, 0)
+    srcPrintChk.text = srcPrintChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    srcPrintChk.text:SetPoint("LEFT", srcPrintChk, "RIGHT", 0, 0)
+    srcPrintChk.text:SetText("Print")
+    srcPrintChk:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Raw print() output from Lua / other addons.")
+        GameTooltip:Show()
+    end)
+    srcPrintChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    srcPrintChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcPrint ~= false) end)
+    srcPrintChk:SetScript("OnClick", function(self) LW._showSrcPrint = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
+
     -- ── Session section ──
     local sessLabel = left:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    sessLabel:SetPoint("TOPLEFT", sevInfoChk, "BOTTOMLEFT", 0, -8)
+    sessLabel:SetPoint("TOPLEFT", srcDebugChk, "BOTTOMLEFT", 0, -8)
     sessLabel:SetText("Session")
 
     local followChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
@@ -548,20 +594,6 @@ function LW:Create()
         LW._lastBufVersion = nil; LW:_Refresh()
     end)
 
-    local uncatChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
-    uncatChk:SetPoint("LEFT", clearBtn, "RIGHT", 4, 0)
-    uncatChk.text = uncatChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    uncatChk.text:SetPoint("LEFT", uncatChk, "RIGHT", 1, 0)
-    uncatChk.text:SetText("Uncat.")
-    uncatChk:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Include lines with no category tag.")
-        GameTooltip:Show()
-    end)
-    uncatChk:SetScript("OnLeave", function() GameTooltip:Hide() end)
-    uncatChk:SetScript("OnShow", function(self) self:SetChecked(LW._includeUncat ~= false) end)
-    uncatChk:SetScript("OnClick", function(self) LW._includeUncat = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
-
     -- ════════════════ RIGHT PANEL CONTENT ════════════════
 
     -- ── Presets row (top) ──
@@ -572,8 +604,7 @@ function LW:Create()
     presets:SetFrameLevel(right:GetFrameLevel() + 2)
 
     local function setCats(tbl)
-        if not (CLN and CLN.db and CLN.db.profile) then return end
-        CLN.db.profile.debugAnimCategories = tbl
+        LW._catFilter = tbl
         LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh()
     end
     local bAll = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
