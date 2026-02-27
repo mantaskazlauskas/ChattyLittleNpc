@@ -94,6 +94,8 @@ function ReplayFrame:ShowNativeVOWhitelistPopup(npcs)
     addBtn:SetScript("OnClick", function()
         self:OnWhitelistPopupAccept(checks)
         f:Hide()
+        -- Auto-resume if user had paused and no NPC is still talking
+        self:TryAutoResumeAfterWhitelist()
     end)
 
     local dismissBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -156,4 +158,42 @@ function ReplayFrame:RemoveFromVOWhitelist(npcKey)
     -- Also clear from dismissed so they can be re-asked
     local dismissed = CLN.db.profile.nativeVODismissed
     if dismissed then dismissed[npcKey] = nil end
+end
+
+--- Auto-resume playback after whitelist popup if no NPC is still talking.
+--- Waits a short moment to let any ongoing speech settle.
+function ReplayFrame:TryAutoResumeAfterWhitelist()
+    local vp = CLN and CLN.VoiceoverPlayer
+    if not (vp and vp:IsPaused()) then return end
+    -- Check if any NPC is still talking (recent speech within last 3 seconds)
+    local eh = CLN and CLN.EventHandler
+    local buf = eh and eh._recentNpcSpeeches
+    local now = GetTime and GetTime() or 0
+    local stillTalking = false
+    if buf then
+        for i = #buf, 1, -1 do
+            local entry = buf[i]
+            -- If an NPC spoke within the last 3 seconds, assume still talking
+            if (now - (entry.timestamp or 0)) < 3 then
+                stillTalking = true
+                break
+            end
+        end
+    end
+    if stillTalking then
+        -- Wait a bit and try again
+        if C_Timer and C_Timer.After then
+            C_Timer.After(3, function()
+                if vp:IsPaused() then
+                    self:TryAutoResumeAfterWhitelist()
+                end
+            end)
+        end
+    else
+        -- No one is talking — resume
+        vp:ResumePlayback()
+        if CLN.Logger then
+            CLN.Logger:debug("Auto-resumed after whitelist popup (no active NPC speech)", false, CLN.Utils.LogCategories.loader)
+        end
+    end
 end
