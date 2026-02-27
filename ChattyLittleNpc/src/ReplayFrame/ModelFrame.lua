@@ -96,11 +96,17 @@ function ReplayFrame:LayoutModelArea(frame)
         end
         if hasModel then
             self.NpcModelFrame:Show()
-            -- For ModelScene, ensure there is at least one active camera
+            -- For ModelScene, refit camera for current viewport on resize.
+            -- Use FitDistanceForCurrentTarget (preserves target Z, adjusts distance
+            -- for new aspect ratio) if a proper framing snapshot exists.
+            -- Fall back to PointCameraAtHead only for the very first frame.
             local backend = self.NpcModelFrame._backend
             if backend and backend.kind == "scene" and backend.frame and backend.frame.SetCameraPosition then
-                -- Apply look-at framing via host helper
-                if self.NpcModelFrame.PointCameraAtHead then
+                if self.NpcModelFrame._lastCamSnapshot then
+                    if self.NpcModelFrame.FitDistanceForCurrentTarget then
+                        pcall(self.NpcModelFrame.FitDistanceForCurrentTarget, self.NpcModelFrame, 0.12)
+                    end
+                elseif self.NpcModelFrame.PointCameraAtHead then
                     pcall(self.NpcModelFrame.PointCameraAtHead, self.NpcModelFrame)
                 end
             end
@@ -338,6 +344,8 @@ function ReplayFrame:CheckAndShowModel()
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
     -- Ensure the container is shown so the model's OnShow fires and IsShown() is true
     if self.ModelContainer then self.ModelContainer:Show() end
+    -- Relayout so ContentFrame is positioned below the model area
+    if self.Relayout then self:Relayout() end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
@@ -353,6 +361,8 @@ function ReplayFrame:CheckAndShowModel()
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
         self._hasValidModel = false
+        -- Relayout so ContentFrame collapses into the model's former space
+        if self.Relayout then self:Relayout() end
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             local c = self.ModelContainer
             local m = self.NpcModelFrame

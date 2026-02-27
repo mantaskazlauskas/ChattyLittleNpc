@@ -1663,7 +1663,13 @@ function ReplayFrame:SetupFrameResize()
                 -- Shrink model to fit, keeping minimum content area
                 local newModelH = math.max(40, height - MIN_CONTENT_HEIGHT - 8 - 6 - 5)
                 this.ModelContainer:SetHeight(newModelH)
-                if this.NpcModelFrame then this.NpcModelFrame:SetHeight(newModelH) end
+                if this.NpcModelFrame then
+                    this.NpcModelFrame:SetHeight(newModelH)
+                    -- Refit camera for the smaller viewport
+                    if this.NpcModelFrame.FitDistanceForCurrentTarget then
+                        pcall(this.NpcModelFrame.FitDistanceForCurrentTarget, this.NpcModelFrame, 0.12)
+                    end
+                end
             end
         end
 
