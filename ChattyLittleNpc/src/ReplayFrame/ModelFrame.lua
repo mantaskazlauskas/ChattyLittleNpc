@@ -343,6 +343,7 @@ function ReplayFrame:CheckAndShowModel()
         return
     end
     if (not self:IsCompactModeEnabled() and self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
+    self:ExpandForNpcModel()
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
     -- Ensure the container is shown so the model's OnShow fires and IsShown() is true
     if self.ModelContainer then self.ModelContainer:Show() end
@@ -361,6 +362,7 @@ function ReplayFrame:CheckAndShowModel()
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
         self._hasValidModel = false
+        self:ContractForNpcModel()
         -- Relayout so ContentFrame collapses into the model's former space
         if self.Relayout then self:Relayout() end
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
@@ -375,8 +377,35 @@ function ReplayFrame:CheckAndShowModel()
     end
 end
 
-function ReplayFrame:ExpandForNpcModel() end
-function ReplayFrame:ContractForNpcModel() end
+-- Auto-expand frame height when model is visible so content has enough room
+function ReplayFrame:ExpandForNpcModel()
+    if not self.DisplayFrame then return end
+    local modelH = self.npcModelFrameHeight or math.floor(140 * 1.15)
+    -- minimum: model + margins(8+6+5) + header(30) + at least 2 rows(48)
+    local minExpanded = modelH + 19 + 30 + 48
+    local curH = self.DisplayFrame:GetHeight() or 0
+    if curH < minExpanded then
+        -- Only snapshot if we haven't already (avoid capturing expanded height)
+        if not self._preModelHeight then
+            self._preModelHeight = curH
+        end
+        self.DisplayFrame:SetHeight(minExpanded)
+    end
+end
+
+function ReplayFrame:ContractForNpcModel()
+    if not self.DisplayFrame then return end
+    if self._preModelHeight and self._preModelHeight > 0 then
+        -- Only contract if the current height matches or exceeds what we expanded to
+        local curH = self.DisplayFrame:GetHeight() or 0
+        local modelH = self.npcModelFrameHeight or math.floor(140 * 1.15)
+        local minExpanded = modelH + 19 + 30 + 48
+        if curH >= minExpanded then
+            self.DisplayFrame:SetHeight(self._preModelHeight)
+        end
+        self._preModelHeight = nil
+    end
+end
 
 -- =========================
 -- Simple animation helpers
