@@ -499,9 +499,13 @@ function ReplayFrame:BuildQueueEntries()
     local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
 
     -- Only show "now playing" if the sound is actually still active (playing or paused)
+    -- Use grace-aware check to stay consistent with the watcher/visibility system;
+    -- raw C_Sound.IsPlaying can briefly return false during dialog transitions.
     local isActive = false
     if now and (now.title or now.questId) then
-        local stillPlaying = now.isPlaying and now:isPlaying()
+        local stillPlaying = CLN.VoiceoverPlayer.IsEffectivelyPlaying
+            and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+            or (now.isPlaying and now:isPlaying())
         local isPaused = CLN.VoiceoverPlayer._paused or (now._pausedForNativeVO)
         isActive = stillPlaying or isPaused
     end
