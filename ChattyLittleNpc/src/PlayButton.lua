@@ -52,7 +52,7 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
     if (questID) then
         for packName, packData in pairs(CLN.VoiceoverPacks) do
             local questFileName =  questID .. "_Desc.ogg"
-            local fileNameFound = CLN.Utils:ContainsString(packData.Voiceovers, questFileName)
+            local fileNameFound = packData._voiceoverIndex and packData._voiceoverIndex[questFileName]
             if (CLN.isElvuiAddonLoaded) then
                     PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
                         CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)

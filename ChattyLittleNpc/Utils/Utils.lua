@@ -5,6 +5,38 @@ local CLN = _G.ChattyLittleNpc
 local Utils = {}
 CLN.Utils = Utils
 
+-- Cached CleanText patterns (built once, reused)
+local _cleanPatternsBuilt = false
+local _cleanPatterns = {}     -- { {find, replace}, ... } for CleanText
+local _cleanV2Patterns = {}   -- { {find, replace}, ... } for CleanTextV2
+local _cleanHtmlPatterns = {  -- shared HTML cleanup patterns
+    {"\r\n", " "},
+    {"<HTML>", ""}, {"</HTML>", ""},
+    {"<BODY>", ""}, {"</BODY>", ""},
+    {"<BR/>", ""}, {"<p>", ""}, {"</p>", ""},
+    {'<p align="center">', ""},
+}
+
+local function buildCleanPatterns()
+    if _cleanPatternsBuilt then return end
+    local name = UnitName("player")
+    if not name or name == "" or name == UNKNOWNOBJECT then return end
+    local class = select(1, UnitClass("player"))
+    local race = select(1, UnitRace("player"))
+
+    _cleanPatterns = {
+        {name, "Hero"}, {name:lower(), "Hero"}, {name:upper(), "Hero"},
+        {class, "Hero"}, {class:lower(), "Hero"}, {class:upper(), "Hero"},
+        {race, "Hero"}, {race:lower(), "Hero"}, {race:upper(), "Hero"},
+    }
+    _cleanV2Patterns = {
+        {name, "{name|" .. name .. "}"}, {name:lower(), "{name|" .. name:lower() .. "}"}, {name:upper(), "{name|" .. name:upper() .. "}"},
+        {class, "{class|" .. class .. "}"}, {class:lower(), "{class|" .. class:lower() .. "}"}, {class:upper(), "{class|" .. class:upper() .. "}"},
+        {race, "{race|" .. race .. "}"}, {race:lower(), "{race|" .. race:lower() .. "}"}, {race:upper(), "{race|" .. race:upper() .. "}"},
+    }
+    _cleanPatternsBuilt = true
+end
+
 -- Centralized log categories
 Utils.LogCategories = {
     camera = "camera",
@@ -73,12 +105,13 @@ function Utils:ValidateQuestPhase(phase, original)
     return false
 end
 
+-- Pre-built set for O(1) category validation
+local _validCategorySet = {}
+for _, v in pairs(Utils.LogCategories) do _validCategorySet[v] = true end
+
 local function isValidCategory(cat)
     if not cat or cat == "" then return false end
-    for k, v in pairs(Utils.LogCategories) do
-        if v == cat then return true end
-    end
-    return false
+    return _validCategorySet[cat] or false
 end
 
 Utils._warnedMissingCategory = Utils._warnedMissingCategory or false
@@ -97,48 +130,27 @@ end
 --- Replacing player name, race and class with "Hero" so that it would be consistent across all players (for hash generation).
 -- @param text The string to be cleaned.
 function Utils:CleanText(text)
-    text = text:gsub(UnitName("player"), "Hero")
-    text = text:gsub(UnitClass("player"), "Hero")
-    text = text:gsub(UnitRace("player"), "Hero")
-    text = text:gsub(UnitName("player"):lower(), "Hero")
-    text = text:gsub(UnitClass("player"):lower(), "Hero")
-    text = text:gsub(UnitRace("player"):lower(), "Hero")
-    text = text:gsub(UnitName("player"):upper(), "Hero")
-    text = text:gsub(UnitClass("player"):upper(), "Hero")
-    text = text:gsub(UnitRace("player"):upper(), "Hero")
+    buildCleanPatterns()
+    for _, p in ipairs(_cleanPatterns) do
+        text = text:gsub(p[1], p[2])
+    end
     text = text:gsub("\n\n", " ")
-    text = text:gsub("\r\n", " ")
-    text = text:gsub("<HTML>", "")
-    text = text:gsub("</HTML>", "")
-    text = text:gsub("<BODY>", "")
-    text = text:gsub("</BODY>", "")
-    text = text:gsub("<BR/>", "")
-    text = text:gsub("<p>", "")
-    text = text:gsub("</p>", "")
-    text = text:gsub("<p align=\"center\">", "")
+    for _, p in ipairs(_cleanHtmlPatterns) do
+        text = text:gsub(p[1], p[2])
+    end
     return text
 end
 
 --- Cleans the provided text by removing unwanted characters or formatting.
 -- @param text The string to be cleaned.
 function Utils:CleanTextV2(text)
-    text = text:gsub(UnitName("player"), "{name|" .. UnitName("player") .. "}")
-    text = text:gsub(UnitClass("player"), "{class|" .. UnitClass("player") .. "}")
-    text = text:gsub(UnitRace("player"), "{race|" .. UnitRace("player") .. "}")
-    text = text:gsub(UnitName("player"):lower(), "{name|" .. UnitName("player"):lower() .. "}")
-    text = text:gsub(UnitClass("player"):lower(), "{class|" .. UnitClass("player"):lower() .. "}")
-    text = text:gsub(UnitRace("player"):lower(), "{race|" .. UnitRace("player"):lower() .. "}")
-    text = text:gsub(UnitName("player"):upper(), "{name|" .. UnitName("player"):upper() .. "}")
-    text = text:gsub(UnitClass("player"):upper(),"{class|" .. UnitClass("player"):upper() .. "}")
-    text = text:gsub(UnitRace("player"):upper(), "{race|" .. UnitRace("player"):upper() .. "}")
-    text = text:gsub("<HTML>", "")
-    text = text:gsub("</HTML>", "")
-    text = text:gsub("<BODY>", "")
-    text = text:gsub("</BODY>", "")
-    text = text:gsub("<BR/>", "")
-    text = text:gsub("<p>", "")
-    text = text:gsub("</p>", "")
-    text = text:gsub("<p align=\"center\">", "")
+    buildCleanPatterns()
+    for _, p in ipairs(_cleanV2Patterns) do
+        text = text:gsub(p[1], p[2])
+    end
+    for _, p in ipairs(_cleanHtmlPatterns) do
+        text = text:gsub(p[1], p[2])
+    end
     return text
 end
 
@@ -178,18 +190,37 @@ function Utils:ContainsString(table, searchString)
     return false
 end
 
+-- Simple hash cache to avoid redundant MD5 computation for repeated NPC interactions
+local _hashCache = {}
+local _hashCacheSize = 0
+local HASH_CACHE_MAX = 32
+
 function Utils:GetHashes(npcId, text)
     if not npcId or not text then
         return {}
     end
 
-    local depersonalisedText =  CLN.Utils:CleanText(text)
+    -- Check cache first
+    local cacheKey = tostring(npcId) .. "|" .. text
+    local cached = _hashCache[cacheKey]
+    if cached then return cached end
+
+    local depersonalisedText = CLN.Utils:CleanText(text)
     local hash = CLN.MD5:GenerateHash(npcId .. depersonalisedText)
 
-    local depersonalisedText2 =  CLN.Utils:CleanTextV2(text)
+    local depersonalisedText2 = CLN.Utils:CleanTextV2(text)
     local hash2 = CLN.MD5:GenerateHash(npcId .. depersonalisedText2)
 
     local hashes = {hash, hash2}
+
+    -- Store in cache with simple eviction
+    if _hashCacheSize >= HASH_CACHE_MAX then
+        _hashCache = {}
+        _hashCacheSize = 0
+    end
+    _hashCache[cacheKey] = hashes
+    _hashCacheSize = _hashCacheSize + 1
+
     return hashes
 end
 
@@ -316,12 +347,12 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
             ---@type string
             local path = addonsFolderPath .. packName .. "\\voiceovers\\"
             if (not CLN.Utils:IsNilOrEmpty(fileNameWithGender)
-                and CLN.Utils:ContainsString(packData.Voiceovers, fileNameWithGender)) then
+                and packData._voiceoverIndex and packData._voiceoverIndex[fileNameWithGender]) then
                 CLN.Utils:LogDebug("Found voiceover file: " .. path .. fileNameWithGender)
                 return path .. fileNameWithGender
             end
 
-            if (CLN.Utils:ContainsString(packData.Voiceovers, fileName)) then
+            if (packData._voiceoverIndex and packData._voiceoverIndex[fileName]) then
                 CLN.Utils:LogDebug("Found voiceover file: " .. path .. fileName)
                 return path .. fileName
             end

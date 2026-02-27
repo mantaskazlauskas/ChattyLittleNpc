@@ -39,6 +39,12 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
         local addon = _G[addonName]
         if addon and CLN.VoiceoverPacks then
             CLN.VoiceoverPacks[addonName] = addon
+            if addon.Voiceovers then
+                addon._voiceoverIndex = {}
+                for _, name in ipairs(addon.Voiceovers) do
+                    addon._voiceoverIndex[name] = true
+                end
+            end
             if CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.Logger then
                 CLN.Logger:info("Detected voiceover pack: " .. tostring(addonName), false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
                 if addon.Voiceovers then
