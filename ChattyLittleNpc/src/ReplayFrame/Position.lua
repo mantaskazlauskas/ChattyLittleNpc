@@ -32,9 +32,19 @@ function ReplayFrame:SaveFramePosition()
             yOfs = yOfs
         }
     end
-    -- Persist current size as well
+    -- Persist current size — but never save a collapsed height
     if self.DisplayFrame and self.DisplayFrame.GetSize then
         local w, h = self.DisplayFrame:GetSize()
+        local isCollapsed = (self.CollapseButton and self.CollapseButton._collapsed)
+            or self._combatAutoCollapsed
+            or self._animatingCollapse
+            or (self.DisplayFrame._animatingCollapse)
+        if isCollapsed then
+            -- Use the pre-collapse height (or profile default) instead of the tiny current height
+            h = self._preCollapseHeight
+                or (CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
+                or 165
+        end
         CLN.db.profile.frameSize = { width = math.floor(w + 0.5), height = math.floor(h + 0.5) }
     end
 end
@@ -175,6 +185,8 @@ end
 -- Save size for the current layout mode
 function ReplayFrame:SaveSizeForActiveLayout()
     if not self.DisplayFrame then return end
+    -- Skip saving during collapse to avoid persisting collapsed dimensions
+    if self._combatAutoCollapsed or self._animatingCollapse or self.DisplayFrame._animatingCollapse then return end
     local w, h = self.DisplayFrame:GetSize()
     if self:IsCompactModeEnabled() then
         CLN.db.profile.compactWidth = w

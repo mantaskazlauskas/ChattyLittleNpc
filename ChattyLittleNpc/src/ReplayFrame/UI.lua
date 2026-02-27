@@ -533,7 +533,10 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
             -- Instant fallback
             local frame = this.DisplayFrame
             if targetCollapsed then
-                if frame and frame.GetHeight then this._preCollapseHeight = frame:GetHeight() end
+                if frame and frame.GetHeight then
+                    local curH = frame:GetHeight()
+                    if curH >= 80 then this._preCollapseHeight = curH end
+                end
                 if this.HideSubtitle then this:HideSubtitle() end
                 if this.QueueScrollBox then this.QueueScrollBox:Hide() end
                 if this.HeaderDivider then this.HeaderDivider:Hide() end
@@ -901,11 +904,14 @@ end
 -- Animated collapse / expand (fade + subtle scale) for badge UI
 -- =============================================================
 
--- Safe fallback height when _preCollapseHeight is nil
+-- Safe fallback height when _preCollapseHeight is nil (clamped to minimum expanded size)
 function ReplayFrame:GetSafeExpandHeight()
-    return self._preCollapseHeight
+    local h = self._preCollapseHeight
         or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
         or 165
+    -- Clamp: if the stored value is itself corrupted (collapsed), use the hard default
+    if h < 80 then h = 165 end
+    return h
 end
 
 function ReplayFrame:ApplyImmediateCollapseState(collapsed)
@@ -914,7 +920,11 @@ function ReplayFrame:ApplyImmediateCollapseState(collapsed)
     self:EnsureCompactBadge()
     local frame = self.DisplayFrame
     if collapsed then
-        if frame and frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
+        -- Only record pre-collapse height if the frame isn't already at a collapsed size
+        if frame and frame.GetHeight then
+            local curH = frame:GetHeight()
+            if curH >= 80 then self._preCollapseHeight = curH end
+        end
         if self.HideSubtitle then self:HideSubtitle() end
         if self.HeaderText then self.HeaderText:Hide() end
         if self.HeaderDivider then self.HeaderDivider:Hide() end
@@ -957,7 +967,7 @@ function ReplayFrame:AnimateCollapseTransition(collapsed)
     local dur = 0.18
     local elapsed = 0
     local startH = frame:GetHeight() or 0
-    if collapsed and frame.GetHeight then self._preCollapseHeight = startH end
+    if collapsed and frame.GetHeight and startH >= 80 then self._preCollapseHeight = startH end
     local endH = collapsed and 56 or self:GetSafeExpandHeight()
     local contentFrames = { self.HeaderText, self.HeaderDivider, self.QueueScrollBox, (self.ModelContainer or self.NpcModelFrame) }
     local badge = self.CompactBadge
@@ -1116,9 +1126,10 @@ function ReplayFrame:AnimateCollapse(collapse, duration)
         return base
     end
 
-    -- Record pre-collapse height if needed
+    -- Record pre-collapse height if needed (skip if already at collapsed size)
     if collapse then
-        if frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
+        local curH = frame.GetHeight and frame:GetHeight() or 0
+        if curH >= 80 then self._preCollapseHeight = curH end
     end
 
     local startH = frame:GetHeight() or 0

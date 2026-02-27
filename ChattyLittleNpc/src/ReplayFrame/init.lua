@@ -628,6 +628,9 @@ function ReplayFrame:UpdateVisibility()
 
     self:UpdateParent()
     if self.DisplayFrame then self.DisplayFrame:Show() end
+    -- Clear stuck animation flags on frame show
+    self._animatingCollapse = false
+    if self.DisplayFrame then self.DisplayFrame._animatingCollapse = false end
     -- First-time edit mode glow hint
     if self.StartEditGlowPulse and not self._glowTriggered then
         self._glowTriggered = true
@@ -648,10 +651,12 @@ end
 function ReplayFrame:OnCombatStart()
     if self.HideSubtitle then self:HideSubtitle() end
     if not self.DisplayFrame or not self.DisplayFrame:IsShown() then return end
-    -- Already collapsed, nothing to do
+    -- Already collapsed by user, nothing to do
     if self.CollapseButton and self.CollapseButton._collapsed then return end
     -- Instant collapse (skip animation to avoid taint during combat lockdown)
     self._combatAutoCollapsed = true
+    -- Sync the collapse flag so OnSizeChanged and layout paths agree on state
+    if self.CollapseButton then self.CollapseButton._collapsed = true end
     if self.ApplyImmediateCollapseState then
         self:ApplyImmediateCollapseState(true)
     elseif self.DisplayFrame then
@@ -662,6 +667,8 @@ end
 function ReplayFrame:OnCombatEnd()
     if not self._combatAutoCollapsed then return end
     self._combatAutoCollapsed = false
+    -- Restore the collapse flag so layout returns to expanded mode
+    if self.CollapseButton then self.CollapseButton._collapsed = false end
     -- Deferred restore: InCombatLockdown() may still be true briefly after PLAYER_REGEN_ENABLED
     local function safeRestore()
         if InCombatLockdown() then
@@ -770,6 +777,19 @@ function ReplayFrame:UpdateDisplayFrame()
 
     -- Early visibility checks and show/min logic
     if not self:UpdateVisibility() then return end
+
+    -- Self-healing: detect stuck collapsed state (height too small but not collapsed)
+    if not collapsed and not self._combatAutoCollapsed
+        and not self._animatingCollapse
+        and not (self.DisplayFrame and self.DisplayFrame._animatingCollapse)
+        and h > 0 and h < 80
+    then
+        local safeH = self:GetSafeExpandHeight()
+        if safeH and safeH >= 80 and self.DisplayFrame and self.DisplayFrame.SetHeight then
+            self.DisplayFrame:SetHeight(safeH)
+        end
+    end
+
     if (self.HeaderText) then
         local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
         local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
