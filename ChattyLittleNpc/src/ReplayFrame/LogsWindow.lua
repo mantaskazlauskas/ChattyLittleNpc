@@ -21,6 +21,17 @@ local SEV_COLORS = {
     [3] = "|cff87CEEb",
 }
 
+-- Table view constants
+local TABLE_ROW_HEIGHT = 16
+local TABLE_ROW_POOL = 60
+local TABLE_COL_DEFS = {
+    { label = "Time",   width = 65 },
+    { label = "S",      width = 14 },
+    { label = "Source", width = 50 },
+    { label = "Cat",    width = 75 },
+    { label = "Message",width = 0 },  -- 0 = fill remaining
+}
+
 -- Persistent in-session buffer (shared across UI opens)
 CLN._AnimLogBuffer = CLN._AnimLogBuffer or { lines = {}, max = 2000, cats = {}, version = 0 }
 
@@ -337,30 +348,97 @@ function LW:_FormatLines()
     return table.concat(out, "\n"), count
 end
 
+function LW:_GetFilteredLines()
+    local filtered = {}
+    for i = 1, #CLN._AnimLogBuffer.lines do
+        local L = CLN._AnimLogBuffer.lines[i]
+        if L.mark or lineMatchesFilters(L) then
+            filtered[#filtered + 1] = L
+        end
+    end
+    return filtered
+end
+
+function LW:_RefreshTable()
+    if not self._tableContainer or not self._tableContainer:IsShown() then return end
+    local rows = self._tableRows
+    if not rows or not self._tableRowContainer then return end
+    local filtered = self:_GetFilteredLines()
+    local totalLines = #filtered
+    -- Calculate visible rows from container height
+    local containerH = self._tableRowContainer:GetHeight()
+    local visibleRows = math.max(1, math.floor(containerH / TABLE_ROW_HEIGHT))
+    -- Auto-scroll to end if enabled and not scroll-paused
+    if self._autoScroll ~= false and not self._scrollPaused then
+        local maxOff = math.max(0, totalLines - visibleRows)
+        self._tableScrollOffset = maxOff
+    end
+    -- Clamp scroll offset
+    local maxOffset = math.max(0, totalLines - visibleRows)
+    if (self._tableScrollOffset or 0) > maxOffset then self._tableScrollOffset = maxOffset end
+    if (self._tableScrollOffset or 0) < 0 then self._tableScrollOffset = 0 end
+    local offset = self._tableScrollOffset or 0
+    local sevLetters = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
+    for i = 1, #rows do
+        local row = rows[i]
+        local dataIdx = offset + i
+        if dataIdx <= totalLines and i <= visibleRows then
+            local L = filtered[dataIdx]
+            row._lineData = L
+            if L.mark then
+                for j = 1, #row.cols do row.cols[j]:Hide() end
+                row.markLabel:SetText("|cffffff00════ " .. tostring(L.m) .. " ════|r")
+                row.markLabel:Show()
+                row.bg:SetColorTexture(1, 0.8, 0, 0.08)
+            else
+                row.markLabel:Hide()
+                for j = 1, #row.cols do row.cols[j]:Show() end
+                row.cols[1]:SetText("|cff999999" .. fmtTime(L.t) .. "|r")
+                local sevColor = SEV_COLORS[L.lvl] or "|cffcccccc"
+                row.cols[2]:SetText(sevColor .. (sevLetters[L.lvl] or "I") .. "|r")
+                row.cols[3]:SetText("|cff888888" .. (L.r or "") .. "|r")
+                row.cols[4]:SetText("|cff888888" .. (L.c or "") .. "|r")
+                row.cols[5]:SetText(tostring(L.m))
+                row.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
+            end
+            row:Show()
+        else
+            row._lineData = nil
+            row:Hide()
+        end
+    end
+    if self._lineCountLabel then
+        self._lineCountLabel:SetText(totalLines .. " / " .. #CLN._AnimLogBuffer.lines .. " lines")
+    end
+end
+
 function LW:_Refresh(force)
     if not self._frame or not self._frame:IsShown() then return end
-    -- A nil _lastBufVersion means a filter changed and needs re-render even if paused
     local filterChanged = (self._lastBufVersion == nil)
     if not force and not filterChanged and not self._auto then return end
-    if not self._edit then return end
     local t = now()
     if not force and not filterChanged then
         local throttle = self._throttleSec or 0.25
         if self._lastRefresh and (t - self._lastRefresh) < throttle then return end
     end
     self._lastRefresh = t
-    -- Skip if buffer unchanged since last render
     local curVer = CLN._AnimLogBuffer.version or 0
     if self._lastBufVersion == curVer then return end
     self._lastBufVersion = curVer
-    local txt, count = self:_FormatLines()
-    self._edit:SetText(txt)
-    if self._lineCountLabel then
-        self._lineCountLabel:SetText(count .. " / " .. #CLN._AnimLogBuffer.lines .. " lines")
-    end
-    if self._autoScroll ~= false and not self._scrollPaused then
-        local n = (self._edit.GetNumLetters and self._edit:GetNumLetters()) or string.len(txt)
-        if self._edit.SetCursorPosition and n then self._edit:SetCursorPosition(n) end
+    -- Branch on view mode
+    if self._viewMode == "table" then
+        self:_RefreshTable()
+    else
+        if not self._edit then return end
+        local txt, count = self:_FormatLines()
+        self._edit:SetText(txt)
+        if self._lineCountLabel then
+            self._lineCountLabel:SetText(count .. " / " .. #CLN._AnimLogBuffer.lines .. " lines")
+        end
+        if self._autoScroll ~= false and not self._scrollPaused then
+            local n = (self._edit.GetNumLetters and self._edit:GetNumLetters()) or string.len(txt)
+            if self._edit.SetCursorPosition and n then self._edit:SetCursorPosition(n) end
+        end
     end
 end
 
@@ -795,9 +873,126 @@ function LW:Create()
     end)
     LW._newEntriesBtn = newBtn
 
+    -- ── Table view (hidden by default) ──
+    local tc = CreateFrame("Frame", nil, right)
+    tc:SetPoint("TOPLEFT", presets, "BOTTOMLEFT", 0, -4)
+    tc:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", 0, 30)
+    tc:Hide()
+    LW._tableContainer = tc
+
+    -- Column header
+    local tHeader = CreateFrame("Frame", nil, tc)
+    tHeader:SetPoint("TOPLEFT", tc, "TOPLEFT", 0, 0)
+    tHeader:SetPoint("TOPRIGHT", tc, "TOPRIGHT", -20, 0)
+    tHeader:SetHeight(18)
+    local hx = 2
+    for _, col in ipairs(TABLE_COL_DEFS) do
+        local fs = tHeader:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        fs:SetPoint("TOPLEFT", tHeader, "TOPLEFT", hx, -2)
+        if col.width > 0 then fs:SetWidth(col.width) end
+        fs:SetJustifyH("LEFT")
+        fs:SetText(col.label)
+        hx = hx + (col.width > 0 and col.width or 0)
+    end
+    local hSep = tc:CreateTexture(nil, "ARTWORK")
+    hSep:SetPoint("TOPLEFT", tHeader, "BOTTOMLEFT", 0, -1)
+    hSep:SetPoint("TOPRIGHT", tHeader, "BOTTOMRIGHT", 0, -1)
+    hSep:SetHeight(1)
+    hSep:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+
+    -- Row container
+    local tRows = CreateFrame("Frame", nil, tc)
+    tRows:SetPoint("TOPLEFT", tHeader, "BOTTOMLEFT", 0, -2)
+    tRows:SetPoint("BOTTOMRIGHT", tc, "BOTTOMRIGHT", -20, 0)
+    tRows:EnableMouseWheel(true)
+    tRows:SetScript("OnMouseWheel", function(_, delta)
+        LW._tableScrollOffset = math.max(0, (LW._tableScrollOffset or 0) - delta * 3)
+        if LW._auto and LW._autoScroll ~= false then
+            LW._scrollPaused = true
+            LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
+        end
+        LW._lastBufVersion = nil; LW:_RefreshTable()
+    end)
+    LW._tableRowContainer = tRows
+    LW._tableScrollOffset = 0
+
+    -- Row pool
+    LW._tableRows = {}
+    for i = 1, TABLE_ROW_POOL do
+        local r = CreateFrame("Button", nil, tRows)
+        r:SetHeight(TABLE_ROW_HEIGHT)
+        r:SetPoint("TOPLEFT", tRows, "TOPLEFT", 0, -(i - 1) * TABLE_ROW_HEIGHT)
+        r:SetPoint("RIGHT", tRows, "RIGHT", 0, 0)
+        r.bg = r:CreateTexture(nil, "BACKGROUND")
+        r.bg:SetAllPoints()
+        r.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
+        r.hl = r:CreateTexture(nil, "HIGHLIGHT")
+        r.hl:SetAllPoints()
+        r.hl:SetColorTexture(1, 1, 1, 0.08)
+        -- Mark label (spans full row, hidden for normal rows)
+        r.markLabel = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        r.markLabel:SetPoint("LEFT", r, "LEFT", 2, 0)
+        r.markLabel:SetPoint("RIGHT", r, "RIGHT", -2, 0)
+        r.markLabel:SetJustifyH("CENTER")
+        r.markLabel:Hide()
+        -- Column FontStrings
+        local cx = 2
+        r.cols = {}
+        for j, col in ipairs(TABLE_COL_DEFS) do
+            local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetPoint("LEFT", r, "LEFT", cx, 0)
+            fs:SetHeight(TABLE_ROW_HEIGHT)
+            fs:SetJustifyH("LEFT")
+            fs:SetWordWrap(false)
+            if col.width > 0 then
+                fs:SetWidth(col.width)
+            else
+                fs:SetPoint("RIGHT", r, "RIGHT", -2, 0)
+            end
+            r.cols[j] = fs
+            cx = cx + (col.width > 0 and col.width or 0)
+        end
+        -- Tooltip on hover for full message
+        r:SetScript("OnEnter", function(self)
+            if self._lineData and not self._lineData.mark then
+                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+                GameTooltip:SetText(tostring(self._lineData.m), 1, 1, 1, 1, true)
+                GameTooltip:Show()
+            end
+        end)
+        r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        LW._tableRows[i] = r
+    end
+
+    -- View toggle button (in presets row, after None)
+    local viewToggle = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    viewToggle:SetSize(50, 20)
+    viewToggle:SetPoint("LEFT", bNone, "RIGHT", 8, 0)
+    viewToggle:SetText("Table")
+    viewToggle:SetScript("OnClick", function()
+        if LW._viewMode == "table" then
+            LW._viewMode = "text"
+            viewToggle:SetText("Table")
+            sf:Show()
+            tc:Hide()
+            LW._lastBufVersion = nil; LW:_Refresh(true)
+        else
+            LW._viewMode = "table"
+            viewToggle:SetText("Text")
+            sf:Hide()
+            if LW._newEntriesBtn then LW._newEntriesBtn:Hide() end
+            tc:Show()
+            LW._lastBufVersion = nil; LW:_Refresh(true)
+        end
+    end)
+
     right:SetScript("OnSizeChanged", function()
         if LW._edit and right:GetWidth() then
             LW._edit:SetWidth(math.max(200, right:GetWidth() - 24))
+        end
+        -- Refresh table rows on resize
+        if LW._viewMode == "table" then
+            LW._lastBufVersion = nil; LW:_RefreshTable()
         end
     end)
 
