@@ -140,7 +140,9 @@ function ReplayFrame:RebuildModelHost()
     end
     host:Hide()
     self.NpcModelFrame = host
-    -- If a voiceover is in progress, refresh the model; otherwise keep hidden until needed
+    self._unitModelLoaded = false
+    self._lastUnitNpcId = nil
+    self._lastDisplayID = nil
     local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId then
         self:UpdateNpcModelDisplay(cur.npcId)
@@ -241,6 +243,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             -- Model no longer loaded; fall through to full reload
         end
     self.NpcModelFrame:ClearModel()
+    self._unitModelLoaded = false
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
         end
@@ -306,9 +309,12 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             local stillLoaded = false
             if be and be.actor and be.actor.IsLoaded then
                 stillLoaded = be.actor:IsLoaded()
-            elseif be and be.kind == "player" and be.frame then
-                local fid = be.frame.GetModelFileID and be.frame:GetModelFileID()
-                stillLoaded = fid and fid ~= 0
+            elseif be and be.kind == "player" then
+                -- PlayerModel retains its model in GPU memory after SetUnit even when
+                -- the unit token becomes invalid (e.g. after GOSSIP_CLOSED).
+                -- GetModelFileID can return 0 during same-frame ClearModel→SetUnit
+                -- transitions, so trust our own tracking flag instead.
+                stillLoaded = self._unitModelLoaded
             end
             if stillLoaded then
                 if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
@@ -325,10 +331,12 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         local canUseUnit = UnitExists and UnitExists("npc")
         if canUseUnit and self.NpcModelFrame and self.NpcModelFrame.SetUnit then
             self.NpcModelFrame:ClearModel()
+            self._unitModelLoaded = false
             -- Show container before SetUnit so the ModelScene frame is visible during init
             if self.ModelContainer then self.ModelContainer:Show() end
             self.NpcModelFrame:Show()
             pcall(self.NpcModelFrame.SetUnit, self.NpcModelFrame, "npc")
+            self._unitModelLoaded = true
             self._lastUnitNpcId = npcId
             self._lastDisplayID = nil
             -- Snapshot displayID while "npc" is valid for later fallback
@@ -350,6 +358,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             local cpDid = currentlyPlaying and currentlyPlaying.displayID
             if cpDid and self.NpcModelFrame and self.NpcModelFrame.SetDisplayInfo then
                 self.NpcModelFrame:ClearModel()
+                self._unitModelLoaded = false
                 if self.ModelContainer then self.ModelContainer:Show() end
                 self.NpcModelFrame:Show()
                 self.NpcModelFrame:SetDisplayInfo(cpDid)
@@ -363,6 +372,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                     CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
                 end
                 self.NpcModelFrame:ClearModel()
+                self._unitModelLoaded = false
                 self.NpcModelFrame:Hide()
                 if self.ModelContainer then self.ModelContainer:Hide() end
                 self._lastUnitNpcId = nil
