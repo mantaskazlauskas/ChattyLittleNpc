@@ -392,6 +392,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
                 if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
                     CLN.ReplayFrame:UpdateDisplayFrameState()
                 end
+                if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
+                    CLN.ReplayFrame:UpdatePauseButton()
+                end
             end
         end
     end
@@ -468,6 +471,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             if CLN.ReplayFrame and CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown()
                 and CLN.ReplayFrame.UpdateConversationAnimation then
                 CLN.ReplayFrame:UpdateConversationAnimation()
+            end
+
+            if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
+                CLN.ReplayFrame:UpdatePauseButton()
             end
         end
     end

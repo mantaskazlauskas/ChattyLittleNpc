@@ -580,10 +580,57 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     end)
     self.ClearButton = clearBtn
 
+    -- Stop button (expanded header)
+    local stopBtn = CreateFrame("Button", nil, contentFrame)
+    stopBtn:SetSize(18, 18)
+    stopBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
+    local stopTex = stopBtn:CreateTexture(nil, "ARTWORK")
+    stopTex:SetAllPoints()
+    stopTex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.clear) or "Interface/Buttons/UI-GroupLoot-Pass-Up")
+    stopTex:SetVertexColor(0.9, 0.3, 0.3)
+    stopBtn:SetScript("OnEnter", function(self)
+        self:GetChildren() -- noop; re-color on hover
+        stopTex:SetVertexColor(1, 0.5, 0.5)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Stop playback")
+        GameTooltip:Show()
+    end)
+    stopBtn:SetScript("OnLeave", function()
+        stopTex:SetVertexColor(0.9, 0.3, 0.3)
+        GameTooltip_Hide()
+    end)
+    stopBtn:SetScript("OnClick", function()
+        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
+    end)
+    stopBtn:Hide()
+    self.HeaderStopBtn = stopBtn
+
+    -- Pause/Resume button (expanded header)
+    local pauseBtn = CreateFrame("Button", nil, contentFrame)
+    pauseBtn:SetSize(18, 18)
+    pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
+    pauseBtn.tex = pauseBtn:CreateTexture(nil, "ARTWORK")
+    pauseBtn.tex:SetAllPoints()
+    pauseBtn.tex:SetTexture("Interface/TimeManager/PauseButton")
+    pauseBtn:SetScript("OnEnter", function(self)
+        if GameTooltip and GameTooltip.SetOwner then
+            local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            GameTooltip:SetText(paused and "Resume playback" or "Pause playback")
+            GameTooltip:Show()
+        end
+    end)
+    pauseBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
+    pauseBtn:SetScript("OnClick", function()
+        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
+    end)
+    pauseBtn:Hide()
+    self.HeaderPauseBtn = pauseBtn
+
     -- Options button
     local optionsBtn = CreateFrame("Button", nil, contentFrame)
     optionsBtn:SetSize(18, 18)
-    optionsBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
+    optionsBtn:SetPoint("RIGHT", pauseBtn, "LEFT", -6, 0)
     local optionsTex = optionsBtn:CreateTexture(nil, "ARTWORK")
     optionsTex:SetAllPoints()
     optionsTex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.options) or "Interface/Buttons/UI-OptionsButton")
@@ -801,9 +848,15 @@ function ReplayFrame:EnsureCompactBadge()
 end
 
 function ReplayFrame:UpdatePauseButton()
+    local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+    local playing = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        and CLN.VoiceoverPlayer.currentlyPlaying.isPlaying
+        and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()
+    local active = playing or paused
+
+    -- Compact badge pause button
     local badge = self.CompactBadge
     if badge and badge.PauseBtn then
-        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
         local tex = badge.PauseBtn.tex
         if tex then
             if paused then
@@ -812,6 +865,26 @@ function ReplayFrame:UpdatePauseButton()
                 tex:SetTexture("Interface/TimeManager/PauseButton")
             end
         end
+    end
+
+    -- Expanded header pause/stop buttons
+    if self.HeaderPauseBtn then
+        if active then
+            self.HeaderPauseBtn:Show()
+            local tex = self.HeaderPauseBtn.tex
+            if tex then
+                if paused then
+                    tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+                else
+                    tex:SetTexture("Interface/TimeManager/PauseButton")
+                end
+            end
+        else
+            self.HeaderPauseBtn:Hide()
+        end
+    end
+    if self.HeaderStopBtn then
+        if active then self.HeaderStopBtn:Show() else self.HeaderStopBtn:Hide() end
     end
 end
 
