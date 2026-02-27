@@ -12,14 +12,14 @@ local BR = NS.BodyRegions
 -- shoulderW  = fraction of bbox width to fit horizontally
 BR.REGIONS = {
     tall_humanoid = {
-        bust       = { targetPct = 0.875, rangeLo = 0.75, rangeHi = 1.00, shoulderW = 0.55 },
-        head       = { targetPct = 0.925, rangeLo = 0.85, rangeHi = 1.00, shoulderW = 0.40 },
+        bust       = { targetPct = 0.920, rangeLo = 0.68, rangeHi = 1.00, shoulderW = 0.60 },
+        head       = { targetPct = 0.940, rangeLo = 0.82, rangeHi = 1.00, shoulderW = 0.40 },
         upper_body = { targetPct = 0.700, rangeLo = 0.45, rangeHi = 1.00, shoulderW = 0.65 },
         full_body  = { targetPct = 0.500, rangeLo = 0.00, rangeHi = 1.00, shoulderW = 1.00 },
     },
     stocky_humanoid = {
-        bust       = { targetPct = 0.850, rangeLo = 0.70, rangeHi = 1.00, shoulderW = 0.65 },
-        head       = { targetPct = 0.900, rangeLo = 0.80, rangeHi = 1.00, shoulderW = 0.45 },
+        bust       = { targetPct = 0.900, rangeLo = 0.63, rangeHi = 1.00, shoulderW = 0.65 },
+        head       = { targetPct = 0.920, rangeLo = 0.78, rangeHi = 1.00, shoulderW = 0.45 },
         upper_body = { targetPct = 0.675, rangeLo = 0.40, rangeHi = 1.00, shoulderW = 0.70 },
         full_body  = { targetPct = 0.500, rangeLo = 0.00, rangeHi = 1.00, shoulderW = 1.00 },
     },
