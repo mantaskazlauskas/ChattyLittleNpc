@@ -1257,7 +1257,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             clearBtn:SetSize(16, 16)
             clearBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             clearBtn:SetNormalFontObject("GameFontNormalSmall")
-            clearBtn:SetText("\xC3\x97") -- × multiplication sign
+            clearBtn:SetText("\195\151") -- × multiplication sign (UTF-8)
             if clearBtn:GetFontString() then clearBtn:GetFontString():SetTextColor(0.6, 0.5, 0.2, 0.8) end
             clearBtn:SetHighlightFontObject("GameFontHighlightSmall")
             clearBtn:Hide()

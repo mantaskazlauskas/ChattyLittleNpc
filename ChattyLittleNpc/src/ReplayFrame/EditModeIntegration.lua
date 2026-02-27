@@ -1107,7 +1107,7 @@ function ReplayFrame:SetEditMode(enabled)
             if GameTooltip and GameTooltip.SetOwner then
                 GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
                 GameTooltip:ClearLines()
-                local title = "Chatty Little Npc \xe2\x80\x94 Conversations"
+                local title = "Chatty Little Npc \226\128\148 Conversations"
                 GameTooltip:AddLine(title, 1, 1, 1, true)
                 local locked = self.IsFrameLocked and self:IsFrameLocked()
                 if locked then
