@@ -517,6 +517,7 @@ function ReplayFrame:BuildQueueEntries()
                 npcId = h.npcId,
                 gender = h.gender,
                 title = h.title,
+                displayID = h.displayID,
             })
         end
     end

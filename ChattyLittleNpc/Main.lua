@@ -489,11 +489,15 @@ function CLN:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
     local npcId = select(6, self:GetUnitInfo("npc"))
     local gender = select(2, self:GetUnitInfo("npc"))
+    -- Capture display ID now while the NPC unit is available (for queued playback later)
+    local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc"))
+        and UnitCreatureDisplayID("npc") or nil
     
     if self.db.profile.debugMode and self.Logger then
         self.Logger:debug("HandlePlaybackStart phase=" .. tostring(questPhase)
             .. " questId=" .. tostring(questId)
             .. " npcId=" .. tostring(npcId)
+            .. " displayID=" .. tostring(displayID)
             .. " gen=" .. tostring((self._questTimerGen or 0) + 1),
             false, self.Utils.LogCategories.loader)
     end
@@ -509,7 +513,7 @@ function CLN:HandlePlaybackStart(questPhase)
                 end
                 return
             end
-            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
+            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, displayID)
         end)
     end
 end

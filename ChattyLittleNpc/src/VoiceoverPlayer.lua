@@ -29,6 +29,7 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
         cantBeInterrupted = nil,
         npcId = nil,
         gender = nil,
+        displayID = nil,
         entryType = nil,
         phase = nil,
         questId = nil,
@@ -145,7 +146,7 @@ function VoiceoverPlayer:ResumeAfterNativeVO()
     if cp.entryType == "quest" and cp.questId and cp.phase then
         -- Re-play the same quest sound
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self:PlayQuestSound(cp.questId, cp.phase, cp.npcId)
+        self:PlayQuestSound(cp.questId, cp.phase, cp.npcId, cp.displayID)
     else
         -- Non-quest (gossip): can't meaningfully resume, just let it go
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
@@ -208,7 +209,7 @@ function VoiceoverPlayer:ResumePlayback()
         cp._pausedByUser = nil
         if cp.entryType == "quest" and cp.questId and cp.phase then
             self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-            self:PlayQuestSound(cp.questId, cp.phase, cp.npcId)
+            self:PlayQuestSound(cp.questId, cp.phase, cp.npcId, cp.displayID)
         elseif cp.npcId and cp.title and cp.entryType then
             self.currentlyPlaying = self:GetCurrentlyPlayingObject()
             self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender)
@@ -231,7 +232,7 @@ end
 function VoiceoverPlayer:ProcessQueueAfterResume()
     if #CLN.questsQueue > 0 then
         local next = CLN.questsQueue[1]
-        self:PlayQuestSound(next.questId, next.phase, next.npcId)
+        self:PlayQuestSound(next.questId, next.phase, next.npcId, next.displayID)
     else
         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
             CLN.ReplayFrame:UpdateDisplayFrameState()
@@ -273,8 +274,9 @@ end
 ---@param questId number The quest ID to play audio for
 ---@param phase string The quest phase ("Desc"|"Prog"|"Comp")
 ---@param npcId number|nil Optional NPC ID for context
+---@param displayID number|nil Optional creature display ID for model portrait (captured at queue time)
 ---@return nil
-function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
+function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
     if (not questId or not phase) then
         if CLN and CLN.Logger then
             CLN.Logger:error("Missing required arguments for PlayQuestSound", true, CLN.Utils.LogCategories.loader)
@@ -332,6 +334,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
             cantBeInterrupted = true,
             entryType = "quest",
             npcId = npcId,
+            displayID = displayID,
         }
 
         if (CLN.db.profile.debugMode) and CLN.Logger then
@@ -369,6 +372,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
             VoiceoverPlayer.currentlyPlaying.phase = phase
             VoiceoverPlayer.currentlyPlaying.questId = questId
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
+            VoiceoverPlayer.currentlyPlaying.displayID = displayID
             VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
             VoiceoverPlayer.currentlyPlaying.entryType = "quest"
             -- Non-interruptible only when in queue mode

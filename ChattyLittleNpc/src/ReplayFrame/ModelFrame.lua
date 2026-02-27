@@ -200,6 +200,13 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     end
 
     local displayID = NpcDisplayIdDB[npcId]
+    -- Fallback: use displayID stored on currentlyPlaying (captured at queue time)
+    if not displayID then
+        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        if cp and cp.displayID and cp.npcId == npcId then
+            displayID = cp.displayID
+        end
+    end
     if (displayID) then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
                 CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))

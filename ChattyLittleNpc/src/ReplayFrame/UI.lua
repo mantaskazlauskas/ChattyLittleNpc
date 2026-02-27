@@ -1510,6 +1510,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                                 phase = cp.phase,
                                 entryType = cp.entryType or (cp.questId and "quest" or "unknown"),
                                 gender = cp.gender,
+                                displayID = cp.displayID,
                                 completedAt = GetTime and GetTime() or 0,
                             })
                         end
@@ -1530,7 +1531,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                                 if CLN.Logger then
                                     CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
                                 end
-                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId)
+                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId, q.displayID)
                             else
                                 if CLN.Logger then
                                     CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
@@ -1553,7 +1554,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                             end
                         end
                         if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                            CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId)
+                            CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID)
                         elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
                             CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
                         end

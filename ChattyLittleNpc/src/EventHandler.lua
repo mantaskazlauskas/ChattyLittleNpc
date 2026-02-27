@@ -166,7 +166,8 @@ function EventHandler:QUEST_DETAIL()
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, select(6, CLN:GetUnitInfo("npc")))
+            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, select(6, CLN:GetUnitInfo("npc")), did)
         end)
     end
 
@@ -185,7 +186,8 @@ function EventHandler:QUEST_PROGRESS()
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, select(6, CLN:GetUnitInfo("npc")))
+            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, select(6, CLN:GetUnitInfo("npc")), did)
         end)
     end
 
@@ -204,7 +206,8 @@ function EventHandler:QUEST_COMPLETE()
     if (_G["QuestFrame"]) then
         local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
         CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, select(6, CLN:GetUnitInfo("npc")))
+            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, select(6, CLN:GetUnitInfo("npc")), did)
         end)
     end
 
@@ -285,6 +288,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
             phase = stoppedVoiceover.phase,
             entryType = stoppedVoiceover.entryType or (stoppedVoiceover.questId and "quest" or "unknown"),
             gender = stoppedVoiceover.gender,
+            displayID = stoppedVoiceover.displayID,
             completedAt = GetTime and GetTime() or 0,
         })
     end
@@ -319,7 +323,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         end
         local nextQuest = CLN.questsQueue[1]
         CLN.VoiceoverPlayer.queueProcessed = false
-        CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId)
+        CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
     else
         -- Nothing left in the queue; clear current if it matches the stopped handle
         local curr = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
