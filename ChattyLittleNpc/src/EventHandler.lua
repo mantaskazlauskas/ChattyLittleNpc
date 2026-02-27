@@ -469,8 +469,10 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
             false, CLN.Utils.LogCategories.loader)
     end
 
-    -- Always collect recent NPC speeches (for whitelist popup), skip emotes
-    if event ~= "CHAT_MSG_MONSTER_EMOTE" then
+    -- Always collect recent NPC speeches (for whitelist popup), skip emotes and subtitles.
+    -- Subtitle messages (isSubtitle=true) represent WoW's native voice acting and don't
+    -- need manual whitelisting — they auto-pause below instead.
+    if event ~= "CHAT_MSG_MONSTER_EMOTE" and not isSubtitle then
         self:RecordNpcSpeech(npcId, npcName, text, event)
     end
 
@@ -479,9 +481,32 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         self:ExtendWhitelistPopupTimer(text)
     end
 
-    -- Only pause for whitelisted NPCs; "off" does nothing
     local mode = CLN.db.profile.nativeVOMode or "off"
     if mode == "off" then return end
+
+    -- Subtitle messages = native VO is playing; auto-pause without whitelist check
+    if isSubtitle then
+        local cp = CLN.VoiceoverPlayer.currentlyPlaying
+        local isActive = cp and cp.soundHandle and cp:isPlaying()
+        local isPaused = cp and cp._pausedForNativeVO
+        if not (isActive or isPaused) then return end
+
+        local dur = EstimateVODuration(text)
+        if isPaused then
+            if CLN.VoiceoverPlayer._nativeVOResumeTimer then
+                CLN.VoiceoverPlayer._nativeVOResumeTimer:Cancel()
+            end
+            CLN.VoiceoverPlayer._nativeVOResumeTimer = C_Timer.NewTimer(dur, function()
+                CLN.VoiceoverPlayer:ResumeAfterNativeVO()
+            end)
+        else
+            CLN.VoiceoverPlayer:PauseForNativeVO(dur)
+        end
+        if CLN.db.profile.debugMode and CLN.Logger then
+            CLN.Logger:debug("Subtitle VO from " .. tostring(npcName) .. " — auto-pausing (bypasses whitelist)", false, CLN.Utils.LogCategories.loader)
+        end
+        return
+    end
 
     -- Skip emotes — they're ambient flavor text, almost never voiced
     if event == "CHAT_MSG_MONSTER_EMOTE" then return end
