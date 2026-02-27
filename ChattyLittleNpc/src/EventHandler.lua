@@ -416,7 +416,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         npcId = tonumber(idStr)
     end
 
-    -- Always log NPC messages when debug mode is on (regardless of pauseOnNativeVO)
+    -- Always log NPC messages when debug mode is on (regardless of mode)
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug(
             "NPC_MSG event=" .. tostring(event)
@@ -430,25 +430,48 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
             false, CLN.Utils.LogCategories.loader)
     end
 
-    if not CLN.db.profile.pauseOnNativeVO then return end
-    -- Don't pause if nothing is playing
-    local cp = CLN.VoiceoverPlayer.currentlyPlaying
-    if not (cp and cp.soundHandle and cp:isPlaying()) then return end
+    -- Always collect recent NPC speeches (for whitelist popup), skip emotes
+    if event ~= "CHAT_MSG_MONSTER_EMOTE" then
+        self:RecordNpcSpeech(npcId, npcName, text, event)
+    end
+
+    -- Extend pending whitelist popup timer if NPC is still talking
+    if self._whitelistPopupTimer and text then
+        self:ExtendWhitelistPopupTimer(text)
+    end
+
+    -- Mode check: "off" (default), "all", or "whitelist"
+    local mode = CLN.db.profile.nativeVOMode or "off"
+    if mode == "off" then return end
 
     -- Skip emotes — they're ambient flavor text, almost never voiced
     if event == "CHAT_MSG_MONSTER_EMOTE" then return end
 
+    -- Don't pause if nothing is playing (check both active and already-paused state)
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
+    local isActive = cp and cp.soundHandle and cp:isPlaying()
+    local isPaused = cp and cp._pausedForNativeVO
+    if not (isActive or isPaused) then return end
+
+    -- Don't pause VO that's been playing a long time (likely almost finished)
+    -- Restarting from the beginning would waste more than it saves
+    if isActive and cp.startTime and GetTime then
+        local elapsed = GetTime() - cp.startTime
+        local minPlayingThreshold = 15 -- seconds: skip pause if VO played this long
+        if elapsed > minPlayingThreshold then
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Skipping pause — addon VO already played " .. string.format("%.0f", elapsed) .. "s (threshold " .. minPlayingThreshold .. "s)",
+                    false, CLN.Utils.LogCategories.loader)
+            end
+            return
+        end
+    end
+
     -- Whitelist check: in "whitelist" mode, only pause for known voiced NPCs
-    local mode = CLN.db.profile.nativeVOMode or "whitelist"
     if mode == "whitelist" then
         local wl = CLN.db.profile.nativeVOWhitelist
         if not wl then return end
-        local matched = false
-        if npcId and wl[npcId] then
-            matched = true
-        elseif npcName and wl[npcName] then
-            matched = true
-        end
+        local matched = (npcId and wl[npcId]) or (npcName and wl[npcName])
         if not matched then
             if CLN.db.profile.debugMode and CLN.Logger then
                 CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
@@ -458,7 +481,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     end
 
     -- Already paused? Extend the timer instead of double-pausing
-    if cp._pausedForNativeVO then
+    if isPaused then
         local dur = EstimateVODuration(text)
         if CLN.VoiceoverPlayer._nativeVOResumeTimer then
             CLN.VoiceoverPlayer._nativeVOResumeTimer:Cancel()
@@ -467,7 +490,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
             CLN.VoiceoverPlayer:ResumeAfterNativeVO()
         end)
         if CLN and CLN.Logger then
-            CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName), false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName) .. " (+" .. string.format("%.1f", dur) .. "s)", false, CLN.Utils.LogCategories.loader)
         end
         return
     end
@@ -485,7 +508,8 @@ function EventHandler:OnTalkingHeadRequested()
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug("TALKINGHEAD_REQUESTED fired", false, CLN.Utils.LogCategories.loader)
     end
-    if not CLN.db.profile.pauseOnNativeVO then return end
+    local mode = CLN.db.profile.nativeVOMode or "off"
+    if mode == "off" then return end
     local cp = CLN.VoiceoverPlayer.currentlyPlaying
     if not (cp and cp.soundHandle and cp:isPlaying()) then return end
 
@@ -495,4 +519,132 @@ function EventHandler:OnTalkingHeadRequested()
         CLN.Logger:debug("Talking Head detected — pausing addon VO for ~" .. duration .. "s", false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)
+end
+
+-- ============================================================================
+-- Recent NPC Speech Buffer (for whitelist popup)
+-- ============================================================================
+
+local SPEECH_BUFFER_MAX = 20
+local SPEECH_BUFFER_TTL = 30 -- seconds
+
+--- Record an NPC speech event into the recent buffer.
+function EventHandler:RecordNpcSpeech(npcId, npcName, text, event)
+    if not self._recentNpcSpeeches then self._recentNpcSpeeches = {} end
+    local now = GetTime and GetTime() or 0
+
+    -- Prune old entries
+    local buf = self._recentNpcSpeeches
+    local cutoff = now - SPEECH_BUFFER_TTL
+    for i = #buf, 1, -1 do
+        if buf[i].timestamp < cutoff then table.remove(buf, i) end
+    end
+
+    -- Add new entry
+    table.insert(buf, {
+        npcId = npcId,
+        npcName = npcName or "Unknown",
+        text = text or "",
+        event = event,
+        timestamp = now,
+    })
+
+    -- Cap size
+    while #buf > SPEECH_BUFFER_MAX do table.remove(buf, 1) end
+end
+
+--- Get unique NPCs from recent speeches that aren't already whitelisted or dismissed.
+---@return table[] Array of { npcId, npcName, text } for popup display
+function EventHandler:GetUnaskedRecentNpcs()
+    if not self._recentNpcSpeeches then return {} end
+    local wl = CLN.db.profile.nativeVOWhitelist or {}
+    local dismissed = CLN.db.profile.nativeVODismissed or {}
+    local now = GetTime and GetTime() or 0
+    local cutoff = now - SPEECH_BUFFER_TTL
+
+    -- Deduplicate by npcId (or npcName if no ID), keep most recent text
+    local seen = {}
+    local result = {}
+    for i = #self._recentNpcSpeeches, 1, -1 do
+        local entry = self._recentNpcSpeeches[i]
+        if entry.timestamp >= cutoff then
+            local key = entry.npcId and tostring(entry.npcId) or entry.npcName
+            if not seen[key] then
+                seen[key] = true
+                -- Skip if already whitelisted or dismissed
+                local isWhitelisted = (entry.npcId and wl[entry.npcId]) or wl[entry.npcName]
+                local isDismissed = (entry.npcId and dismissed[entry.npcId]) or dismissed[entry.npcName]
+                if not isWhitelisted and not isDismissed then
+                    table.insert(result, {
+                        npcId = entry.npcId,
+                        npcName = entry.npcName,
+                        text = entry.text,
+                    })
+                end
+            end
+        end
+    end
+    return result
+end
+
+-- ============================================================================
+-- Whitelist Popup Scheduling
+-- ============================================================================
+
+--- Schedule the whitelist popup after NPC speech settles.
+--- Called from VoiceoverPlayer:PausePlayback when user pauses.
+function EventHandler:ScheduleWhitelistPopup()
+    local mode = CLN.db.profile.nativeVOMode or "off"
+    if mode ~= "whitelist" then return end
+
+    local npcs = self:GetUnaskedRecentNpcs()
+    if #npcs == 0 then return end
+
+    -- Start with a 3s base delay; will be extended by incoming speech
+    self._whitelistPopupDelay = 3
+    self:ResetWhitelistPopupTimer()
+end
+
+--- Extend the popup timer when new NPC speech arrives during the wait.
+function EventHandler:ExtendWhitelistPopupTimer(text)
+    if not self._whitelistPopupTimer then return end
+    local dur = EstimateVODuration(text)
+    self._whitelistPopupDelay = dur + 2 -- speech duration + settle buffer
+    self:ResetWhitelistPopupTimer()
+end
+
+--- Reset (restart) the popup timer with the current delay.
+function EventHandler:ResetWhitelistPopupTimer()
+    if self._whitelistPopupTimer then
+        self._whitelistPopupTimer:Cancel()
+    end
+    local delay = self._whitelistPopupDelay or 3
+    self._whitelistPopupTimer = C_Timer.NewTimer(delay, function()
+        self._whitelistPopupTimer = nil
+        self._whitelistPopupDelay = nil
+        self:ShowWhitelistPopup()
+    end)
+end
+
+--- Cancel any pending popup timer.
+function EventHandler:CancelWhitelistPopupTimer()
+    if self._whitelistPopupTimer then
+        self._whitelistPopupTimer:Cancel()
+        self._whitelistPopupTimer = nil
+    end
+    self._whitelistPopupDelay = nil
+end
+
+--- Show the whitelist popup with un-asked NPCs.
+function EventHandler:ShowWhitelistPopup()
+    local npcs = self:GetUnaskedRecentNpcs()
+    if #npcs == 0 then return end
+
+    if CLN.db.profile.debugMode and CLN.Logger then
+        CLN.Logger:debug("Showing whitelist popup with " .. #npcs .. " NPC(s)", false, CLN.Utils.LogCategories.loader)
+    end
+
+    if CLN.ReplayFrame and CLN.ReplayFrame.ShowNativeVOWhitelistPopup then
+        CLN.ReplayFrame:ShowNativeVOWhitelistPopup(npcs)
+    end
 end

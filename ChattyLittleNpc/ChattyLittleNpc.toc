@@ -47,6 +47,7 @@ src/ReplayFrame/ModelHost.lua
 src/ReplayFrame/ModelFrame.lua
 src/ReplayFrame/TextAnalysis.lua
 src/ReplayFrame/Accessibility.lua
+src/ReplayFrame/NativeVOPopup.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua

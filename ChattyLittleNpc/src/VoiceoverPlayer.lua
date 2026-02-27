@@ -190,6 +190,11 @@ function VoiceoverPlayer:PausePlayback()
     end
     if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+
+    -- Schedule whitelist popup if there are recent NPC speeches to ask about
+    if CLN.EventHandler and CLN.EventHandler.ScheduleWhitelistPopup then
+        CLN.EventHandler:ScheduleWhitelistPopup()
+    end
 end
 
 --- Resume playback: clear paused flag and advance queue.

@@ -106,13 +106,12 @@ local defaults = {
         editModeGlowHints = true,
         -- Accessibility: high-contrast mode for colorblind users
         highContrastMode = false,
-        -- Experimental: auto-pause addon voiceover when native NPC VO is detected
-        pauseOnNativeVO = false,
-        -- Whitelist mode: only pause for NPCs known to have voice acting
-        -- "all" = pause on all NPC speech, "whitelist" = only whitelisted NPCs
-        nativeVOMode = "whitelist",
+        -- Native VO handling: "off" (ignore), "all" (pause on any), "whitelist" (user-curated)
+        nativeVOMode = "off",
         -- Whitelisted NPCs: keyed by NPC ID (number) or name (string) → true
         nativeVOWhitelist = {},
+        -- Dismissed NPCs: don't ask about these again in the popup
+        nativeVODismissed = {},
     }
 }
 
@@ -129,6 +128,14 @@ function CLN:_MigrateSavedVars()
     end
 
     p.schemaVersion = 1
+
+    -- Migrate pauseOnNativeVO boolean → nativeVOMode
+    if p.pauseOnNativeVO ~= nil then
+        if p.pauseOnNativeVO == true and (not p.nativeVOMode or p.nativeVOMode == "off") then
+            p.nativeVOMode = "all"
+        end
+        p.pauseOnNativeVO = nil
+    end
 
     -- Migrate enableQuestPlaybackQueueing + stopVoiceoverAfterDialogWindowClose → questPlaybackMode
     if p.enableQuestPlaybackQueueing ~= nil or p.stopVoiceoverAfterDialogWindowClose ~= nil then
