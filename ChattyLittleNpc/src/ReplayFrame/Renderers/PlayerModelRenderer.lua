@@ -109,8 +109,8 @@ function M.Attach(host, backend)
     function host:PointCameraAtHead() end
     function host:FrameFullBodyFront()
         -- Bust portrait: zoom in on head+shoulders, slight vertical offset for headroom
-        if self.SetPortraitZoom then self:SetPortraitZoom(0.88) end
-        if self.SetPosition then self:SetPosition(0, 0, 0.05) end
+        if self.SetPortraitZoom then self:SetPortraitZoom(0.70) end
+        if self.SetPosition then self:SetPosition(0, 0, 0.08) end
         if self.SetRotation then self:SetRotation(0) end
     end
     function host:FitDefault()

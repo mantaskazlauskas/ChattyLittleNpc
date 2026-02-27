@@ -22,8 +22,8 @@ end
 -- Upper Body (bust portrait — head + shoulders)
 function P.UpperBody(host)
     if not host then return end
-    if host.SetPortraitZoom then host:SetPortraitZoom(0.88) end
-    if host.SetPosition then host:SetPosition(0, 0, 0.05) end
+    if host.SetPortraitZoom then host:SetPortraitZoom(0.70) end
+    if host.SetPosition then host:SetPosition(0, 0, 0.08) end
     if host.SetRotation then host:SetRotation(0) end
 end
 
