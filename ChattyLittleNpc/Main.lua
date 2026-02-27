@@ -108,6 +108,11 @@ local defaults = {
         highContrastMode = false,
         -- Experimental: auto-pause addon voiceover when native NPC VO is detected
         pauseOnNativeVO = false,
+        -- Whitelist mode: only pause for NPCs known to have voice acting
+        -- "all" = pause on all NPC speech, "whitelist" = only whitelisted NPCs
+        nativeVOMode = "whitelist",
+        -- Whitelisted NPCs: keyed by NPC ID (number) or name (string) → true
+        nativeVOWhitelist = {},
     }
 }
 

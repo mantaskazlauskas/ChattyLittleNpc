@@ -406,24 +406,27 @@ local function EstimateVODuration(text)
 end
 
 --- Fires for CHAT_MSG_MONSTER_SAY / YELL / WHISPER / EMOTE.
---- Pauses addon voiceover when any NPC chat message fires (the game fires
---- these for both voiced and unvoiced NPC speech — we can't distinguish
---- reliably, so we pause conservatively when the feature is enabled).
+--- Pauses addon voiceover when a whitelisted NPC speaks (or all NPCs in "all" mode).
 --- Note: EventSystem dispatches (event, ...) so the first arg here is the event name.
 function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
+    -- Extract NPC ID from GUID when available (format: "Creature-0-...-NPCID-...")
+    local npcId = nil
+    if guid and type(guid) == "string" then
+        local idStr = select(6, strsplit("-", guid))
+        npcId = tonumber(idStr)
+    end
+
     -- Always log NPC messages when debug mode is on (regardless of pauseOnNativeVO)
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug(
             "NPC_MSG event=" .. tostring(event)
             .. " npc=" .. tostring(npcName)
+            .. " npcId=" .. tostring(npcId)
             .. " text=" .. tostring(text and text:sub(1, 60) or "nil")
             .. " isSubtitle=" .. tostring(isSubtitle)
             .. " hideSender=" .. tostring(hideSenderInLetterbox)
             .. " lineID=" .. tostring(lineID)
-            .. " guid=" .. tostring(guid)
-            .. " lang=" .. tostring(languageName)
-            .. " isMobile=" .. tostring(isMobile)
-            .. " bnSender=" .. tostring(bnSenderID),
+            .. " guid=" .. tostring(guid),
             false, CLN.Utils.LogCategories.loader)
     end
 
@@ -434,6 +437,25 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
 
     -- Skip emotes — they're ambient flavor text, almost never voiced
     if event == "CHAT_MSG_MONSTER_EMOTE" then return end
+
+    -- Whitelist check: in "whitelist" mode, only pause for known voiced NPCs
+    local mode = CLN.db.profile.nativeVOMode or "whitelist"
+    if mode == "whitelist" then
+        local wl = CLN.db.profile.nativeVOWhitelist
+        if not wl then return end
+        local matched = false
+        if npcId and wl[npcId] then
+            matched = true
+        elseif npcName and wl[npcName] then
+            matched = true
+        end
+        if not matched then
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
+            end
+            return
+        end
+    end
 
     -- Already paused? Extend the timer instead of double-pausing
     if cp._pausedForNativeVO then
@@ -452,7 +474,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
 
     local duration = EstimateVODuration(text)
     if CLN and CLN.Logger then
-        CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (" .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
+        CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ", " .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
             false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)
