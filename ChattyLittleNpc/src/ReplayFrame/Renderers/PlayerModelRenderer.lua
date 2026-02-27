@@ -108,8 +108,13 @@ function M.Attach(host, backend)
     -- Compatibility stubs used by presets/code calling scene-style helpers
     function host:PointCameraAtHead() end
     function host:FrameFullBodyFront()
-        -- best-effort: use a reasonable zoom
-        if self.SetPortraitZoom then self:SetPortraitZoom(self._zoom or 0.65) end
+        -- Bust portrait: zoom in on head+shoulders, slight vertical offset for headroom
+        if self.SetPortraitZoom then self:SetPortraitZoom(0.88) end
+        if self.SetPosition then self:SetPosition(0, 0, 0.05) end
+        if self.SetRotation then self:SetRotation(0) end
+    end
+    function host:FitDefault()
+        return self:FrameFullBodyFront()
     end
     function host:FlipFacing() end
     function host:AutoFitToFrame() end

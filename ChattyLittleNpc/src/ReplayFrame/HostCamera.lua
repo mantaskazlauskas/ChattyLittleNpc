@@ -73,9 +73,9 @@ function HC.Attach(host)
             if isScene and has(self.FrameFullBodyFront) then
                 return self:FrameFullBodyFront(tonumber(_padding) or 0.12)
             end
-            -- PlayerModel fallback: zoom + position + rotation
-            if has(self.SetPortraitZoom) then self:SetPortraitZoom(self:GetPortraitZoom() or 0.65) end
-            if has(self.SetPosition) then self:SetPosition(0, 0, 0) end
+            -- PlayerModel fallback: bust portrait zoom + position + rotation
+            if has(self.SetPortraitZoom) then self:SetPortraitZoom(0.88) end
+            if has(self.SetPosition) then self:SetPosition(0, 0, 0.05) end
             if has(self.SetRotation) then self:SetRotation(0) end
             debugf("FitDefault(shim)")
         end

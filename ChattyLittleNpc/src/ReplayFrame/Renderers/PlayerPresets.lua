@@ -19,19 +19,19 @@ function P.FullBody(host)
     if host.SetRotation then host:SetRotation(0) end
 end
 
--- Upper Body
+-- Upper Body (bust portrait — head + shoulders)
 function P.UpperBody(host)
     if not host then return end
-    if host.SetPortraitZoom then host:SetPortraitZoom(0.75) end
-    if host.SetPosition then host:SetPosition(0, 0, 0.15) end
+    if host.SetPortraitZoom then host:SetPortraitZoom(0.88) end
+    if host.SetPosition then host:SetPosition(0, 0, 0.05) end
     if host.SetRotation then host:SetRotation(0) end
 end
 
--- Wave (slight zoom-out, more verticality)
+-- Wave (slight zoom-out for arm gesture)
 function P.Wave(host)
     if not host then return end
-    if host.SetPortraitZoom then host:SetPortraitZoom(0.5) end
-    if host.SetPosition then host:SetPosition(0, 0, 0.05) end
+    if host.SetPortraitZoom then host:SetPortraitZoom(0.55) end
+    if host.SetPosition then host:SetPosition(0, 0, 0.02) end
     if host.SetRotation then host:SetRotation(0) end
 end
 
