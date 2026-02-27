@@ -110,7 +110,7 @@ local defaults = {
         -- Gossip cooldown: don't replay the same gossip line within a session
         gossipCooldownEnabled = false,
         gossipCooldownMinutes = 0,
-        -- Gossip queue mode: "none" (override, default), "long" (queue if >10s playing), "all" (always queue)
+        -- Gossip queue mode: "none" (override, default), "medium" (queue if >5s playing), "long" (queue if >10s playing), "all" (always queue)
         gossipQueueMode = "none",
         -- Native VO handling: "off" (ignore), "all" (pause on any), "whitelist" (user-curated)
         nativeVOMode = "off",

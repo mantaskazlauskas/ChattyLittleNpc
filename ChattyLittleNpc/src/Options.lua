@@ -10,6 +10,38 @@ CLN.Options = Options
 -- Create config system instance
 local config = ChattyLittleNpc.ConfigSystem:New()
 
+-- Resolve all known numeric IDs for an NPC name from baked-in and contribution DBs.
+local function getKnownIdsForName(npcName)
+    local ids = {}
+    local baked = _G.KnownVoicedNpcsDB
+    if baked and baked[npcName] and baked[npcName].ids then
+        for _, id in ipairs(baked[npcName].ids) do ids[id] = true end
+    end
+    local contrib = _G.VoicedNpcContributions
+    if contrib and contrib[npcName] and contrib[npcName].ids then
+        for _, id in ipairs(contrib[npcName].ids) do ids[id] = true end
+    end
+    return ids
+end
+
+-- Remove an NPC name and its known IDs from a table (whitelist or dismissed).
+local function removeNpcFromTable(tbl, npcName)
+    if not tbl then return end
+    tbl[npcName] = nil
+    for id in pairs(getKnownIdsForName(npcName)) do
+        tbl[id] = nil
+    end
+end
+
+-- Add an NPC name and its known IDs to a table (whitelist or dismissed).
+local function addNpcToTable(tbl, npcName)
+    if not tbl then return end
+    tbl[npcName] = true
+    for id in pairs(getKnownIdsForName(npcName)) do
+        tbl[id] = true
+    end
+end
+
 local options = {
     name = "Chatty Little Npc",
     handler = CLN,
@@ -117,9 +149,10 @@ local options = {
                     name = 'Gossip Queueing',
                     desc = 'Controls whether gossip/greeting voiceovers queue behind active playback or override it.\n\n'
                         .. '|cFFFFFFFFNone|r — Gossip replaces whatever is playing (default).\n'
+                        .. '|cFFFFFFFFMedium|r — Queue gossip if the current VO has been playing for more than 5 seconds.\n'
                         .. '|cFFFFFFFFLong Only|r — Queue gossip if the current VO has been playing for more than 10 seconds.\n'
                         .. '|cFFFFFFFFAll|r — Always queue gossip behind active playback.',
-                    values = { none = "None (Override)", long = "Long Only (>10s)", all = "Always Queue" },
+                    values = { none = "None (Override)", medium = "Medium (>5s)", long = "Long Only (>10s)", all = "Always Queue" },
                     get = function(info) return CLN.db.profile.gossipQueueMode or "none" end,
                     set = function(info, value) CLN.db.profile.gossipQueueMode = value end,
                 },
@@ -141,71 +174,181 @@ local options = {
                 pauseForHeader = {
                     order = 10,
                     type = 'header',
-                    name = 'Pause For',
-                },
-                pauseForDesc = {
-                    order = 11,
-                    type = 'description',
                     name = function()
                         local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        local names = {}
+                        local count = 0
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then count = count + 1 end
+                        end
+                        return count > 0 and ('Pause For (' .. count .. ')') or 'Pause For'
+                    end,
+                },
+                pauseForEmpty = {
+                    order = 11,
+                    type = 'description',
+                    name = "No NPCs added yet. Pause playback while an NPC is speaking to get prompted.",
+                    hidden = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then return true end
+                        end
+                        return false
+                    end,
+                },
+                pauseForList = {
+                    order = 12,
+                    type = 'multiselect',
+                    name = '',
+                    desc = 'Uncheck an NPC to stop auto-pausing for them.',
+                    width = 'full',
+                    values = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        local result = {}
                         for k, v in pairs(wl) do
                             if v and type(k) == "string" then
-                                names[#names + 1] = k
+                                result[k] = k
                             end
                         end
-                        if #names == 0 then return "No NPCs added yet. Pause playback while an NPC is speaking to get prompted." end
-                        table.sort(names)
-                        return table.concat(names, ", ")
+                        return result
                     end,
-                    fontSize = 'medium',
+                    get = function(info, key)
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        return wl[key] == true
+                    end,
+                    set = function(info, key, value)
+                        if not value then
+                            removeNpcFromTable(CLN.db.profile.nativeVOWhitelist, key)
+                        end
+                    end,
+                    hidden = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then return false end
+                        end
+                        return true
+                    end,
                 },
-                pauseForRemove = {
-                    order = 12,
-                    type = 'input',
-                    name = 'Remove NPC from Pause For',
-                    desc = 'Type an NPC name to remove from the Pause For list.',
+                pauseForMoveToNeverAsk = {
+                    order = 13,
+                    type = 'select',
+                    name = 'Move to Never Ask',
+                    desc = "Pick an NPC to dismiss — they won't trigger prompts or auto-pausing.",
+                    values = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        local result = { [""] = "\226\128\148 Select NPC \226\128\148" }
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then
+                                result[k] = k
+                            end
+                        end
+                        return result
+                    end,
                     get = function() return "" end,
                     set = function(info, value)
                         if not value or value == "" then return end
-                        local wl = CLN.db.profile.nativeVOWhitelist
-                        if wl then
-                            wl[value] = nil
-                            -- Also remove numeric ID if present by scanning for matching name entries
-                            for k, v in pairs(wl) do
-                                if type(k) == "number" and v == true then
-                                    -- Can't reverse-map ID→name here, but the name removal is sufficient
-                                end
-                            end
+                        removeNpcFromTable(CLN.db.profile.nativeVOWhitelist, value)
+                        if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
+                        addNpcToTable(CLN.db.profile.nativeVODismissed, value)
+                    end,
+                    hidden = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then return false end
                         end
+                        return true
                     end,
                 },
                 neverAskHeader = {
                     order = 20,
                     type = 'header',
-                    name = 'Never Ask',
-                },
-                neverAskDesc = {
-                    order = 21,
-                    type = 'description',
                     name = function()
                         local dismissed = CLN.db.profile.nativeVODismissed or {}
-                        local names = {}
+                        local count = 0
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then count = count + 1 end
+                        end
+                        return count > 0 and ('Never Ask (' .. count .. ')') or 'Never Ask'
+                    end,
+                },
+                neverAskEmpty = {
+                    order = 21,
+                    type = 'description',
+                    name = "No NPCs dismissed.",
+                    hidden = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then return true end
+                        end
+                        return false
+                    end,
+                },
+                neverAskList = {
+                    order = 22,
+                    type = 'multiselect',
+                    name = '',
+                    desc = 'Uncheck an NPC to allow the popup to ask about them again.',
+                    width = 'full',
+                    values = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        local result = {}
                         for k, v in pairs(dismissed) do
                             if v and type(k) == "string" then
-                                names[#names + 1] = k
+                                result[k] = k
                             end
                         end
-                        if #names == 0 then return "No NPCs dismissed." end
-                        table.sort(names)
-                        return table.concat(names, ", ")
+                        return result
                     end,
-                    fontSize = 'medium',
+                    get = function(info, key)
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        return dismissed[key] == true
+                    end,
+                    set = function(info, key, value)
+                        if not value then
+                            removeNpcFromTable(CLN.db.profile.nativeVODismissed, key)
+                        end
+                    end,
+                    hidden = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then return false end
+                        end
+                        return true
+                    end,
+                },
+                neverAskMoveToPauseFor = {
+                    order = 23,
+                    type = 'select',
+                    name = 'Move to Pause For',
+                    desc = 'Pick a dismissed NPC to move to the Pause For list.',
+                    values = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        local result = { [""] = "\226\128\148 Select NPC \226\128\148" }
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then
+                                result[k] = k
+                            end
+                        end
+                        return result
+                    end,
+                    get = function() return "" end,
+                    set = function(info, value)
+                        if not value or value == "" then return end
+                        removeNpcFromTable(CLN.db.profile.nativeVODismissed, value)
+                        if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
+                        addNpcToTable(CLN.db.profile.nativeVOWhitelist, value)
+                    end,
+                    hidden = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then return false end
+                        end
+                        return true
+                    end,
                 },
                 neverAskClear = {
-                    order = 22,
+                    order = 24,
                     type = 'execute',
-                    name = 'Clear Never Ask List',
+                    name = 'Clear All Dismissed',
                     desc = 'Re-enable popups for all dismissed NPCs.',
                     func = function()
                         CLN.db.profile.nativeVODismissed = {}
@@ -213,17 +356,12 @@ local options = {
                             CLN.Logger:info("Cleared Never Ask list.", false, (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.loader) or "misc")
                         end
                     end,
-                },
-                neverAskRemove = {
-                    order = 23,
-                    type = 'input',
-                    name = 'Remove NPC from Never Ask',
-                    desc = 'Type an NPC name to remove from the Never Ask list (will be asked again).',
-                    get = function() return "" end,
-                    set = function(info, value)
-                        if not value or value == "" then return end
-                        local dismissed = CLN.db.profile.nativeVODismissed
-                        if dismissed then dismissed[value] = nil end
+                    hidden = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then return false end
+                        end
+                        return true
                     end,
                 },
             },

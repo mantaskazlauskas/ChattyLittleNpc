@@ -763,10 +763,25 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
         return
     end
 
-    -- Don't start new non-quest playback while user-paused
+    -- While user-paused, queue gossip if gossip queueing is enabled, otherwise skip
     if self._paused then
-        if CLN.db.profile.debugMode and CLN.Logger then
-            CLN.Logger:debug("Skipping non-quest sound while paused: " .. tostring(text), false, CLN.Utils.LogCategories.loader)
+        local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
+        if gossipQueue ~= "none" then
+            table.insert(CLN.questsQueue, {
+                npcId = npcId,
+                title = text,
+                entryType = soundType,
+                gender = gender,
+                cantBeInterrupted = false,
+            })
+            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Queued gossip while paused: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+            end
+        else
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Skipping non-quest sound while paused: " .. tostring(text), false, CLN.Utils.LogCategories.loader)
+            end
         end
         return
     end
@@ -791,11 +806,12 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             local shouldQueue = false
             if gossipQueue == "all" and VoiceoverPlayer:IsEffectivelyPlaying() then
                 shouldQueue = true
-            elseif gossipQueue == "long" and VoiceoverPlayer:IsEffectivelyPlaying() then
+            elseif (gossipQueue == "medium" or gossipQueue == "long") and VoiceoverPlayer:IsEffectivelyPlaying() then
+                local threshold = (gossipQueue == "medium") and 5 or 10
                 local cp = VoiceoverPlayer.currentlyPlaying
                 if cp.startTime and GetTime then
                     local elapsed = GetTime() - cp.startTime
-                    if elapsed > 10 then
+                    if elapsed > threshold then
                         shouldQueue = true
                     end
                 end
