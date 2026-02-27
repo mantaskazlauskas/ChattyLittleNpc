@@ -600,14 +600,13 @@ end
 -- ============================================================================
 
 --- Merge the baked-in KnownVoicedNpcsDB into the user's whitelist.
---- Called once on init. Only adds entries the user hasn't explicitly dismissed.
+--- Called on init and when whitelist mode is enabled.
+--- Pre-populates the whitelist so it's ready when the user enables the feature.
+--- Only adds entries the user hasn't explicitly dismissed.
 function CLN:MergeKnownVoicedNpcs()
     if not (self.db and self.db.profile) then return end
     local baked = _G.KnownVoicedNpcsDB
     if not baked then return end
-
-    -- Only merge if whitelist mode is active
-    if (self.db.profile.nativeVOMode or "off") == "off" then return end
 
     local wl = self.db.profile.nativeVOWhitelist
     if not wl then wl = {}; self.db.profile.nativeVOWhitelist = wl end
@@ -622,7 +621,7 @@ function CLN:MergeKnownVoicedNpcs()
                 added = added + 1
             end
             -- Also add any known IDs
-            if data.ids then
+            if data and data.ids then
                 for _, id in ipairs(data.ids) do
                     if not wl[id] and not dismissed[id] then
                         wl[id] = true
@@ -653,14 +652,17 @@ function CLN:ContributeVoicedNpc(npcName, npcIds)
     if not contrib[npcName] then
         contrib[npcName] = { ids = {} }
     end
+    if not contrib[npcName].ids then contrib[npcName].ids = {} end
 
-    -- Merge any new IDs
+    -- Merge any new IDs (normalize to numbers)
     if npcIds then
         local existing = {}
-        for _, id in ipairs(contrib[npcName].ids or {}) do existing[id] = true end
+        for _, id in ipairs(contrib[npcName].ids) do existing[tonumber(id) or id] = true end
         for _, id in ipairs(npcIds) do
-            if not existing[id] then
-                table.insert(contrib[npcName].ids, id)
+            local nid = tonumber(id) or id
+            if nid and not existing[nid] then
+                table.insert(contrib[npcName].ids, nid)
+                existing[nid] = true
             end
         end
     end

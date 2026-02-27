@@ -66,6 +66,10 @@ function EventHandler:UnregisterEvents()
         timer:CancelTimer(self.watcherTimer)
         self.watcherTimer = nil
     end
+    if self._historyPruneTimer then
+        timer:CancelTimer(self._historyPruneTimer)
+        self._historyPruneTimer = nil
+    end
 end
 
 -- Register a job that triggers events
@@ -88,7 +92,7 @@ function EventHandler:StartWatcher()
 
         -- If a new handle starts playing, clear the latch
         if handle and isPlaying and self._stopLatchHandle and self._stopLatchHandle ~= handle then
-            if CLN and CLN.Logger then
+            if CLN.db.profile.debugMode and CLN.Logger then
                 CLN.Logger:debug("Watcher: clearing stop latch for new handle " .. tostring(handle), false, CLN.Utils.LogCategories.loader)
             end
             self._stopLatchHandle = nil
@@ -97,13 +101,26 @@ function EventHandler:StartWatcher()
         -- Only emit stop once per handle, and only when we have a valid handle
         if handle and not isPlaying then
             if self._stopLatchHandle ~= handle then
-                if CLN and CLN.Logger then
+                if CLN.db.profile.debugMode and CLN.Logger then
                     CLN.Logger:debug("Watcher: VOICEOVER_STOP for handle " .. tostring(handle), false, CLN.Utils.LogCategories.loader)
                 end
                 self._stopLatchHandle = handle
                 CLN:SendMessage("VOICEOVER_STOP", cp)
             end
             return
+        end
+    end)
+
+    -- Periodic history cleanup (every 60s) so stale entries are pruned
+    -- even when no new sounds play.
+    self._historyPruneTimer = timer:ScheduleRepeatingTimer(60, function()
+        if CLN.ReplayFrame and CLN.ReplayFrame.PruneOldHistory then
+            local before = CLN.ReplayFrame._replayHistory and #CLN.ReplayFrame._replayHistory or 0
+            CLN.ReplayFrame:PruneOldHistory()
+            local after = CLN.ReplayFrame._replayHistory and #CLN.ReplayFrame._replayHistory or 0
+            if after < before and CLN.ReplayFrame.MarkQueueDirty then
+                CLN.ReplayFrame:MarkQueueDirty()
+            end
         end
     end)
 end
@@ -265,7 +282,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     local now = (type(GetTime) == "function") and GetTime() or 0
     if stoppedHandle then
         if self._lastStoppedHandle == stoppedHandle and self._lastStoppedTime and (now - self._lastStoppedTime) < 1.0 then
-            if CLN and CLN.Logger then
+            if CLN.db.profile.debugMode and CLN.Logger then
                 CLN.Logger:debug("OnVoiceoverStop: deduped for handle " .. tostring(stoppedHandle), false, CLN.Utils.LogCategories.loader)
             end
             return
@@ -274,23 +291,9 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         self._lastStoppedTime = now
     end
 
-    -- Push to replay history
-    if stoppedVoiceover and (stoppedVoiceover.title or stoppedVoiceover.questId) and CLN.ReplayFrame and CLN.ReplayFrame.PushHistory then
-        -- Title may be nil if C_QuestLog wasn't ready at playback start; retry now
-        local title = stoppedVoiceover.title
-        if not title and stoppedVoiceover.questId then
-            title = CLN:GetTitleForQuestID(stoppedVoiceover.questId)
-        end
-        CLN.ReplayFrame:PushHistory({
-            title = title,
-            npcId = stoppedVoiceover.npcId,
-            questId = stoppedVoiceover.questId,
-            phase = stoppedVoiceover.phase,
-            entryType = stoppedVoiceover.entryType or (stoppedVoiceover.questId and "quest" or "unknown"),
-            gender = stoppedVoiceover.gender,
-            displayID = stoppedVoiceover.displayID,
-            completedAt = GetTime and GetTime() or 0,
-        })
+    -- Push to replay history (centralized helper handles title resolution)
+    if stoppedVoiceover then
+        CLN.VoiceoverPlayer:PushToHistory(stoppedVoiceover)
     end
 
     -- Try to remove the stopped voiceover from the queue (it may already have
@@ -298,7 +301,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     if stoppedVoiceover.questId then
         for i, quest in ipairs(CLN.questsQueue) do
             if (quest.questId == stoppedVoiceover.questId and quest.phase == stoppedVoiceover.phase) then
-                if CLN and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
+                if CLN.db.profile.debugMode and CLN.Logger then CLN.Logger:debug("Removing quest from queue:" .. tostring(quest.questId), false, CLN.Utils.LogCategories.loader) end
                 table.remove(CLN.questsQueue, i)
                 if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
                 break
@@ -329,21 +332,28 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
             CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
         end
     else
-        -- Nothing left in the queue; clear current if it matches the stopped handle
-        local curr = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
-        local currHandle = curr and curr.soundHandle or nil
-        local stillPlaying = curr and curr.isPlaying and curr:isPlaying() or false
-        if not stillPlaying or (stoppedHandle and currHandle == stoppedHandle) then
-            if CLN and CLN.Logger then CLN.Logger:debug("No more quests in queue, clearing currentlyPlaying and closing UI.", false, CLN.Utils.LogCategories.loader) end
-            CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
-            CLN.VoiceoverPlayer.queueProcessed = true
-        end
-        -- Conversation stopped; refresh UI and let FSM drive farewell/hide
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-            CLN.ReplayFrame:UpdateDisplayFrameState()
-        end
-        if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
-            CLN.ReplayFrame:OnConversationStop()
+        -- Nothing left in the queue
+        if CLN.VoiceoverPlayer:HasSuspendedPlayback() then
+            -- Resume the suspended playback (e.g., non-quest sound that was paused for queued items)
+            if CLN and CLN.Logger then CLN.Logger:debug("Queue empty, resuming suspended playback.", false, CLN.Utils.LogCategories.loader) end
+            CLN.VoiceoverPlayer:ResumeSuspendedPlayback()
+        else
+            -- No suspended playback; clear current if it matches the stopped handle
+            local curr = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+            local currHandle = curr and curr.soundHandle or nil
+            local stillPlaying = curr and curr.isPlaying and curr:isPlaying() or false
+            if not stillPlaying or (stoppedHandle and currHandle == stoppedHandle) then
+                if CLN and CLN.Logger then CLN.Logger:debug("No more quests in queue, clearing currentlyPlaying and closing UI.", false, CLN.Utils.LogCategories.loader) end
+                CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
+                CLN.VoiceoverPlayer.queueProcessed = true
+            end
+            -- Conversation stopped; refresh UI and let FSM drive farewell/hide
+            if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+                CLN.ReplayFrame:UpdateDisplayFrameState()
+            end
+            if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
+                CLN.ReplayFrame:OnConversationStop()
+            end
         end
     end
 end
@@ -509,6 +519,10 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     -- Auto-learn new creature IDs for already-whitelisted NPCs
     if npcId and not wl[npcId] and npcName and wl[npcName] then
         wl[npcId] = true
+        -- Also contribute the new ID for community collection
+        if CLN.ContributeVoicedNpc then
+            CLN:ContributeVoicedNpc(npcName, { npcId })
+        end
     end
 
     -- Already paused? Extend the timer instead of double-pausing
@@ -520,14 +534,14 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         CLN.VoiceoverPlayer._nativeVOResumeTimer = C_Timer.NewTimer(dur, function()
             CLN.VoiceoverPlayer:ResumeAfterNativeVO()
         end)
-        if CLN and CLN.Logger then
+        if CLN.db.profile.debugMode and CLN.Logger then
             CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName) .. " (+" .. string.format("%.1f", dur) .. "s)", false, CLN.Utils.LogCategories.loader)
         end
         return
     end
 
     local duration = EstimateVODuration(text)
-    if CLN and CLN.Logger then
+    if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ", " .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
             false, CLN.Utils.LogCategories.loader)
     end
@@ -546,7 +560,7 @@ function EventHandler:OnTalkingHeadRequested()
 
     -- Talking heads typically last 5-15 seconds; use a conservative default
     local duration = 8
-    if CLN and CLN.Logger then
+    if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug("Talking Head detected — pausing addon VO for ~" .. duration .. "s", false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)

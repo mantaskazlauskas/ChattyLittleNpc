@@ -98,7 +98,10 @@ local options = {
                         .. 'To add NPCs: pause playback while an NPC is speaking and a popup will '
                         .. 'ask if you want to remember that NPC.',
                     get = function(info) return (CLN.db.profile.nativeVOMode or "off") ~= "off" end,
-                    set = function(info, value) CLN.db.profile.nativeVOMode = value and "whitelist" or "off" end,
+                    set = function(info, value)
+                        CLN.db.profile.nativeVOMode = value and "whitelist" or "off"
+                        if value and CLN.MergeKnownVoicedNpcs then CLN:MergeKnownVoicedNpcs() end
+                    end,
                 },
                 pauseForHeader = {
                     order = 10,
@@ -326,6 +329,22 @@ local options = {
                     get = function(info) return CLN.db.profile.queueHistoryMaxEntries or 20 end,
                     set = function(info, value)
                         CLN.db.profile.queueHistoryMaxEntries = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                    end,
+                },
+                historyTTLMinutes = {
+                    order = 10,
+                    type = 'range',
+                    width = 'double',
+                    name = 'History Auto-Cleanup (minutes)',
+                    desc = 'Remove history entries older than this many minutes. Keeps the replay list from growing stale.',
+                    min = 1,
+                    max = 60,
+                    step = 1,
+                    get = function(info) return CLN.db.profile.historyTTLMinutes or 5 end,
+                    set = function(info, value)
+                        CLN.db.profile.historyTTLMinutes = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.PruneOldHistory then CLN.ReplayFrame:PruneOldHistory() end
                         if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
                     end,
                 },
