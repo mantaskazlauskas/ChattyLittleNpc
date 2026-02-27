@@ -800,104 +800,8 @@ function ReplayFrame:EnsureCompactBadge()
     self.CompactBadge = badge
 end
 
--- Create the playback bar as an inline row inside ContentFrame, between header and queue.
--- Styled like the queue rows: same font, colors, row height.
-function ReplayFrame:EnsurePlaybackBar()
-    if self.PlaybackBar then return end
-    if not self.ContentFrame then return end
-
-    local bar = CreateFrame("Frame", "CLN_PlaybackBar", self.ContentFrame)
-    bar:SetHeight(24)
-    bar:Hide()
-
-    -- Subtle highlight background (same as queue row hover)
-    local bg = bar:CreateTexture(nil, "BACKGROUND")
-    bg:SetAllPoints()
-    bg:SetTexture("Interface/QuestFrame/UI-QuestTitleHighlight")
-    bg:SetAlpha(0.08)
-    bar._bg = bg
-
-    -- Speaker icon (gold, matching bullet style)
-    local icon = bar:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(14, 14)
-    icon:SetPoint("LEFT", bar, "LEFT", 8, 0)
-    icon:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.speaker) or "Interface/COMMON/VOICECHAT-SPEAKER")
-    icon:SetVertexColor(1.0, 0.82, 0.0, 1)
-    bar.Icon = icon
-
-    -- Title text (same font and color as queue rows)
-    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    title:SetJustifyH("LEFT")
-    if title.SetWordWrap then title:SetWordWrap(false) end
-    title:SetTextColor(0.95, 0.86, 0.20)
-    bar.Title = title
-
-    -- Stop button (right side, small inline)
-    local stopBtn = CreateFrame("Button", nil, bar)
-    stopBtn:SetSize(16, 16)
-    stopBtn:SetPoint("RIGHT", bar, "RIGHT", -8, 0)
-    local stopTex = stopBtn:CreateTexture(nil, "ARTWORK")
-    stopTex:SetAllPoints()
-    stopTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
-    stopTex:SetVertexColor(0.8, 0.3, 0.3)
-    stopBtn:SetScript("OnEnter", function(self)
-        stopTex:SetVertexColor(1, 0.5, 0.5)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP"); GameTooltip:SetText("Stop"); GameTooltip:Show()
-    end)
-    stopBtn:SetScript("OnLeave", function()
-        stopTex:SetVertexColor(0.8, 0.3, 0.3); GameTooltip_Hide()
-    end)
-    stopBtn:SetScript("OnClick", function()
-        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
-    end)
-    bar.StopBtn = stopBtn
-
-    -- Pause/Resume button
-    local pauseBtn = CreateFrame("Button", nil, bar)
-    pauseBtn:SetSize(16, 16)
-    pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
-    pauseBtn.tex = pauseBtn:CreateTexture(nil, "ARTWORK")
-    pauseBtn.tex:SetAllPoints()
-    pauseBtn.tex:SetTexture("Interface/TimeManager/PauseButton")
-    pauseBtn:SetScript("OnEnter", function(self)
-        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText(paused and "Resume" or "Pause"); GameTooltip:Show()
-    end)
-    pauseBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    pauseBtn:SetScript("OnClick", function()
-        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
-    end)
-    bar.PauseBtn = pauseBtn
-
-    -- Title right anchor (stop at buttons)
-    title:SetPoint("RIGHT", pauseBtn, "LEFT", -6, 0)
-
-    self.PlaybackBar = bar
-end
-
--- Anchor the playback bar inside ContentFrame, just above the queue list
-function ReplayFrame:AnchorPlaybackBar()
-    local bar = self.PlaybackBar
-    if not bar then return end
-    bar:ClearAllPoints()
-
-    -- Position below HeaderDivider (or HeaderText), above QueueListFrame
-    if self.HeaderDivider then
-        bar:SetPoint("TOPLEFT", self.HeaderDivider, "BOTTOMLEFT", 0, -2)
-        bar:SetPoint("TOPRIGHT", self.HeaderDivider, "BOTTOMRIGHT", 0, -2)
-    elseif self.HeaderText then
-        bar:SetPoint("TOPLEFT", self.HeaderText, "BOTTOMLEFT", 0, -6)
-        bar:SetPoint("TOPRIGHT", self.HeaderText, "BOTTOMRIGHT", 0, -6)
-    end
-end
-
 function ReplayFrame:UpdatePauseButton()
     local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
-    local playing = cur and cur.isPlaying and cur:isPlaying()
-    local active = playing or paused
 
     -- Compact badge pause button (collapsed state)
     local badge = self.CompactBadge
@@ -912,42 +816,8 @@ function ReplayFrame:UpdatePauseButton()
         end
     end
 
-    -- Playback bar (expanded state notification)
-    local isExpanded = not (self.CollapseButton and self.CollapseButton._collapsed)
-    if isExpanded then
-        if active then
-            self:EnsurePlaybackBar()
-            self:AnchorPlaybackBar()
-            local bar = self.PlaybackBar
-            if bar then
-                -- Update title
-                local title = cur and cur.title or "Playing..."
-                if self.TruncateToWidth and bar.Title and bar.Title.GetWidth then
-                    local maxW = math.max(40, (bar:GetWidth() or 200) - 80)
-                    self:TruncateToWidth(bar.Title, title, maxW)
-                elseif bar.Title then
-                    bar.Title:SetText(title)
-                end
-
-                -- Update pause icon
-                if bar.PauseBtn and bar.PauseBtn.tex then
-                    if paused then
-                        bar.PauseBtn.tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
-                        bar.Icon:SetVertexColor(0.5, 0.5, 0.5, 0.7)
-                    else
-                        bar.PauseBtn.tex:SetTexture("Interface/TimeManager/PauseButton")
-                        bar.Icon:SetVertexColor(1.0, 0.82, 0.0, 1)
-                    end
-                end
-
-                bar:Show()
-            end
-        elseif self.PlaybackBar then
-            self.PlaybackBar:Hide()
-        end
-    elseif self.PlaybackBar then
-        self.PlaybackBar:Hide()
-    end
+    -- Refresh queue rows to update the playing row's bullet icon
+    if self.RefreshQueueDataProvider then self:RefreshQueueDataProvider() end
 end
 
 function ReplayFrame:UpdateCompactBadge(force)
@@ -1444,12 +1314,13 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
 
+            row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnMouseUp", function(selfBtn, button)
                 local e = selfBtn._element
                 if not e then return end
-                if button == "LeftButton" then
-                    if e.isPlaying then
-                        -- Push to history before stopping so it's available for replay
+                if e.isPlaying then
+                    if button == "RightButton" then
+                        -- Right-click: push to history and stop (skip)
                         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
                         if cp and (cp.title or cp.questId) and ReplayFrame.PushHistory then
                             local title = cp.title
@@ -1470,7 +1341,11 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
-                    elseif e.queueIndex then
+                    else
+                        -- Left-click: pause/resume
+                        if CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
+                    end
+                elseif button == "LeftButton" then e.queueIndex then
                         local qi = e.queueIndex
                         local toPlay = {}
                         for i = qi, #CLN.questsQueue do
@@ -1547,6 +1422,13 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         else
                             GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true)
                         end
+                    end
+                    -- Add click hints for playing row
+                    if e.isPlaying then
+                        GameTooltip:AddLine(" ")
+                        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+                        GameTooltip:AddLine(paused and "|cFF00FF00Click|r to resume" or "|cFF00FF00Click|r to pause", 0.7, 0.7, 0.7)
+                        GameTooltip:AddLine("|cFFFF8800Right-click|r to skip", 0.7, 0.7, 0.7)
                     end
                     GameTooltip:Show()
                 end
@@ -1705,8 +1587,23 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     end
                 end
                 if row.bulletTex then
-                    row.bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9) -- restore gold bullet
-                    row.bulletTex:Show()
+                    if element.isPlaying then
+                        -- Show pause/play icon instead of bullet for the active row
+                        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+                        row.bulletTex:SetColorTexture(0, 0, 0, 0) -- hide color bullet
+                        row.bulletTex:SetSize(14, 14)
+                        if paused then
+                            row.bulletTex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+                        else
+                            row.bulletTex:SetTexture("Interface/TimeManager/PauseButton")
+                        end
+                        row.bulletTex:Show()
+                    else
+                        row.bulletTex:SetTexture(nil) -- clear any icon texture
+                        row.bulletTex:SetSize(4, 4)
+                        row.bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9) -- restore gold bullet
+                        row.bulletTex:Show()
+                    end
                 end
                 local avail = self:GetRowTextAvailableWidth(row)
                 if row._lastLabel ~= label or row._lastAvail ~= avail then
