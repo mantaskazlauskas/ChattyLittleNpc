@@ -93,7 +93,6 @@ end
 ---@return table
 function ConfigSystem:CreateSlider(parent, info)
     local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
-    slider.Text:SetText(info.name)
     slider.tooltipText = info.desc
     
     -- Set a reasonable width to prevent text cutoff
@@ -114,38 +113,35 @@ function ConfigSystem:CreateSlider(parent, info)
     local isInteger = (info.step >= 1)
     local fmt = isInteger and "%d" or "%.2f"
     
-    -- Min/max range labels
-    if slider.Low then
-        slider.Low:SetText(string.format(fmt, info.min))
-    end
-    if slider.High then
-        slider.High:SetText(string.format(fmt, info.max))
-    end
+    -- Hide the Low/High range labels to reduce clutter
+    if slider.Low then slider.Low:SetText("") end
+    if slider.High then slider.High:SetText("") end
     
-    -- Value text
-    local valueText = slider:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
-    slider.valueText = valueText
+    -- Store the base name for title updates
+    slider._baseName = info.name
+    
+    -- Helper: update title to include current value
+    local function updateTitle(self, value)
+        self.Text:SetText(self._baseName .. ": " .. string.format(fmt, value))
+    end
     
     slider:SetScript("OnShow", function(self)
         local value = self.info.get()
         self:SetValue(value)
-        self.valueText:SetText(string.format(fmt, value))
+        updateTitle(self, value)
         local isDisabled = evalField(self.info.disabled)
         if isDisabled then
             self:Disable()
             self.Text:SetTextColor(0.5, 0.5, 0.5)
-            self.valueText:SetTextColor(0.5, 0.5, 0.5)
         else
             self:Enable()
             self.Text:SetTextColor(1, 0.82, 0)
-            self.valueText:SetTextColor(1, 1, 1)
         end
     end)
     
     slider:SetScript("OnValueChanged", function(self, value)
         if evalField(self.info.disabled) then return end
-        self.valueText:SetText(string.format(fmt, value))
+        updateTitle(self, value)
         self.info.set(nil, value)
     end)
     
@@ -189,11 +185,13 @@ function ConfigSystem:CreateDropdown(parent, info)
     local function Initialize(self, level)
         local vals = dropdown.info.values
         if type(vals) == "function" then vals = vals() end
+        local currentValue = dropdown.info.get()
         for value, text in pairs(vals) do
             local item = UIDropDownMenu_CreateInfo()
             item.text = text
             item.value = value
             item.func = OnClick
+            item.checked = (value == currentValue)
             UIDropDownMenu_AddButton(item, level)
         end
     end
@@ -365,8 +363,9 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                 if group.desc then
                     local desc = self:CreateDescription(content, group.desc)
                     desc:SetPoint("TOPLEFT", 8, yOffset)
-                    yOffset = yOffset - 16
-                    contentHeight = contentHeight + 16
+                    local descHeight = 20
+                    yOffset = yOffset - descHeight
+                    contentHeight = contentHeight + descHeight
                 end
                 
                 -- Process group args
@@ -394,14 +393,23 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                         else
                             local control = self:CreateControl(content, opt)
                             if control then
+                                -- Dropdowns have a label above the frame; add extra
+                                -- top margin so it doesn't overlap the previous control.
+                                if opt.type == "select" then
+                                    yOffset = yOffset - 18
+                                    contentHeight = contentHeight + 18
+                                end
                                 control:SetPoint("TOPLEFT", 6, yOffset)
                                 table.insert(content._trackedControls, { control = control, opt = opt })
                                 if opt.type == "range" then
-                                    yOffset = yOffset - 60
-                                    contentHeight = contentHeight + 60
+                                    yOffset = yOffset - 50
+                                    contentHeight = contentHeight + 50
                                 elseif opt.type == "select" then
-                                    yOffset = yOffset - 55 -- Dropdowns need label + frame space
-                                    contentHeight = contentHeight + 55
+                                    yOffset = yOffset - 42
+                                    contentHeight = contentHeight + 42
+                                elseif opt.type == "description" then
+                                    yOffset = yOffset - 40
+                                    contentHeight = contentHeight + 40
                                 else
                                     yOffset = yOffset - 32
                                     contentHeight = contentHeight + 32
@@ -447,14 +455,18 @@ function ConfigSystem:CreateControl(parent, opt)
         return self:CreateDropdown(parent, opt)
     elseif opt.type == "execute" then
         return self:CreateButton(parent, opt)
+    elseif opt.type == "description" then
+        return self:CreateDescription(parent, opt.name or "")
     end
     return nil
 end
 
 -- Open the settings panel
 function ConfigSystem:Open()
-    if Settings and Settings.OpenToCategory then
-        Settings.OpenToCategory(self.category)
+    if Settings and Settings.OpenToCategory and self.category then
+        -- Modern API needs category ID, not the object itself
+        local id = self.category.GetID and self.category:GetID() or self.category
+        Settings.OpenToCategory(id)
     elseif InterfaceOptionsFrame_OpenToCategory then
         InterfaceOptionsFrame_OpenToCategory(self.panel)
         InterfaceOptionsFrame_OpenToCategory(self.panel) -- Call twice for legacy API bug
