@@ -676,8 +676,8 @@ end
 
 -- Combat auto-collapse: hide frame during combat (FSM skips all frame
 -- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
--- NOTE: Combat lockdown guards temporarily disabled for testing.
 function ReplayFrame:OnCombatStart()
+    if CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse == false then return end
     if self.DisplayFrame and self.DisplayFrame:IsShown() then
         self._combatAutoCollapsed = true
         self.DisplayFrame:Hide()

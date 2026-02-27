@@ -403,9 +403,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId)
         if (CLN.db.profile.printMissingFiles) and CLN.Logger then
             CLN.Logger:warn("Missing voiceover file: " .. tostring(fileName), true, CLN.Utils.LogCategories.loader)
         end
-        for _, queuedAudio in ipairs(CLN.questsQueue) do
+        for i, queuedAudio in ipairs(CLN.questsQueue) do
             if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
-                table.remove(CLN.questsQueue, 1)
+                table.remove(CLN.questsQueue, i)
                 if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
                 break
             end
