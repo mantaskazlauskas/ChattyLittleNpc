@@ -213,24 +213,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if not e then return end
                 if e.isPlaying then
                     if button == "RightButton" then
-                        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                        if cp and (cp.title or cp.questId) and ReplayFrame.PushHistory then
-                            local title = cp.title
-                            if not title and cp.questId then
-                                title = CLN:GetTitleForQuestID(cp.questId)
-                            end
-                            ReplayFrame:PushHistory({
-                                title = title,
-                                npcId = cp.npcId,
-                                questId = cp.questId,
-                                phase = cp.phase,
-                                entryType = cp.entryType or (cp.questId and "quest" or "unknown"),
-                                gender = cp.gender,
-                                displayID = cp.displayID,
-                                completedAt = GetTime and GetTime() or 0,
-                            })
-                        end
-                        CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
+                        CLN.VoiceoverPlayer:SkipCurrentSound()
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
                     else
@@ -238,6 +221,13 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     end
                 elseif button == "LeftButton" and e.queueIndex then
                     local qi = e.queueIndex
+                    -- Push items before clicked index to history so they aren't silently lost
+                    for i = 1, qi - 1 do
+                        local skipped = CLN.questsQueue[i]
+                        if skipped and CLN.VoiceoverPlayer then
+                            CLN.VoiceoverPlayer:PushToHistory(skipped)
+                        end
+                    end
                     local toPlay = {}
                     for i = qi, #CLN.questsQueue do
                         table.insert(toPlay, CLN.questsQueue[i])
@@ -258,6 +248,16 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     end
                 elseif button == "LeftButton" and e.isHistory then
                     if InCombatLockdown and InCombatLockdown() then return end
+                    -- For non-quest sounds, check if a quest is blocking playback
+                    -- before removing from history (PlayNonQuestSound would skip it)
+                    if not (e.questId and e.phase) and e.npcId and e.title and e.entryType then
+                        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                        if cp and cp.cantBeInterrupted
+                            and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+                            and CLN.db.profile.questPlaybackMode == 'queue' then
+                            return -- can't play gossip while quest is playing; leave in history
+                        end
+                    end
                     if ReplayFrame._replayHistory then
                         for i = #ReplayFrame._replayHistory, 1, -1 do
                             local h = ReplayFrame._replayHistory[i]
