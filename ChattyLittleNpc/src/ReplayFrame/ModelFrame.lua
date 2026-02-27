@@ -221,6 +221,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                     self.ModelContainer:Show()
                 end
                 self._hasValidModel = true
+                if self.Relayout then self:Relayout() end
                 return
             end
             -- Model no longer loaded; fall through to full reload
@@ -297,6 +298,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                     self.ModelContainer:Show()
                 end
                 self._hasValidModel = true
+                if self.Relayout then self:Relayout() end
                 return
             end
         end
@@ -344,8 +346,6 @@ function ReplayFrame:CheckAndShowModel()
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
     -- Ensure the container is shown so the model's OnShow fires and IsShown() is true
     if self.ModelContainer then self.ModelContainer:Show() end
-    -- Relayout so ContentFrame is positioned below the model area
-    if self.Relayout then self:Relayout() end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
