@@ -1346,48 +1346,45 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         if CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
                     end
                 elseif button == "LeftButton" and e.queueIndex then
-                        local qi = e.queueIndex
-                        local toPlay = {}
-                        for i = qi, #CLN.questsQueue do
-                            table.insert(toPlay, CLN.questsQueue[i])
-                        end
-                        CLN.questsQueue = {}
-                        if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        -- Play each queued quest entry directly using VoiceoverPlayer
-                        for _, q in ipairs(toPlay) do
-                            if q and q.questId and q.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                                if CLN.Logger then
-                                    CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                                end
-                                CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId, q.displayID)
-                            else
-                                if CLN.Logger then
-                                    CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                                end
-                            end
-                        end
-                    elseif e.isHistory then
-                        -- Replay from history: remove from history so it shows as current playback
-                        if InCombatLockdown and InCombatLockdown() then return end
-                        -- Remove by identity match (safe against stale indices)
-                        if ReplayFrame._replayHistory then
-                            for i = #ReplayFrame._replayHistory, 1, -1 do
-                                local h = ReplayFrame._replayHistory[i]
-                                if h.npcId == e.npcId and h.title == e.title
-                                   and (h.questId or "") == (e.questId or "")
-                                   and (h.phase or "") == (e.phase or "") then
-                                    table.remove(ReplayFrame._replayHistory, i)
-                                    break
-                                end
-                            end
-                        end
-                        if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                            CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID)
-                        elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
-                            CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
-                        end
-                        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
+                    local qi = e.queueIndex
+                    local toPlay = {}
+                    for i = qi, #CLN.questsQueue do
+                        table.insert(toPlay, CLN.questsQueue[i])
                     end
+                    CLN.questsQueue = {}
+                    if this.MarkQueueDirty then this:MarkQueueDirty() end
+                    for _, q in ipairs(toPlay) do
+                        if q and q.questId and q.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                            if CLN.Logger then
+                                CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(q.questId) .. " (" .. tostring(q.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                            end
+                            CLN.VoiceoverPlayer:PlayQuestSound(q.questId, q.phase, q.npcId, q.displayID)
+                        else
+                            if CLN.Logger then
+                                CLN.Logger:warn("Skipped queued quest entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                            end
+                        end
+                    end
+                elseif button == "LeftButton" and e.isHistory then
+                    -- Replay from history
+                    if InCombatLockdown and InCombatLockdown() then return end
+                    if ReplayFrame._replayHistory then
+                        for i = #ReplayFrame._replayHistory, 1, -1 do
+                            local h = ReplayFrame._replayHistory[i]
+                            if h.npcId == e.npcId and h.title == e.title
+                               and (h.questId or "") == (e.questId or "")
+                               and (h.phase or "") == (e.phase or "") then
+                                table.remove(ReplayFrame._replayHistory, i)
+                                break
+                            end
+                        end
+                    end
+                    if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                        CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID)
+                    elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
+                        CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender)
+                    end
+                    if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
                 end
             end)
 

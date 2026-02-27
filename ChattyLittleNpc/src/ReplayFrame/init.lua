@@ -842,7 +842,7 @@ end
 -- Update display frame state
 function ReplayFrame:UpdateDisplayFrameState()
     if self._editMode or self._isDragging then return end
-    self:GetDisplayFrame()
+    if self.GetDisplayFrame then self:GetDisplayFrame() end
     self:UpdateDisplayFrame()
 end
 
