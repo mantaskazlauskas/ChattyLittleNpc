@@ -146,14 +146,22 @@ end
 -- Grace period: consider a sound "still playing" if it started recently,
 -- even when C_Sound.IsPlaying briefly returns false during frame transitions.
 local PLAYBACK_GRACE_SEC = 0.6
+-- Extended grace from last watcher confirmation (watcher runs every 0.5s)
+local WATCHER_GRACE_SEC = 1.5
 function VoiceoverPlayer:IsEffectivelyPlaying()
     local cp = self.currentlyPlaying
     if not cp or not cp.soundHandle then return false end
     if cp.isPlaying and cp:isPlaying() then return true end
-    -- Fallback: treat the sound as playing within the grace window
+    -- Fallback 1: treat the sound as playing within startup grace window
     if cp.startTime and GetTime then
         local elapsed = GetTime() - cp.startTime
         if elapsed >= 0 and elapsed < PLAYBACK_GRACE_SEC then return true end
+    end
+    -- Fallback 2: watcher recently confirmed this sound was playing;
+    -- survives transient C_Sound.IsPlaying false blips during dialog transitions
+    if cp._lastConfirmedPlayingAt and GetTime then
+        local since = GetTime() - cp._lastConfirmedPlayingAt
+        if since >= 0 and since < WATCHER_GRACE_SEC then return true end
     end
     return false
 end

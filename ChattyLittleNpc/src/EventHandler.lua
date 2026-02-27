@@ -84,11 +84,21 @@ function EventHandler:StartWatcher()
         if cp._pausedForNativeVO then return end
 
         local handle = cp.soundHandle
+        -- Raw check: does C_Sound actually confirm this handle is playing right now?
+        local rawPlaying = handle and cp.isPlaying and cp:isPlaying() or false
+
+        -- Stamp last-confirmed-playing time ONLY when C_Sound truly confirms it;
+        -- this breaks the feedback loop (IsEffectivelyPlaying reads the stamp,
+        -- so stamping based on IsEffectivelyPlaying would self-reinforce forever)
+        if rawPlaying then
+            cp._lastConfirmedPlayingAt = GetTime()
+        end
+
         -- Use IsEffectivelyPlaying (with grace period) to avoid false stop detection
         -- during dialog transitions where C_Sound.IsPlaying briefly returns false
         local isPlaying = CLN.VoiceoverPlayer.IsEffectivelyPlaying
             and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
-            or (cp.isPlaying and cp:isPlaying() or false)
+            or rawPlaying
 
         -- If a new handle starts playing, clear the latch
         if handle and isPlaying and self._stopLatchHandle and self._stopLatchHandle ~= handle then
@@ -692,8 +702,19 @@ function EventHandler:ScheduleWhitelistPopup()
     local npcs = self:GetUnaskedRecentNpcs()
     if #npcs == 0 then return end
 
-    -- Start with a 3s base delay; will be extended by incoming speech
-    self._whitelistPopupDelay = 3
+    -- Base the initial delay on the most recent speech so the popup doesn't
+    -- fire in the middle of a multi-line NPC conversation.  NPC lines are
+    -- typically 3-8 s apart, so we need more than the old flat 3 s.
+    local buf = self._recentNpcSpeeches
+    local lastEntry = buf and buf[#buf]
+    local initialDelay
+    if lastEntry and lastEntry.text and #lastEntry.text > 0 then
+        initialDelay = EstimateVODuration(lastEntry.text) + 5
+    else
+        initialDelay = 8
+    end
+
+    self._whitelistPopupDelay = initialDelay
     self:ResetWhitelistPopupTimer()
 end
 
@@ -701,7 +722,7 @@ end
 function EventHandler:ExtendWhitelistPopupTimer(text)
     if not self._whitelistPopupTimer then return end
     local dur = EstimateVODuration(text)
-    self._whitelistPopupDelay = dur + 2 -- speech duration + settle buffer
+    self._whitelistPopupDelay = dur + 5 -- speech duration + settle buffer for multi-line conversations
     self:ResetWhitelistPopupTimer()
 end
 
