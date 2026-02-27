@@ -29,8 +29,10 @@ local function attachTooltip(control, info)
     if not info.desc then return end
     control:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(info.name or "", 1, 1, 1)
-        GameTooltip:AddLine(info.desc, nil, nil, nil, true)
+        local tipName = type(info.name) == "function" and info.name() or info.name or ""
+        GameTooltip:SetText(tipName, 1, 1, 1)
+        local tipDesc = type(info.desc) == "function" and info.desc() or info.desc or ""
+        GameTooltip:AddLine(tipDesc, nil, nil, nil, true)
         GameTooltip:Show()
     end)
     control:SetScript("OnLeave", function()
@@ -57,7 +59,8 @@ end
 ---@return table
 function ConfigSystem:CreateCheckbox(parent, info)
     local checkbox = CreateFrame("CheckButton", nil, parent, "InterfaceOptionsCheckButtonTemplate")
-    checkbox.Text:SetText(info.name)
+    local nameText = type(info.name) == "function" and info.name() or info.name or ""
+    checkbox.Text:SetText(nameText)
     checkbox.tooltipText = info.desc
     
     -- Store the info for later use
@@ -162,7 +165,7 @@ function ConfigSystem:CreateDropdown(parent, info)
     
     local label = dropdown:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("BOTTOMLEFT", dropdown, "TOPLEFT", 16, 3)
-    label:SetText(info.name)
+    label:SetText(type(info.name) == "function" and info.name() or info.name or "")
     dropdown.label = label
     
     -- Set dropdown width
@@ -222,7 +225,7 @@ end
 ---@return table
 function ConfigSystem:CreateButton(parent, info)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    button:SetText(info.name)
+    button:SetText(type(info.name) == "function" and info.name() or info.name or "")
     
     -- Set button width based on width parameter
     if info.width == "full" then
@@ -247,6 +250,8 @@ end
 ---@param text string Header text
 ---@return table
 function ConfigSystem:CreateHeader(parent, text)
+    if type(text) == "function" then text = text() end
+    text = text or ""
     local header = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     header:SetText(text)
     return header
