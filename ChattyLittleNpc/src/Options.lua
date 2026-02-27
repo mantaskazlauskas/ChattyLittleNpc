@@ -93,12 +93,38 @@ local options = {
                     type = 'toggle',
                     width = 'full',
                     name = 'Gossip Cooldown',
-                    desc = 'When enabled, the same gossip voiceover will not be played again for the rest of the session (until reload/logout).',
+                    desc = 'When enabled, the same gossip voiceover will not be played again for a configurable amount of time.',
                     get = function(info) return CLN.db.profile.gossipCooldownEnabled end,
                     set = function(info, value) CLN.db.profile.gossipCooldownEnabled = value end,
                 },
-                nativeVOMode = {
+                gossipCooldownMinutes = {
                     order = 7,
+                    type = 'range',
+                    width = 'double',
+                    name = 'Gossip Cooldown (minutes)',
+                    desc = 'How long to wait before allowing the same gossip line to play again. Set to 0 for infinite (entire session, until reload/logout).',
+                    min = 0,
+                    max = 120,
+                    step = 1,
+                    disabled = function() return not CLN.db.profile.gossipCooldownEnabled end,
+                    get = function(info) return CLN.db.profile.gossipCooldownMinutes end,
+                    set = function(info, value) CLN.db.profile.gossipCooldownMinutes = value end,
+                },
+                gossipQueueMode = {
+                    order = 7,
+                    type = 'select',
+                    width = 'full',
+                    name = 'Gossip Queueing',
+                    desc = 'Controls whether gossip/greeting voiceovers queue behind active playback or override it.\n\n'
+                        .. '|cFFFFFFFFNone|r — Gossip replaces whatever is playing (default).\n'
+                        .. '|cFFFFFFFFLong Only|r — Queue gossip if the current VO has been playing for more than 10 seconds.\n'
+                        .. '|cFFFFFFFFAll|r — Always queue gossip behind active playback.',
+                    values = { none = "None (Override)", long = "Long Only (>10s)", all = "Always Queue" },
+                    get = function(info) return CLN.db.profile.gossipQueueMode or "none" end,
+                    set = function(info, value) CLN.db.profile.gossipQueueMode = value end,
+                },
+                nativeVOMode = {
+                    order = 8,
                     type = 'toggle',
                     width = 'full',
                     name = 'Pause for Voiced NPCs',

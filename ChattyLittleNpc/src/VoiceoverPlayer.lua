@@ -9,17 +9,30 @@ CLN.VoiceoverPlayer = VoiceoverPlayer
 -- Gossip Cooldown
 -- ============================================================================
 
--- Session-local set of played gossip hashes (cleared on reload/logout)
+-- Session-local table: hash → GetTime() timestamp of last playback
 VoiceoverPlayer._gossipCooldowns = {}
 
---- Check whether any of the given hashes have already been played this session.
+--- Check whether any of the given hashes are still on cooldown.
+--- Expiry is checked lazily on access — no background timer needed.
 ---@param hashes string[]
 ---@return boolean
 function VoiceoverPlayer:IsGossipOnCooldown(hashes)
     if not CLN.db.profile.gossipCooldownEnabled then return false end
+    local cooldownMinutes = CLN.db.profile.gossipCooldownMinutes or 0
+    local now = GetTime and GetTime() or 0
+
     for _, hash in ipairs(hashes) do
-        if self._gossipCooldowns[hash] then
-            return true
+        local lastPlayed = self._gossipCooldowns[hash]
+        if lastPlayed then
+            if cooldownMinutes == 0 then
+                -- 0 = infinite / entire session
+                return true
+            end
+            if (now - lastPlayed) < (cooldownMinutes * 60) then
+                return true
+            end
+            -- Expired — clean up lazily
+            self._gossipCooldowns[hash] = nil
         end
     end
     return false
@@ -29,8 +42,9 @@ end
 ---@param hashes string[]
 function VoiceoverPlayer:RecordGossipCooldown(hashes)
     if not CLN.db.profile.gossipCooldownEnabled then return end
+    local now = GetTime and GetTime() or 0
     for _, hash in ipairs(hashes) do
-        self._gossipCooldowns[hash] = true
+        self._gossipCooldowns[hash] = now
     end
 end
 
@@ -386,7 +400,15 @@ end
 function VoiceoverPlayer:ProcessQueueAfterResume()
     if #CLN.questsQueue > 0 then
         local next = CLN.questsQueue[1]
-        self:PlayQuestSound(next.questId, next.phase, next.npcId, next.displayID)
+        if next.questId and next.phase then
+            self:PlayQuestSound(next.questId, next.phase, next.npcId, next.displayID)
+        elseif next.npcId and next.title and next.entryType then
+            table.remove(CLN.questsQueue, 1)
+            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            self:PlayNonQuestSound(next.npcId, next.entryType, next.title, next.gender)
+        else
+            table.remove(CLN.questsQueue, 1)
+        end
     elseif self:HasSuspendedPlayback() then
         self:ResumeSuspendedPlayback()
     else
@@ -763,6 +785,38 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
 
     local pathToFile = CLN.Utils:GetPathToNonQuestFile(npcId, soundType, hashes, gender)
     if (pathToFile and not CLN.Utils:IsNilOrEmpty(pathToFile)) then
+        -- Check if we should queue behind active playback instead of overriding
+        local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
+        if gossipQueue ~= "none" and VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle then
+            local shouldQueue = false
+            if gossipQueue == "all" and VoiceoverPlayer:IsEffectivelyPlaying() then
+                shouldQueue = true
+            elseif gossipQueue == "long" and VoiceoverPlayer:IsEffectivelyPlaying() then
+                local cp = VoiceoverPlayer.currentlyPlaying
+                if cp.startTime and GetTime then
+                    local elapsed = GetTime() - cp.startTime
+                    if elapsed > 10 then
+                        shouldQueue = true
+                    end
+                end
+            end
+            if shouldQueue then
+                -- Queue as a non-interruptible entry
+                table.insert(CLN.questsQueue, {
+                    npcId = npcId,
+                    title = text,
+                    entryType = soundType,
+                    gender = gender,
+                    cantBeInterrupted = false,
+                })
+                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                if CLN.db.profile.debugMode and CLN.Logger then
+                    CLN.Logger:debug("Queued gossip behind active playback: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+                end
+                return
+            end
+        end
+
         -- Only stop current sound once we know we have a replacement
         if (VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle) then
             if (VoiceoverPlayer.currentlyPlaying.cantBeInterrupted

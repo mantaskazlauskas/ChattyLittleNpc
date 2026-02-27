@@ -327,9 +327,19 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
                     CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
                 end
             end
-            local nextQuest = CLN.questsQueue[1]
+            local nextItem = CLN.questsQueue[1]
             CLN.VoiceoverPlayer.queueProcessed = false
-            CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
+            if nextItem.questId and nextItem.phase then
+                CLN.VoiceoverPlayer:PlayQuestSound(nextItem.questId, nextItem.phase, nextItem.npcId, nextItem.displayID)
+            elseif nextItem.npcId and nextItem.title and nextItem.entryType then
+                table.remove(CLN.questsQueue, 1)
+                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                CLN.VoiceoverPlayer:PlayNonQuestSound(nextItem.npcId, nextItem.entryType, nextItem.title, nextItem.gender)
+            else
+                -- Unknown entry type; discard and try next
+                table.remove(CLN.questsQueue, 1)
+                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            end
         end
     else
         -- Nothing left in the queue
