@@ -117,7 +117,10 @@ function CLN:OnEnable()
 
     if (QuestMapFrame) then
         QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
-        QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+        if QuestMapFrame.DetailsFrame then
+            QuestMapFrame.DetailsFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
+            QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+        end
     end
 
     self:GetLoadedExpansionVoiceoverPacks()

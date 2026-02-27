@@ -228,6 +228,7 @@ function CLN:OnEnable()
             hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
         end
         if QuestMapFrame.DetailsFrame then
+            QuestMapFrame.DetailsFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
             QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
         end
     end
