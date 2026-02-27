@@ -77,7 +77,9 @@ function FS.FitDefault(host, displayID, padding)
     local t = math.tan((vfov) * 0.5)
     local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
     local halfH = math.max(1e-3, (visibleHeight * 0.5) * (1 + pad))
-    local halfW = math.max(1e-3, (((max.x-min.x) > 0 and (max.x-min.x) or 1) * 0.5) * (1 + (pad + 0.03)))
+    -- Shoulder-width heuristic: 60% of bbox width for bust portrait framing
+    local fullW = (max.x-min.x) > 0 and (max.x-min.x) or 1
+    local halfW = math.max(1e-3, (fullW * 0.60 * 0.5) * (1 + (pad + 0.03)))
     local dH = halfH / math.tan(vfov * 0.5)
     local dW = halfW / math.tan(hfov * 0.5)
     local dist = math.max(dH, dW)
@@ -104,7 +106,9 @@ function FS.ShowUpper(host, displayID, frac, padding)
     local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
     local pad = math.max(0, tonumber(padding) or 0.10)
     local halfH = math.max(1e-3, (sz * useFrac * 0.5) * (1 + pad))
-    local halfW = math.max(1e-3, (((max.x-min.x) > 0 and (max.x-min.x) or 1) * 0.5) * (1 + (pad + 0.03)))
+    -- Shoulder-width heuristic: 60% of bbox width for bust portrait framing
+    local fullW = (max.x-min.x) > 0 and (max.x-min.x) or 1
+    local halfW = math.max(1e-3, (fullW * 0.60 * 0.5) * (1 + (pad + 0.03)))
     local dH = halfH / math.tan(vfov * 0.5)
     local dW = halfW / math.tan(hfov * 0.5)
     local dist = math.max(dH, dW)

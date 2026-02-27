@@ -111,7 +111,7 @@ function M.Attach(host, backend)
     host._lastAnimId = nil
     host._zoom = host._zoom or 0.65
     host._camBaseZ = host._camBaseZ or 1.0
-    host._camDist = host._camDist or 2.5
+    host._camDist = host._camDist or 1.5
     host._frontYaw = host._frontYaw or 0
     host._autoFaceCamera = host._autoFaceCamera ~= false
     host._lastCamSnapshot = nil
@@ -678,7 +678,9 @@ function M.Attach(host, backend)
         local tanHalfV = math.tan((fov / 2))
         if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
         local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((b.size.x + 2 * padX) * 0.5)
+        -- Shoulder-width heuristic: 60% of full bbox width for bust portrait
+        local shoulderWidth = (b.size.x or 0) * 0.60
+        local needDistH = ((shoulderWidth + 2 * padX) * 0.5)
         if aspect and aspect > 0.01 then
             needDistH = needDistH / (tanHalfV * aspect)
         else
@@ -725,7 +727,10 @@ function M.Attach(host, backend)
         local tanHalfV = math.tan((fov / 2))
         if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end -- ~23 degrees fallback if FOV is tiny/invalid
         local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((b.size.x + 2 * padX) * 0.5)
+        -- For bust portrait, use shoulder-width heuristic (60% of full bbox width)
+        -- to prevent arms/robes/wings from pushing camera too far back
+        local shoulderWidth = (b.size.x or 0) * 0.60
+        local needDistH = ((shoulderWidth + 2 * padX) * 0.5)
         if aspect and aspect > 0.01 then
             needDistH = needDistH / (tanHalfV * aspect)
         else
