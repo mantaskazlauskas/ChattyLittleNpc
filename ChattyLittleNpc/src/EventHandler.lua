@@ -406,8 +406,25 @@ local function EstimateVODuration(text)
 end
 
 --- Fires for CHAT_MSG_MONSTER_SAY / YELL / WHISPER / EMOTE.
---- Checks the isSubtitle flag (arg 15) to detect voiced NPC speech.
-function EventHandler:OnNpcChatMessage(text, npcName, _, _, _, _, _, _, _, _, _, guid, _, _, isSubtitle, hideSenderInLetterbox)
+--- Checks the isSubtitle flag to detect voiced NPC speech.
+--- Note: EventSystem dispatches (event, ...) so the first arg here is the event name.
+function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
+    -- Always log NPC messages when debug mode is on (regardless of pauseOnNativeVO)
+    if CLN.db.profile.debugMode and CLN.Logger then
+        CLN.Logger:debug(
+            "NPC_MSG event=" .. tostring(event)
+            .. " npc=" .. tostring(npcName)
+            .. " text=" .. tostring(text and text:sub(1, 60) or "nil")
+            .. " isSubtitle=" .. tostring(isSubtitle)
+            .. " hideSender=" .. tostring(hideSenderInLetterbox)
+            .. " lineID=" .. tostring(lineID)
+            .. " guid=" .. tostring(guid)
+            .. " lang=" .. tostring(languageName)
+            .. " isMobile=" .. tostring(isMobile)
+            .. " bnSender=" .. tostring(bnSenderID),
+            false, CLN.Utils.LogCategories.loader)
+    end
+
     if not CLN.db.profile.pauseOnNativeVO then return end
     -- isSubtitle = true means this text accompanies voiced audio
     if not isSubtitle then return end
@@ -439,6 +456,9 @@ end
 
 --- Fires for TALKINGHEAD_REQUESTED. Talking heads always have voiceover.
 function EventHandler:OnTalkingHeadRequested()
+    if CLN.db.profile.debugMode and CLN.Logger then
+        CLN.Logger:debug("TALKINGHEAD_REQUESTED fired", false, CLN.Utils.LogCategories.loader)
+    end
     if not CLN.db.profile.pauseOnNativeVO then return end
     local cp = CLN.VoiceoverPlayer.currentlyPlaying
     if not (cp and cp.soundHandle and cp:isPlaying()) then return end
