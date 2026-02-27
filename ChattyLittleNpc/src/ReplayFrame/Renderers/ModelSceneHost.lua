@@ -112,7 +112,7 @@ function M.Attach(host, backend)
     host._zoom = host._zoom or 0.65
     host._camBaseZ = host._camBaseZ or 1.0
     host._camDist = host._camDist or 1.5
-    host._frontYaw = host._frontYaw or 0
+    host._frontYaw = host._frontYaw or math.pi
     host._autoFaceCamera = host._autoFaceCamera ~= false
     host._lastCamSnapshot = nil
     host._userControlledCamera = false
@@ -487,6 +487,20 @@ function M.Attach(host, backend)
             self:OnModelLoadedOnce(function(h)
                 if (h._modelVersion or 0) ~= vAtReg then return end
                 self:_DebugLog("host", "OnModelLoadedOnce fired (unit)")
+                -- Sample canonical bbox for unit-based loads (use display ID if available)
+                local unitDisplayID = h._currentDisplayID
+                if not unitDisplayID and UnitCreatureDisplayID then
+                    local okD, dID = pcall(UnitCreatureDisplayID, unit)
+                    if okD and type(dID) == "number" and dID > 0 then unitDisplayID = dID end
+                end
+                if unitDisplayID and MS and MS.CanonicalBbox and MS.CanonicalBbox.SampleCanonical then
+                    local getVer = function() return h._modelVersion or 0 end
+                    MS.CanonicalBbox.SampleCanonical(backend.actor, unitDisplayID, vAtReg, getVer, h._animCtrl, function(bbox)
+                        if (h._modelVersion or 0) ~= vAtReg then return end
+                        h:_DebugLog("canonical", "Canonical bbox ready for unit=%s displayID=%s", tostring(unit), tostring(unitDisplayID))
+                        h:_RequestAutoFrame(0.12, { reason = "canonicalReady" })
+                    end)
+                end
                 if h and h._animCtrl and h._animCtrl.apply then
                     h._animCtrl:apply(backend.actor)
                 end
@@ -588,7 +602,7 @@ function M.Attach(host, backend)
     function host:FaceCamera()
         -- Preserve user camera placement; only rotate actor to face forward
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or 0)
+            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
         end
     end
 
@@ -786,7 +800,7 @@ function M.Attach(host, backend)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
     self:_UpdateClipPlanesForFit(d, b, paddingFrac)
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or 0)
+            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
         end
     -- Persist snapshot so subsequent head-point/zoom keep this base
     self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
@@ -842,7 +856,7 @@ function M.Attach(host, backend)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or 0)
+            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
         end
         self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
 
@@ -983,7 +997,7 @@ function M.Attach(host, backend)
             local ok, yaw = pcall(backend.actor.GetYaw, backend.actor)
             if ok and type(yaw) == "number" then return yaw end
         end
-        return self._frontYaw or 0
+        return self._frontYaw or math.pi
     end
     
     -- Load monitoring
