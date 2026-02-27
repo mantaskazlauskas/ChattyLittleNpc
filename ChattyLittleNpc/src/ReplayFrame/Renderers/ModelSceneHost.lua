@@ -40,7 +40,7 @@ end
 
 -- Create a ModelScene + Actor backend or return nil on failure
 function M.Create(parent)
-    local ok, scene = pcall(CreateFrame, "ModelScene", nil, parent)
+    local ok, scene = pcall(CreateFrame, "ModelScene", nil, parent, "ModelSceneFrameTemplate")
     if not (ok and scene) then return nil end
     
     -- Basic scene setup
@@ -521,12 +521,17 @@ function M.Attach(host, backend)
     
     function host:PointCameraAtHead()
         if backend.kind ~= "scene" or not backend.frame then return end
-        -- Prefer last known target from framing/pan; else use current bounds center; else origin Z
-        local s = self._lastCamSnapshot or {}
         local b = self:GetBounds()
-        local baseX = s.tx or (b and b.center and b.center.x) or 0
-        local baseY = s.ty or (b and b.center and b.center.y) or 0
-        local baseZ = s.tz or (b and b.center and b.center.z) or (self._camBaseZ or 1.0)
+        local baseX = (b and b.center and b.center.x) or 0
+        local baseY = (b and b.center and b.center.y) or 0
+        -- Target head area: ~85% up the bounding box height
+        local baseZ
+        if b and b.min and b.max then
+            baseZ = b.min.z + (b.max.z - b.min.z) * 0.85
+        else
+            local s = self._lastCamSnapshot or {}
+            baseZ = s.tz or (self._camBaseZ or 1.0)
+        end
         self._camBaseZ = baseZ
         local d = self._camDist or 2.5
         local px, py, pz = baseX, baseY + d, baseZ
@@ -665,11 +670,14 @@ function M.Attach(host, backend)
         if not b then return end
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
-        local padZ = (b.size.z or 0) * (tonumber(paddingFrac) or 0.12)
+        -- Use upper-body visible height consistent with FrameFullBodyFront_Immediate
+        local totalHeight = b.size.z or 0
+        local visibleHeight = totalHeight * 0.40
+        local padZ = visibleHeight * (tonumber(paddingFrac) or 0.12)
         local padX = (b.size.x or 0) * (tonumber(paddingFrac) or 0.12)
         local tanHalfV = math.tan((fov / 2))
         if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
-        local needDistV = ((b.size.z + 2 * padZ) * 0.5) / tanHalfV
+        local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
         local needDistH = ((b.size.x + 2 * padX) * 0.5)
         if aspect and aspect > 0.01 then
             needDistH = needDistH / (tanHalfV * aspect)
@@ -706,11 +714,17 @@ function M.Attach(host, backend)
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
     self:_DebugLog("framing", "Bounds c=(%.2f,%.2f,%.2f) min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)", b.center.x or 0, b.center.y or 0, b.center.z or 0, b.min.x or 0, b.min.y or 0, b.min.z or 0, b.max.x or 0, b.max.y or 0, b.max.z or 0)
-        local padZ = (b.size.z or 0) * paddingFrac
+        -- Focus on the upper body (head/shoulders) rather than framing the full body.
+        -- Target ~80% up the model height (face area) and fit the top ~40%.
+        local totalHeight = b.size.z or 0
+        local upperFrac = 0.40
+        local visibleHeight = totalHeight * upperFrac
+        local faceZ = b.min.z + totalHeight * 0.80
+        local padZ = visibleHeight * paddingFrac
         local padX = (b.size.x or 0) * paddingFrac
         local tanHalfV = math.tan((fov / 2))
         if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end -- ~23 degrees fallback if FOV is tiny/invalid
-        local needDistV = ((b.size.z + 2 * padZ) * 0.5) / tanHalfV
+        local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
         local needDistH = ((b.size.x + 2 * padX) * 0.5)
         if aspect and aspect > 0.01 then
             needDistH = needDistH / (tanHalfV * aspect)
@@ -720,9 +734,9 @@ function M.Attach(host, backend)
         local d = math.max(needDistV, needDistH)
         d = math.max(d, 1.0)
         self._camDist = d
-        self._camBaseZ = b.center.z or self._camBaseZ or 1.0
-        local px, py, pz = (b.center.x or 0), (b.center.y or 0) + d, (b.center.z or 0)
-        local tx, ty, tz = (b.center.x or 0), (b.center.y or 0), (b.center.z or 0)
+        self._camBaseZ = faceZ
+        local px, py, pz = (b.center.x or 0), (b.center.y or 0) + d, faceZ
+        local tx, ty, tz = (b.center.x or 0), (b.center.y or 0), faceZ
     self:_DebugLog("framing", "Fit dist=%.2f fov=%.2f aspect=%.2f size=(%.2f,%.2f,%.2f)", d, fov, aspect, b.size.x or 0, b.size.y or 0, b.size.z or 0)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
     self:_UpdateClipPlanesForFit(d, b, paddingFrac)

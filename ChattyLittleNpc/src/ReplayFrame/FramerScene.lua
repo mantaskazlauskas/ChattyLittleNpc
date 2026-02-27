@@ -61,18 +61,30 @@ end
 -- Public: FitDefault with projector-based tweaks
 function FS.FitDefault(host, displayID, padding)
     if not host then return end
-    -- Try to shift target slightly below center for nicer composition
     local b = host.GetBounds and host:GetBounds() or nil
     if not b then return end
     local min,max = b.min,b.max
-    local cx, cy, cz = (min.x+max.x)*0.5, (min.y+max.y)*0.5, (min.z+max.z)*0.5
+    local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
     local sz = math.abs((max.z or 0) - (min.z or 0))
-    local bias = 0.10 * (sz or 0)
-    local dist = computeDistanceFromBounds(host, padding)
-    placeCamera(host, dist, cx, cy, cz - bias)
+    -- Focus on face area: target ~80% up the model height
+    local faceZ = (min.z or 0) + sz * 0.80
+    -- Compute distance to fit the upper ~40% of the model
+    local upperFrac = 0.40
+    local visibleHeight = sz * upperFrac
+    local pad = math.max(0, tonumber(padding) or 0.10)
+    local vfov = host.GetFovV and host:GetFovV() or 0.8
+    local aspect = host.GetAspect and host:GetAspect() or 1.0
+    local t = math.tan((vfov) * 0.5)
+    local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
+    local halfH = math.max(1e-3, (visibleHeight * 0.5) * (1 + pad))
+    local halfW = math.max(1e-3, (((max.x-min.x) > 0 and (max.x-min.x) or 1) * 0.5) * (1 + (pad + 0.03)))
+    local dH = halfH / math.tan(vfov * 0.5)
+    local dW = halfW / math.tan(hfov * 0.5)
+    local dist = math.max(dH, dW)
+    placeCamera(host, dist, cx, cy, faceZ)
     -- Ensure actor faces the camera
     if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
-    debugf("framing", "FramerScene.FitDefault: dist=%.3f targetZ=%.3f", dist or -1, (cz - bias) or -1)
+    debugf("framing", "FramerScene.FitDefault: dist=%.3f targetZ=%.3f", dist or -1, faceZ or -1)
 end
 
 -- Public: Show upper portion (head/shoulders)
@@ -81,9 +93,10 @@ function FS.ShowUpper(host, displayID, frac, padding)
     local b = host.GetBounds and host:GetBounds() or nil
     if not b then return end
     local min,max = b.min,b.max
-    local cx, cy, cz = (min.x+max.x)*0.5, (min.y+max.y)*0.5, (min.z+max.z)*0.5
+    local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
     local sz = math.abs((max.z or 0) - (min.z or 0))
-    local headBias = 0.20 * (sz or 0)
+    -- Target ~85% up the model height for head focus
+    local headZ = (min.z or 0) + sz * 0.85
     local useFrac = tonumber(frac) or 0.7
     local vfov = host.GetFovV and host:GetFovV() or 0.8
     local aspect = host.GetAspect and host:GetAspect() or 1.0
@@ -95,7 +108,7 @@ function FS.ShowUpper(host, displayID, frac, padding)
     local dH = halfH / math.tan(vfov * 0.5)
     local dW = halfW / math.tan(hfov * 0.5)
     local dist = math.max(dH, dW)
-    placeCamera(host, dist, cx, cy, cz + headBias)
+    placeCamera(host, dist, cx, cy, headZ)
     if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
     debugf("framing", "FramerScene.ShowUpper: frac=%.2f dist=%.3f", useFrac, dist or -1)
 end
