@@ -232,6 +232,7 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     header:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -6)
     header:SetText("Conversations")
     header:SetTextColor(1.0, 0.82, 0.0) -- gold
+    if header.SetJustifyH then header:SetJustifyH("LEFT") end
     if header.SetWordWrap then header:SetWordWrap(false) end
     if header.SetMaxLines then header:SetMaxLines(1) end
     self.HeaderText = header
