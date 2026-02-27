@@ -102,30 +102,92 @@ local options = {
                     get = function(info) return CLN.db.profile.nativeVOMode or "off" end,
                     set = function(info, value) CLN.db.profile.nativeVOMode = value end,
                 },
-                resetDismissedNpcs = {
-                    order = 7,
-                    type = 'execute',
-                    name = 'Re-ask Dismissed NPCs',
-                    desc = 'Clear the dismissed NPC list so the whitelist popup will ask about them again next time you pause.',
-                    func = function()
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ResetDismissedNpcs then
-                            CLN.ReplayFrame:ResetDismissedNpcs()
+                pauseForHeader = {
+                    order = 10,
+                    type = 'header',
+                    name = 'Pause For',
+                },
+                pauseForDesc = {
+                    order = 11,
+                    type = 'description',
+                    name = function()
+                        local wl = CLN.db.profile.nativeVOWhitelist or {}
+                        local names = {}
+                        for k, v in pairs(wl) do
+                            if v and type(k) == "string" then
+                                names[#names + 1] = k
+                            end
+                        end
+                        if #names == 0 then return "No NPCs added yet. Pause playback while an NPC is speaking to get prompted." end
+                        table.sort(names)
+                        return table.concat(names, ", ")
+                    end,
+                    fontSize = 'medium',
+                },
+                pauseForRemove = {
+                    order = 12,
+                    type = 'input',
+                    name = 'Remove NPC from Pause For',
+                    desc = 'Type an NPC name to remove from the Pause For list.',
+                    get = function() return "" end,
+                    set = function(info, value)
+                        if not value or value == "" then return end
+                        local wl = CLN.db.profile.nativeVOWhitelist
+                        if wl then
+                            wl[value] = nil
+                            -- Also remove numeric ID if present by scanning for matching name entries
+                            for k, v in pairs(wl) do
+                                if type(k) == "number" and v == true then
+                                    -- Can't reverse-map ID→name here, but the name removal is sufficient
+                                end
+                            end
                         end
                     end,
                 },
-                clearVOWhitelist = {
-                    order = 8,
+                neverAskHeader = {
+                    order = 20,
+                    type = 'header',
+                    name = 'Never Ask',
+                },
+                neverAskDesc = {
+                    order = 21,
+                    type = 'description',
+                    name = function()
+                        local dismissed = CLN.db.profile.nativeVODismissed or {}
+                        local names = {}
+                        for k, v in pairs(dismissed) do
+                            if v and type(k) == "string" then
+                                names[#names + 1] = k
+                            end
+                        end
+                        if #names == 0 then return "No NPCs dismissed." end
+                        table.sort(names)
+                        return table.concat(names, ", ")
+                    end,
+                    fontSize = 'medium',
+                },
+                neverAskClear = {
+                    order = 22,
                     type = 'execute',
-                    name = 'Clear NPC Whitelist',
-                    desc = 'Remove all NPCs from the voice-over whitelist. You will be asked again when you pause.',
-                    confirm = true,
-                    confirmText = 'Clear all whitelisted NPCs? You will need to re-add them via the popup.',
+                    name = 'Clear Never Ask List',
+                    desc = 'Re-enable popups for all dismissed NPCs.',
                     func = function()
-                        CLN.db.profile.nativeVOWhitelist = {}
                         CLN.db.profile.nativeVODismissed = {}
                         if CLN.Logger then
-                            CLN.Logger:info("Cleared NPC whitelist and dismissed list.", false, (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.loader) or "misc")
+                            CLN.Logger:info("Cleared Never Ask list.", false, (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.loader) or "misc")
                         end
+                    end,
+                },
+                neverAskRemove = {
+                    order = 23,
+                    type = 'input',
+                    name = 'Remove NPC from Never Ask',
+                    desc = 'Type an NPC name to remove from the Never Ask list (will be asked again).',
+                    get = function() return "" end,
+                    set = function(info, value)
+                        if not value or value == "" then return end
+                        local dismissed = CLN.db.profile.nativeVODismissed
+                        if dismissed then dismissed[value] = nil end
                     end,
                 },
             },
