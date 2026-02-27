@@ -102,6 +102,32 @@ local options = {
                     get = function(info) return CLN.db.profile.nativeVOMode or "off" end,
                     set = function(info, value) CLN.db.profile.nativeVOMode = value end,
                 },
+                resetDismissedNpcs = {
+                    order = 7,
+                    type = 'execute',
+                    name = 'Re-ask Dismissed NPCs',
+                    desc = 'Clear the dismissed NPC list so the whitelist popup will ask about them again next time you pause.',
+                    func = function()
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ResetDismissedNpcs then
+                            CLN.ReplayFrame:ResetDismissedNpcs()
+                        end
+                    end,
+                },
+                clearVOWhitelist = {
+                    order = 8,
+                    type = 'execute',
+                    name = 'Clear NPC Whitelist',
+                    desc = 'Remove all NPCs from the voice-over whitelist. You will be asked again when you pause.',
+                    confirm = true,
+                    confirmText = 'Clear all whitelisted NPCs? You will need to re-add them via the popup.',
+                    func = function()
+                        CLN.db.profile.nativeVOWhitelist = {}
+                        CLN.db.profile.nativeVODismissed = {}
+                        if CLN.Logger then
+                            CLN.Logger:info("Cleared NPC whitelist and dismissed list.", false, (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.loader) or "misc")
+                        end
+                    end,
+                },
             },
         },
 

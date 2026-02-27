@@ -11,7 +11,6 @@ local ReplayFrame = CLN.ReplayFrame
 -- whitelist so future speech from those NPCs pauses the addon automatically.
 -- ============================================================================
 
-local POPUP_AUTO_DISMISS = 15 -- seconds before auto-close
 local POPUP_ROW_HEIGHT = 22
 local POPUP_WIDTH = 320
 local MAX_ROWS = 6
@@ -100,28 +99,16 @@ function ReplayFrame:ShowNativeVOWhitelistPopup(npcs)
     local dismissBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     dismissBtn:SetSize(btnWidth, 24)
     dismissBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 10)
-    dismissBtn:SetText("Dismiss")
+    dismissBtn:SetText("Not Now")
     dismissBtn:SetScript("OnClick", function()
-        self:OnWhitelistPopupDismiss(checks)
         f:Hide()
-    end)
-
-    -- Auto-dismiss timer
-    f._autoDismissTimer = C_Timer.NewTimer(POPUP_AUTO_DISMISS, function()
-        if f:IsShown() then
-            self:OnWhitelistPopupDismiss(checks)
-            f:Hide()
-        end
-    end)
-    f:SetScript("OnHide", function()
-        if f._autoDismissTimer then f._autoDismissTimer:Cancel() end
     end)
 
     f:Show()
     self._voWhitelistPopup = f
 end
 
---- Handle "Add Selected" — add checked NPCs to whitelist.
+--- Handle "Add Selected" — add checked NPCs to whitelist, unchecked to dismissed.
 function ReplayFrame:OnWhitelistPopupAccept(checks)
     if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
     if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
@@ -148,15 +135,22 @@ function ReplayFrame:OnWhitelistPopupAccept(checks)
 end
 
 --- Handle "Dismiss" — mark all listed NPCs as dismissed.
-function ReplayFrame:OnWhitelistPopupDismiss(checks)
-    if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
-    local dismissed = CLN.db.profile.nativeVODismissed
-
-    for _, cb in ipairs(checks) do
-        local npc = cb._npcData
-        if npc then
-            if npc.npcId then dismissed[npc.npcId] = true end
-            if npc.npcName then dismissed[npc.npcName] = true end
-        end
+--- Reset dismissed NPCs so the popup will ask about them again.
+function ReplayFrame:ResetDismissedNpcs()
+    if CLN.db.profile then
+        CLN.db.profile.nativeVODismissed = {}
     end
+    if CLN.Logger then
+        CLN.Logger:info("Cleared dismissed NPC list — popup will ask about all NPCs again.", false, CLN.Utils.LogCategories.loader)
+    end
+end
+
+--- Remove a specific NPC from the whitelist (by name or ID).
+function ReplayFrame:RemoveFromVOWhitelist(npcKey)
+    if not npcKey then return end
+    local wl = CLN.db.profile.nativeVOWhitelist
+    if wl then wl[npcKey] = nil end
+    -- Also clear from dismissed so they can be re-asked
+    local dismissed = CLN.db.profile.nativeVODismissed
+    if dismissed then dismissed[npcKey] = nil end
 end
