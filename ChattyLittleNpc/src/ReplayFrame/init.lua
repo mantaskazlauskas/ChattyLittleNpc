@@ -643,11 +643,10 @@ function ReplayFrame:UpdateVisibility()
     return true
 end
 
--- Combat auto-collapse: hide frame instantly on combat start, restore on end
+-- Combat auto-collapse: hide frame during combat (FSM skips all frame
+-- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
 function ReplayFrame:OnCombatStart()
     if self.HideSubtitle then self:HideSubtitle() end
-    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse
-    if not enabled then return end
     if not self.DisplayFrame or not self.DisplayFrame:IsShown() then return end
     -- Already collapsed, nothing to do
     if self.CollapseButton and self.CollapseButton._collapsed then return end
