@@ -221,9 +221,12 @@ end
 -- ============================================================================
 -- Native VO Pause/Resume
 -- ============================================================================
+-- Same WoW limitation applies here: the addon sound is *stopped*, not paused.
+-- ResumeAfterNativeVO replays the file from the beginning once the native
+-- voice-over finishes (see User-Initiated Pause/Resume note above).
 
---- Temporarily pause addon voiceover to yield to native NPC voice-over.
---- Stops the sound but preserves the currentlyPlaying state so we can resume.
+--- Temporarily stop addon voiceover to yield to native NPC voice-over.
+--- Preserves the currentlyPlaying state so we can replay on resume.
 ---@param estimatedDuration number Seconds to wait before auto-resuming
 function VoiceoverPlayer:PauseForNativeVO(estimatedDuration)
     local cp = self.currentlyPlaying
@@ -319,9 +322,13 @@ end
 -- ============================================================================
 -- User-Initiated Pause/Resume
 -- ============================================================================
+-- WoW's sound API has no seek or pause capability — StopSound() is the only
+-- way to silence a playing file, and PlaySoundFile() always starts from the
+-- beginning.  Therefore "pause" actually *stops* the sound and "resume"
+-- *replays it from the start*.  The progress bar resets on resume because
+-- there is no way to pick up where we left off.
 
 --- Pause playback: stop current sound and freeze queue advancement.
---- WoW has no sound seek API so the interrupted sound cannot resume mid-stream.
 --- Skips pausing if less than 1.5 seconds of estimated playback remain.
 function VoiceoverPlayer:PausePlayback()
     if self._paused then return end
@@ -817,7 +824,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
     end
 end
 
-function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
+function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displayID)
     if (not npcId or not soundType or not text) then
         if CLN and CLN.Logger then
             CLN.Logger:error("Arguments missing to play non quest sound.", true, CLN.Utils.LogCategories.loader)
@@ -837,6 +844,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
                 title = text,
                 entryType = soundType,
                 gender = gender,
+                displayID = displayID,
                 cantBeInterrupted = false,
             })
             if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
@@ -888,6 +896,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
                     title = text,
                     entryType = soundType,
                     gender = gender,
+                    displayID = displayID,
                     cantBeInterrupted = false,
                 })
                 if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
@@ -919,6 +928,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender)
             VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
             VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
+            VoiceoverPlayer.currentlyPlaying.displayID = displayID
             -- Non-quest lines are never queue-locked
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
             VoiceoverPlayer.currentlyPlaying.title = text
