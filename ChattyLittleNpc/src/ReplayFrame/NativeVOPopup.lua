@@ -11,9 +11,10 @@ local ReplayFrame = CLN.ReplayFrame
 -- whitelist so future speech from those NPCs pauses the addon automatically.
 -- ============================================================================
 
-local POPUP_ROW_HEIGHT = 22
-local POPUP_WIDTH = 320
+local POPUP_ROW_HEIGHT = 28
+local POPUP_WIDTH = 340
 local MAX_ROWS = 6
+local POPUP_PADDING = 14
 
 --- Show the whitelist popup with a list of un-asked NPCs.
 ---@param npcs table[] Array of { npcId, npcName, text }
@@ -24,11 +25,13 @@ function ReplayFrame:ShowNativeVOWhitelistPopup(npcs)
     -- Close any existing popup
     if self._voWhitelistPopup then self._voWhitelistPopup:Hide() end
 
-    local f = CreateFrame("Frame", "CLN_VOWhitelistPopup", UIParent, "BackdropTemplate")
     local rowCount = math.min(#npcs, MAX_ROWS)
-    local totalH = 70 + rowCount * POPUP_ROW_HEIGHT + 36
+    -- Header(title+subtitle ~44) + rows + separator(8) + buttons(32) + footer link(20) + padding
+    local totalH = 44 + rowCount * POPUP_ROW_HEIGHT + 8 + 32 + 20 + POPUP_PADDING * 2
+
+    local f = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     f:SetSize(POPUP_WIDTH, totalH)
-    f:SetPoint("TOP", UIParent, "TOP", 0, -120)
+    f:SetPoint("TOP", UIParent, "TOP", 0, -100)
     f:SetFrameStrata("DIALOG")
     f:SetBackdrop({
         bgFile = "Interface/Tooltips/UI-Tooltip-Background",
@@ -36,73 +39,148 @@ function ReplayFrame:ShowNativeVOWhitelistPopup(npcs)
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    f:SetBackdropColor(0.08, 0.08, 0.08, 0.92)
-    f:SetBackdropBorderColor(1.0, 0.82, 0.0, 0.6)
+    f:SetBackdropColor(0.05, 0.05, 0.08, 0.95)
+    f:SetBackdropBorderColor(0.25, 0.22, 0.20, 0.7)
     f:EnableMouse(true)
     f:SetMovable(true)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
 
+    -- Fade in
+    f:SetAlpha(0)
+    local fadeStart = GetTime and GetTime() or 0
+    f:SetScript("OnUpdate", function(self)
+        local elapsed = ((GetTime and GetTime()) or 0) - fadeStart
+        if elapsed >= 0.2 then
+            self:SetAlpha(1)
+            self:SetScript("OnUpdate", nil)
+        else
+            self:SetAlpha(elapsed / 0.2)
+        end
+    end)
+
+    -- Close (X) button
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", f, "TOP", 0, -10)
-    title:SetText("Add voiced NPCs?")
+    title:SetPoint("TOP", f, "TOP", 0, -POPUP_PADDING)
+    title:SetText("Voiced NPCs Detected")
     title:SetTextColor(1.0, 0.82, 0.0)
 
     -- Subtitle
     local sub = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     sub:SetPoint("TOP", title, "BOTTOM", 0, -4)
-    sub:SetText("These NPCs spoke recently. Check to auto-pause for them.")
-    sub:SetTextColor(0.8, 0.8, 0.8)
-    sub:SetWidth(POPUP_WIDTH - 20)
+    sub:SetText("Select NPCs whose native voice should pause addon playback.")
+    sub:SetTextColor(0.65, 0.65, 0.65)
+    sub:SetWidth(POPUP_WIDTH - POPUP_PADDING * 2 - 20)
     sub:SetJustifyH("CENTER")
     if sub.SetWordWrap then sub:SetWordWrap(true) end
 
+    -- Separator line below subtitle
+    local sep = f:CreateTexture(nil, "ARTWORK")
+    sep:SetPoint("TOPLEFT", sub, "BOTTOMLEFT", -10, -6)
+    sep:SetPoint("TOPRIGHT", sub, "BOTTOMRIGHT", 10, -6)
+    sep:SetHeight(1)
+    sep:SetColorTexture(0.3, 0.3, 0.3, 0.5)
+
     -- NPC rows with checkboxes
     local checks = {}
-    local yOfs = -60
+    local yOfs = -(44 + 8 + POPUP_PADDING)
     for i = 1, rowCount do
         local npc = npcs[i]
+
+        -- Row highlight background
+        local rowBg = f:CreateTexture(nil, "BACKGROUND")
+        rowBg:SetPoint("TOPLEFT", f, "TOPLEFT", 8, yOfs + 2)
+        rowBg:SetPoint("TOPRIGHT", f, "TOPRIGHT", -8, yOfs + 2)
+        rowBg:SetHeight(POPUP_ROW_HEIGHT)
+        if i % 2 == 0 then
+            rowBg:SetColorTexture(1, 1, 1, 0.03)
+        else
+            rowBg:SetColorTexture(0, 0, 0, 0)
+        end
+
         local row = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-        row:SetPoint("TOPLEFT", f, "TOPLEFT", 12, yOfs)
+        row:SetPoint("TOPLEFT", f, "TOPLEFT", POPUP_PADDING, yOfs)
         row:SetSize(22, 22)
         row:SetChecked(true)
         row._npcData = npc
 
-        local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("LEFT", row, "RIGHT", 4, 0)
-        label:SetWidth(POPUP_WIDTH - 50)
-        label:SetJustifyH("LEFT")
-        if label.SetWordWrap then label:SetWordWrap(false) end
-        if label.SetMaxLines then label:SetMaxLines(1) end
-        -- Show NPC name and truncated text
+        -- NPC name (prominent)
+        local nameLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        nameLabel:SetPoint("LEFT", row, "RIGHT", 6, 0)
+        nameLabel:SetTextColor(1, 1, 1)
+        nameLabel:SetText(npc.npcName or "Unknown")
+
+        -- Text preview (subdued, right-aligned)
         local preview = npc.text or ""
-        if #preview > 50 then preview = preview:sub(1, 47) .. "..." end
-        label:SetText("|cffffffff" .. (npc.npcName or "Unknown") .. "|r |cff888888— " .. preview .. "|r")
+        if #preview > 40 then preview = preview:sub(1, 37) .. "..." end
+        local previewLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        previewLabel:SetPoint("LEFT", nameLabel, "RIGHT", 8, 0)
+        previewLabel:SetPoint("RIGHT", f, "RIGHT", -POPUP_PADDING, 0)
+        previewLabel:SetJustifyH("RIGHT")
+        previewLabel:SetTextColor(0.5, 0.5, 0.5)
+        if previewLabel.SetWordWrap then previewLabel:SetWordWrap(false) end
+        if previewLabel.SetMaxLines then previewLabel:SetMaxLines(1) end
+        previewLabel:SetText(preview)
 
         checks[i] = row
         yOfs = yOfs - POPUP_ROW_HEIGHT
     end
 
-    -- Buttons
-    local btnWidth = 110
+    -- Button area
+    local btnY = POPUP_PADDING + 20 + 4 -- above the footer link
+    local btnWidth = 120
+
     local addBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    addBtn:SetSize(btnWidth, 24)
-    addBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -4, 10)
+    addBtn:SetSize(btnWidth, 26)
+    addBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOM", -6, btnY)
     addBtn:SetText("Add Selected")
     addBtn:SetScript("OnClick", function()
         self:OnWhitelistPopupAccept(checks)
         f:Hide()
-        -- Auto-resume if user had paused and no NPC is still talking
         self:TryAutoResumeAfterWhitelist()
     end)
 
     local dismissBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    dismissBtn:SetSize(btnWidth, 24)
-    dismissBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", 4, 10)
-    dismissBtn:SetText("Not Now")
+    dismissBtn:SetSize(btnWidth, 26)
+    dismissBtn:SetPoint("BOTTOMLEFT", f, "BOTTOM", 6, btnY)
+    dismissBtn:SetText("Dismiss")
     dismissBtn:SetScript("OnClick", function()
+        f:Hide()
+    end)
+
+    -- "Don't show again" footer link
+    local neverBtn = CreateFrame("Button", nil, f)
+    neverBtn:SetSize(POPUP_WIDTH - POPUP_PADDING * 2, 16)
+    neverBtn:SetPoint("BOTTOM", f, "BOTTOM", 0, POPUP_PADDING - 2)
+    local neverText = neverBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    neverText:SetAllPoints()
+    neverText:SetText("|cff666666Don't ask about these NPCs again|r")
+    neverText:SetJustifyH("CENTER")
+    neverBtn:SetScript("OnEnter", function()
+        neverText:SetText("|cffaaaaaaDon't ask about these NPCs again|r")
+    end)
+    neverBtn:SetScript("OnLeave", function()
+        neverText:SetText("|cff666666Don't ask about these NPCs again|r")
+    end)
+    neverBtn:SetScript("OnClick", function()
+        -- Mark all listed NPCs as permanently dismissed
+        if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
+        local dismissed = CLN.db.profile.nativeVODismissed
+        for _, cb in ipairs(checks) do
+            local npc = cb._npcData
+            if npc then
+                if npc.npcName then dismissed[npc.npcName] = true end
+                local ids = npc.npcIds or {}
+                for _, id in ipairs(ids) do dismissed[id] = true end
+            end
+        end
         f:Hide()
     end)
 
