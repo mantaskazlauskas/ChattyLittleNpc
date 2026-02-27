@@ -27,6 +27,9 @@ src/ReplayFrame/LogsWindow.lua
 src/ReplayFrame/FramerScene.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
+src/ReplayFrame/QueueList.lua
+src/ReplayFrame/CollapseAnimation.lua
+src/ReplayFrame/CompactBadge.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
 src/ReplayFrame/ModelAnimation.lua
