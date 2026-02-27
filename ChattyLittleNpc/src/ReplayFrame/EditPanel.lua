@@ -261,7 +261,9 @@ function ReplayFrame:CreateEditPanel()
             local eb = CreateFrame("EditBox", nil, panelRef, "InputBoxTemplate")
             eb:SetSize(50,18)
             eb:SetAutoFocus(false)
-            eb:SetPoint("LEFT", row.value, "RIGHT", self.layout.inputGap, 0)
+            -- Hide the value FontString and anchor input directly after slider
+            if row.value then row.value:Hide() end
+            eb:SetPoint("LEFT", row.slider, "RIGHT", self.layout.valueGap, 0)
             eb:SetNumeric(true)
             eb:SetMaxLetters(5)
             eb:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
@@ -330,7 +332,7 @@ function ReplayFrame:CreateEditPanel()
     end
     panel._formBuilder = FormBuilder.new(panel, { rowSpacing = spacing })
     -- Scale row
-    panel._formBuilder:AddSlider{ key="scale", label="Frame Scale:", min=0.5, max=2.0, step=0.05, showLowHigh=true, valueFormat="%.2f", excludeKey="frameScale" }
+    panel._formBuilder:AddSlider{ key="scale", label="Frame Scale:", min=0.5, max=2.0, step=0.05, valueFormat="%.2f", excludeKey="frameScale" }
     -- Dimensions section — sync yOffset from FormBuilder before adding header
     yOffset = panel._formBuilder:GetCurrentY() - spacing
     addSectionHeader("Dimensions")
@@ -342,7 +344,7 @@ function ReplayFrame:CreateEditPanel()
     yOffset = panel._formBuilder:GetCurrentY() - spacing
     addSectionHeader("Text")
     panel._formBuilder.y = yOffset
-    panel._formBuilder:AddSlider{ key="textScale", label="Text Scale:", min=0.75, max=1.5, step=0.05, showLowHigh=true, valueFormat="%.2f", excludeKey="queueTextScale" }
+    panel._formBuilder:AddSlider{ key="textScale", label="Text Scale:", min=0.75, max=1.5, step=0.05, valueFormat="%.2f", excludeKey="queueTextScale" }
     yOffset = panel._formBuilder:GetCurrentY()
     
     -- Buttons (Blizzard-style row)
