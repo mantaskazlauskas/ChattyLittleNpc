@@ -132,11 +132,10 @@ end
 function ReplayFrame:UpdateParent()
     if not self.DisplayFrame then return end
     if self._editMode or self._isDragging then return end
-    local parent = UIParent
-    if (self:IsDialogueUIFrameShow()) then
-        parent = _G["DUIQuestFrame"]
+    -- Always parent to UIParent to avoid cascading hide when dialog frames close
+    if self.DisplayFrame:GetParent() ~= UIParent then
+        self:ReparentPreservingScreenPosition(UIParent)
     end
-    self:ReparentPreservingScreenPosition(parent)
 end
 
 -- Check if compact mode is enabled
