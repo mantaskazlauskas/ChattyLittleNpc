@@ -31,6 +31,12 @@ function EventHandler:RegisterEvents()
     events:RegisterEvent("PLAY_MOVIE", function() self:PLAY_MOVIE() end)
     events:RegisterEvent("PLAYER_REGEN_DISABLED", function() self:PLAYER_REGEN_DISABLED() end)
     events:RegisterEvent("PLAYER_REGEN_ENABLED", function() self:PLAYER_REGEN_ENABLED() end)
+    -- Native NPC voiceover detection (experimental)
+    events:RegisterEvent("CHAT_MSG_MONSTER_SAY", function(...) self:OnNpcChatMessage(...) end)
+    events:RegisterEvent("CHAT_MSG_MONSTER_YELL", function(...) self:OnNpcChatMessage(...) end)
+    events:RegisterEvent("CHAT_MSG_MONSTER_WHISPER", function(...) self:OnNpcChatMessage(...) end)
+    events:RegisterEvent("CHAT_MSG_MONSTER_EMOTE", function(...) self:OnNpcChatMessage(...) end)
+    events:RegisterEvent("TALKINGHEAD_REQUESTED", function() self:OnTalkingHeadRequested() end)
     CLN:RegisterMessage("VOICEOVER_STOP", function(...) self:OnVoiceoverStop(...) end)
 end
 
@@ -49,6 +55,11 @@ function EventHandler:UnregisterEvents()
     events:UnregisterEvent("PLAY_MOVIE")
     events:UnregisterEvent("PLAYER_REGEN_DISABLED")
     events:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    events:UnregisterEvent("CHAT_MSG_MONSTER_SAY")
+    events:UnregisterEvent("CHAT_MSG_MONSTER_YELL")
+    events:UnregisterEvent("CHAT_MSG_MONSTER_WHISPER")
+    events:UnregisterEvent("CHAT_MSG_MONSTER_EMOTE")
+    events:UnregisterEvent("TALKINGHEAD_REQUESTED")
     CLN:UnregisterMessage("VOICEOVER_STOP")
     -- Cancel the watcher timer to prevent callbacks on stale state
     if self.watcherTimer then
@@ -65,8 +76,15 @@ function EventHandler:StartWatcher()
         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
         if not cp then return end
 
+        -- Skip watcher logic while paused for native VO (handle is nil, resume timer is pending)
+        if cp._pausedForNativeVO then return end
+
         local handle = cp.soundHandle
-        local isPlaying = cp.isPlaying and cp:isPlaying() or false
+        -- Use IsEffectivelyPlaying (with grace period) to avoid false stop detection
+        -- during dialog transitions where C_Sound.IsPlaying briefly returns false
+        local isPlaying = CLN.VoiceoverPlayer.IsEffectivelyPlaying
+            and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+            or (cp.isPlaying and cp:isPlaying() or false)
 
         -- If a new handle starts playing, clear the latch
         if handle and isPlaying and self._stopLatchHandle and self._stopLatchHandle ~= handle then
@@ -255,8 +273,13 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
 
     -- Push to replay history
     if stoppedVoiceover and (stoppedVoiceover.title or stoppedVoiceover.questId) and CLN.ReplayFrame and CLN.ReplayFrame.PushHistory then
+        -- Title may be nil if C_QuestLog wasn't ready at playback start; retry now
+        local title = stoppedVoiceover.title
+        if not title and stoppedVoiceover.questId then
+            title = CLN:GetTitleForQuestID(stoppedVoiceover.questId)
+        end
         CLN.ReplayFrame:PushHistory({
-            title = stoppedVoiceover.title,
+            title = title,
             npcId = stoppedVoiceover.npcId,
             questId = stoppedVoiceover.questId,
             phase = stoppedVoiceover.phase,
@@ -319,7 +342,7 @@ function EventHandler:QUEST_FINISHED()
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
     end
 end
 
@@ -330,7 +353,7 @@ function EventHandler:GOSSIP_CLOSED()
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
     end
 end
 
@@ -338,7 +361,7 @@ function EventHandler:CINEMATIC_START()
     if CLN and CLN.Logger then CLN.Logger:debug("CINEMATIC_START", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on cinematic start.", false, CLN.Utils.LogCategories.loader) end
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
     end
 end
 
@@ -346,7 +369,7 @@ function EventHandler:PLAY_MOVIE()
     if CLN and CLN.Logger then CLN.Logger:debug("PLAY_MOVIE", false, CLN.Utils.LogCategories.loader) end
     if (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on movie play.", false, CLN.Utils.LogCategories.loader) end
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
     end
 end
 
@@ -364,4 +387,63 @@ function EventHandler:PLAYER_REGEN_ENABLED()
     if CLN.ReplayFrame and CLN.ReplayFrame.OnCombatEnd then
         CLN.ReplayFrame:OnCombatEnd()
     end
+end
+
+-- ============================================================================
+-- Native NPC Voiceover Detection (Experimental)
+-- ============================================================================
+
+-- Estimate how long a spoken line of text takes at ~80 words per minute.
+---@param text string
+---@return number seconds
+local function EstimateVODuration(text)
+    if not text or #text == 0 then return 3 end
+    -- ~80 WPM ≈ 14 chars/sec for English.  Add 1.5 s buffer.
+    return math.max(2, #text / 14 + 1.5)
+end
+
+--- Fires for CHAT_MSG_MONSTER_SAY / YELL / WHISPER / EMOTE.
+--- Checks the isSubtitle flag (arg 15) to detect voiced NPC speech.
+function EventHandler:OnNpcChatMessage(text, npcName, _, _, _, _, _, _, _, _, _, guid, _, _, isSubtitle, hideSenderInLetterbox)
+    if not CLN.db.profile.pauseOnNativeVO then return end
+    -- isSubtitle = true means this text accompanies voiced audio
+    if not isSubtitle then return end
+    -- Don't pause if nothing is playing
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
+    if not (cp and cp.soundHandle and cp:isPlaying()) then return end
+    -- Already paused? Extend the timer instead of double-pausing
+    if cp._pausedForNativeVO then
+        local dur = EstimateVODuration(text)
+        if CLN.VoiceoverPlayer._nativeVOResumeTimer then
+            CLN.VoiceoverPlayer._nativeVOResumeTimer:Cancel()
+        end
+        CLN.VoiceoverPlayer._nativeVOResumeTimer = C_Timer.NewTimer(dur, function()
+            CLN.VoiceoverPlayer:ResumeAfterNativeVO()
+        end)
+        if CLN and CLN.Logger then
+            CLN.Logger:debug("Extended native VO pause for subtitle from " .. tostring(npcName), false, CLN.Utils.LogCategories.loader)
+        end
+        return
+    end
+
+    local duration = EstimateVODuration(text)
+    if CLN and CLN.Logger then
+        CLN.Logger:debug("Native VO detected (subtitle) from " .. tostring(npcName) .. " — pausing for ~" .. string.format("%.1f", duration) .. "s",
+            false, CLN.Utils.LogCategories.loader)
+    end
+    CLN.VoiceoverPlayer:PauseForNativeVO(duration)
+end
+
+--- Fires for TALKINGHEAD_REQUESTED. Talking heads always have voiceover.
+function EventHandler:OnTalkingHeadRequested()
+    if not CLN.db.profile.pauseOnNativeVO then return end
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
+    if not (cp and cp.soundHandle and cp:isPlaying()) then return end
+
+    -- Talking heads typically last 5-15 seconds; use a conservative default
+    local duration = 8
+    if CLN and CLN.Logger then
+        CLN.Logger:debug("Talking Head detected — pausing addon VO for ~" .. duration .. "s", false, CLN.Utils.LogCategories.loader)
+    end
+    CLN.VoiceoverPlayer:PauseForNativeVO(duration)
 end
