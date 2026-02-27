@@ -62,10 +62,18 @@ function HC.Attach(host)
     end
 
     -- Generic FitDefault shim if not provided (may be overridden below by FramerScene)
+    -- Frames the model as an upper-body bust (head/shoulders) facing forward.
     if not has(host.FitDefault) then
         host.FitDefault = function(self, _padding)
+            -- ModelScene hosts have bounds-based framing; delegate to it
+            local isScene = self._backend and self._backend.kind == "scene"
+            if isScene and has(self.FrameFullBodyFront) then
+                return self:FrameFullBodyFront(tonumber(_padding) or 0.12)
+            end
+            -- PlayerModel fallback: zoom + position + rotation
             if has(self.SetPortraitZoom) then self:SetPortraitZoom(self:GetPortraitZoom() or 0.65) end
-            if has(self.SetCamera) then self:SetCamera(self._distance or 2.5, self._yaw or 0, self._pitch or 0) end
+            if has(self.SetPosition) then self:SetPosition(0, 0, 0) end
+            if has(self.SetRotation) then self:SetRotation(0) end
             debugf("FitDefault(shim)")
         end
     end

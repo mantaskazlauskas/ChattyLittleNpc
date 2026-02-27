@@ -151,6 +151,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         return
     end
     -- Defensive: hide orphaned model frames from prior RebuildModelHost calls
@@ -178,6 +179,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if self:IsCompactModeEnabled() then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         self:ContractForNpcModel()
         return
     end
@@ -186,6 +188,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if (not (self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId == npcId)) then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         self:ContractForNpcModel()
         return
     end
@@ -199,6 +202,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         if self._lastDisplayID ~= displayID then
             if self.ResetAnimationState then self:ResetAnimationState() end
             self._lastDisplayID = displayID
+            self._lastUnitNpcId = nil
         else
             -- Same displayID: skip full reload if model is still loaded
             local be = self.NpcModelFrame and self.NpcModelFrame._backend
@@ -219,6 +223,9 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
         end
+    -- Show container before SetDisplayInfo so the ModelScene frame is visible during init
+    if self.ModelContainer then self.ModelContainer:Show() end
+    self.NpcModelFrame:Show()
     self.NpcModelFrame:SetDisplayInfo(displayID)
         -- For ModelScene actors, model load can be async; poll briefly to apply fit/anim
         local be = self.NpcModelFrame._backend
@@ -273,10 +280,29 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
         end
+        if self._lastUnitNpcId == npcId then
+            local be = self.NpcModelFrame and self.NpcModelFrame._backend
+            local stillLoaded = be and be.actor and be.actor.IsLoaded and be.actor:IsLoaded()
+            if stillLoaded then
+                if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
+                    self.NpcModelFrame:Show()
+                end
+                if self.ModelContainer and self.ModelContainer.IsShown and not self.ModelContainer:IsShown() then
+                    self.ModelContainer:Show()
+                end
+                self._hasValidModel = true
+                return
+            end
+        end
         local canUseUnit = UnitExists and UnitExists("npc")
         if canUseUnit and self.NpcModelFrame and self.NpcModelFrame.SetUnit then
             self.NpcModelFrame:ClearModel()
+            -- Show container before SetUnit so the ModelScene frame is visible during init
+            if self.ModelContainer then self.ModelContainer:Show() end
+            self.NpcModelFrame:Show()
             pcall(self.NpcModelFrame.SetUnit, self.NpcModelFrame, "npc")
+            self._lastUnitNpcId = npcId
+            self._lastDisplayID = nil
             -- Build metadata and apply default fit when unit is loaded
             if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(nil) end
             if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
@@ -293,6 +319,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             self.NpcModelFrame:ClearModel()
             self.NpcModelFrame:Hide()
             if self.ModelContainer then self.ModelContainer:Hide() end
+            self._lastUnitNpcId = nil
             self._hasValidModel = false
         end
     end
@@ -325,6 +352,7 @@ function ReplayFrame:CheckAndShowModel()
     else
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
+        self._hasValidModel = false
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             local c = self.ModelContainer
             local m = self.NpcModelFrame

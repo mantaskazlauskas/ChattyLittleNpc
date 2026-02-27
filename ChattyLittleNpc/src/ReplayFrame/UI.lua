@@ -326,6 +326,12 @@ function ReplayFrame:ShowSubtitle(text)
     local token = self._subtitleToken
     self.SubtitleFrame:Show()
     self.SubtitleFrame:SetAlpha(0)
+    -- Push header below subtitle to avoid overlap
+    if self.HeaderText then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 
     local function showNext()
         if token ~= self._subtitleToken then return end
@@ -340,6 +346,12 @@ function ReplayFrame:ShowSubtitle(text)
                 if token ~= self._subtitleToken then return end
                 self._subtitleTimer = nil
                 if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+                -- Restore header to original position
+                if self.HeaderText and self.ContentFrame then
+                    self.HeaderText:ClearAllPoints()
+                    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                end
+                if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
             end)
             return
         end
@@ -361,6 +373,12 @@ function ReplayFrame:HideSubtitle()
     self._subtitleSentences = nil
     self._subtitleIndex = nil
     if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+    -- Restore header to original position
+    if self.HeaderText and self.ContentFrame then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 end
 
 -- Return the real available width (in pixels) that a row's text can use
@@ -423,8 +441,7 @@ function ReplayFrame:AnchorHeaderToButtons()
     if not (self.HeaderText and self.ContentFrame) then return end
     -- Prefer the left-most always-visible button as the right anchor (editBtn exists even when lock is hidden)
     local rightAnchor = self.EditModeButton or self.OptionsButton or self.ClearButton or self.CollapseButton
-    self.HeaderText:ClearAllPoints()
-    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+    -- Only set the RIGHT anchor; preserve existing TOPLEFT (may be relative to SubtitleFrame)
     if rightAnchor then
         self.HeaderText:SetPoint("RIGHT", rightAnchor, "LEFT", -6, 0)
     else
@@ -635,81 +652,122 @@ function ReplayFrame:EnsureCompactBadge()
     if self.CompactBadge then return end
     if not self.DisplayFrame then return end
     local badge = CreateFrame("Frame", nil, self.DisplayFrame, "BackdropTemplate")
-    badge:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 6, -6)
-    badge:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -30, -6) -- leave space for collapse button
+    badge:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 4, -4)
+    badge:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -4, -4)
     badge:SetHeight(44)
-    badge:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 10, insets={left=3,right=3,top=3,bottom=3} })
-    badge:SetBackdropColor(0,0,0,0.55)
-    badge:SetBackdropBorderColor(0.9,0.7,0.2,0.85)
+    badge:SetBackdrop({
+        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
+        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    badge:SetBackdropColor(0.05, 0.05, 0.08, 0.92)
+    badge:SetBackdropBorderColor(0.25, 0.22, 0.20, 0.6)
     badge:Hide()
 
-    -- Row 1: status icon + title
-    local icon = badge:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("LEFT", badge, "LEFT", 6, 0)
-    icon:SetSize(18,18)
+    -- Left: speaker icon with glow ring for active playback
+    local iconFrame = CreateFrame("Frame", nil, badge)
+    iconFrame:SetSize(28, 28)
+    iconFrame:SetPoint("LEFT", badge, "LEFT", 8, 0)
+    local iconGlow = iconFrame:CreateTexture(nil, "BACKGROUND")
+    iconGlow:SetPoint("CENTER")
+    iconGlow:SetSize(32, 32)
+    iconGlow:SetTexture("Interface/Buttons/UI-ActionButton-Border")
+    iconGlow:SetBlendMode("ADD")
+    iconGlow:SetVertexColor(1.0, 0.82, 0.0, 0)
+    iconGlow:Hide()
+    badge.IconGlow = iconGlow
+    local icon = iconFrame:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("CENTER")
+    icon:SetSize(20, 20)
     icon:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.speaker) or "Interface/COMMON/VOICECHAT-SPEAKER")
     badge.Icon = icon
-    local titleFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    titleFS:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    titleFS:SetPoint("RIGHT", badge, "RIGHT", -6, 0)
+
+    -- Title text (prominent, white on dark)
+    local titleFS = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    titleFS:SetPoint("LEFT", iconFrame, "RIGHT", 8, 0)
+    titleFS:SetPoint("RIGHT", badge, "RIGHT", -90, 0)
     titleFS:SetJustifyH("LEFT")
     if titleFS.SetWordWrap then titleFS:SetWordWrap(false) end
-    titleFS:SetTextColor(1.0, 0.95, 0.7)
+    titleFS:SetTextColor(1.0, 1.0, 1.0, 0.95)
     badge.Title = titleFS
 
-    -- Row 2: controls container
-    local controls = CreateFrame("Frame", nil, badge)
-    controls:SetPoint("TOPLEFT", badge, "BOTTOMLEFT", 0, -2)
-    controls:SetPoint("TOPRIGHT", badge, "BOTTOMRIGHT", 0, -2)
-    controls:SetHeight(20)
-    badge.Controls = controls
-
-    local function makeBtn(texPath, tooltip, onClick)
-        local b = CreateFrame("Button", nil, controls)
-        b:SetSize(18,18)
+    -- Right-side controls (inline, inside the badge)
+    local function makeBtn(parent, size, texPath, tooltip, onClick)
+        local b = CreateFrame("Button", nil, parent)
+        b:SetSize(size, size)
+        -- Subtle background circle
+        local bg = b:CreateTexture(nil, "BACKGROUND")
+        bg:SetPoint("CENTER")
+        bg:SetSize(size + 4, size + 4)
+        bg:SetTexture("Interface/Tooltips/UI-Tooltip-Background")
+        bg:SetVertexColor(1, 1, 1, 0.12)
+        b.bg = bg
         local t = b:CreateTexture(nil, "ARTWORK")
-        t:SetAllPoints()
+        t:SetPoint("CENTER")
+        t:SetSize(size - 4, size - 4)
         t:SetTexture(texPath)
         b.tex = t
         b:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:ClearLines(); GameTooltip:AddLine(tooltip,1,1,1); GameTooltip:Show()
+            self.bg:SetVertexColor(1, 1, 1, 0.25)
+            if GameTooltip and GameTooltip.SetOwner then
+                GameTooltip:SetOwner(self, "ANCHOR_TOP")
+                GameTooltip:ClearLines(); GameTooltip:AddLine(tooltip, 1, 1, 1); GameTooltip:Show()
+            end
         end)
-        b:SetScript("OnLeave", function() GameTooltip_Hide() end)
+        b:SetScript("OnLeave", function(self)
+            self.bg:SetVertexColor(1, 1, 1, 0.12)
+            if GameTooltip_Hide then GameTooltip_Hide() end
+        end)
         b:SetScript("OnClick", onClick)
         return b
     end
 
-    -- Play/Stop button
-    local playBtn = makeBtn("Interface/Buttons/UI-SpellbookIcon-NextPage-Up", "Stop current playback", function()
-        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false) end
+    -- Stop button
+    local stopBtn = makeBtn(badge, 22, "Interface/Buttons/UI-GroupLoot-Pass-Up", "Stop playback", function()
+        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
         if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
     end)
-    playBtn:SetPoint("LEFT", controls, "LEFT", 4, 0)
-    badge.PlayBtn = playBtn
+    stopBtn:SetPoint("RIGHT", badge, "RIGHT", -38, 0)
+    badge.PlayBtn = stopBtn
 
-    -- Clear queue button
-    local clearBtn = makeBtn("Interface/Buttons/UI-GroupLoot-Pass-Up", "Clear queued quests", function()
-        CLN.questsQueue = {}
-        if self.MarkQueueDirty then self:MarkQueueDirty() end
-        if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
-    end)
-    clearBtn:SetPoint("LEFT", playBtn, "RIGHT", 6, 0)
-    badge.ClearBtn = clearBtn
-
-    -- Expand button (mirrors collapse button state toggle)
-    local expandBtn = makeBtn("Interface/Buttons/UI-Panel-ExpandButton-Up", "Expand full panel", function()
+    -- Expand button
+    local expandBtn = makeBtn(badge, 22, "Interface/Buttons/UI-Panel-ExpandButton-Up", "Expand", function()
         if self.CollapseButton then self.CollapseButton:Click() end
     end)
-    expandBtn:SetPoint("LEFT", clearBtn, "RIGHT", 6, 0)
+    expandBtn:SetPoint("RIGHT", badge, "RIGHT", -10, 0)
     badge.ExpandBtn = expandBtn
 
-    -- Queue count display
-    local qfs = controls:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    qfs:SetPoint("LEFT", expandBtn, "RIGHT", 10, 0)
-    qfs:SetPoint("RIGHT", controls, "RIGHT", -6, 0)
-    qfs:SetJustifyH("RIGHT")
-    badge.QueueCount = qfs
+    -- Queue count badge (small pill, between title and buttons)
+    local queuePill = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    queuePill:SetPoint("RIGHT", stopBtn, "LEFT", -8, 0)
+    queuePill:SetJustifyH("RIGHT")
+    queuePill:SetTextColor(0.75, 0.75, 0.75, 0.9)
+    badge.QueueCount = queuePill
+
+    -- Bottom progress line (thin gold bar)
+    local progressLine = badge:CreateTexture(nil, "OVERLAY")
+    progressLine:SetPoint("BOTTOMLEFT", badge, "BOTTOMLEFT", 3, 2)
+    progressLine:SetHeight(2)
+    progressLine:SetWidth(0)
+    progressLine:SetColorTexture(1.0, 0.82, 0.0, 0.8)
+    progressLine:Hide()
+    badge.ProgressLine = progressLine
+
+    -- Speaker glow pulse animation
+    local glowAG = iconGlow:CreateAnimationGroup()
+    glowAG:SetLooping("REPEAT")
+    local fadeIn = glowAG:CreateAnimation("Alpha")
+    fadeIn:SetFromAlpha(0)
+    fadeIn:SetToAlpha(0.35)
+    fadeIn:SetDuration(0.8)
+    fadeIn:SetOrder(1)
+    local fadeOut = glowAG:CreateAnimation("Alpha")
+    fadeOut:SetFromAlpha(0.35)
+    fadeOut:SetToAlpha(0)
+    fadeOut:SetDuration(0.8)
+    fadeOut:SetOrder(2)
+    badge.GlowAnim = glowAG
 
     badge:SetScript("OnSizeChanged", function()
         if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
@@ -722,7 +780,6 @@ function ReplayFrame:UpdateCompactBadge(force)
     if not (self.CollapseButton and self.CollapseButton._collapsed) then return end
     if not self.CompactBadge then return end
     local badge = self.CompactBadge
-    -- Ensure text reflects currently playing or first queued
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
     local playing = cur and cur.isPlaying and cur:isPlaying() or false
     local title = cur and cur.title or nil
@@ -730,25 +787,45 @@ function ReplayFrame:UpdateCompactBadge(force)
         local q = CLN.questsQueue[1]
         title = q and q.title or "Queued Quest"
     end
-    if not title then title = "Idle" end
-    -- Truncate to fit available width (TruncateToWidth already calls SetText)
-    if self.TruncateToWidth and badge.Title.GetWidth then
-        local maxW = math.max(40, (badge:GetWidth() or 200) - 36)
-        self:TruncateToWidth(badge.Title, title, maxW)
-    else
-        badge.Title:SetText(title)
-    end
-    -- Icon state (speaker vs mute)
-    if playing then
-        badge.Icon:SetVertexColor(1,1,1,1)
-    else
-        badge.Icon:SetVertexColor(0.5,0.5,0.5,0.8)
-    end
+    if not title then title = "Chatty Little NPC" end
+
+    -- Title with queue count prefix when items are queued
     local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
+    local displayTitle = title
     if qcount > 0 then
-        badge.QueueCount:SetText("Queue: "..qcount)
+        badge.QueueCount:SetText("|cff8080a0" .. qcount .. " queued|r")
     else
         badge.QueueCount:SetText("")
+    end
+
+    -- Truncate title to fit
+    if self.TruncateToWidth and badge.Title.GetWidth then
+        local maxW = math.max(40, (badge:GetWidth() or 200) - 140)
+        self:TruncateToWidth(badge.Title, displayTitle, maxW)
+    else
+        badge.Title:SetText(displayTitle)
+    end
+
+    -- Speaker icon and glow state
+    if playing then
+        badge.Icon:SetVertexColor(1.0, 0.82, 0.0, 1)
+        badge.Title:SetTextColor(1.0, 1.0, 1.0, 0.95)
+        if badge.IconGlow then
+            badge.IconGlow:Show()
+            if badge.GlowAnim and not badge.GlowAnim:IsPlaying() then badge.GlowAnim:Play() end
+        end
+        -- Show progress line
+        if badge.ProgressLine then
+            local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
+            badge.ProgressLine:SetWidth(maxW)
+            badge.ProgressLine:Show()
+        end
+    else
+        badge.Icon:SetVertexColor(0.5, 0.5, 0.5, 0.6)
+        badge.Title:SetTextColor(0.7, 0.7, 0.7, 0.8)
+        if badge.GlowAnim and badge.GlowAnim:IsPlaying() then badge.GlowAnim:Stop() end
+        if badge.IconGlow then badge.IconGlow:Hide() end
+        if badge.ProgressLine then badge.ProgressLine:Hide() end
     end
 end
 
@@ -810,7 +887,14 @@ function ReplayFrame:ApplyImmediateCollapseState(collapsed)
         if self.ContentFrame then self.ContentFrame:Show() end
         if self.QueueScrollBox then self.QueueScrollBox:Show() end
         if self.ModelContainer and self._hasValidModel then self.ModelContainer:Show() end
-        if self.CompactBadge then self.CompactBadge:Hide() end
+        if self.CompactBadge then
+            self.CompactBadge:Hide()
+            -- Stop glow animation when hiding badge
+            if self.CompactBadge.GlowAnim and self.CompactBadge.GlowAnim:IsPlaying() then
+                self.CompactBadge.GlowAnim:Stop()
+            end
+            if self.CompactBadge.IconGlow then self.CompactBadge.IconGlow:Hide() end
+        end
         if frame and frame.SetHeight and self._preCollapseHeight then frame:SetHeight(self._preCollapseHeight) end
     end
     if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
@@ -1050,10 +1134,10 @@ function ReplayFrame:CreateScrollBox(contentFrame)
     local list = CreateFrame("Frame", "ChattyLittleNpcQueueList", contentFrame)
     if self.HeaderDivider then
         list:SetPoint("TOPLEFT", self.HeaderDivider, "BOTTOMLEFT", 0, -6)
-        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
+        list:SetPoint("TOPRIGHT", self.HeaderDivider, "BOTTOMRIGHT", 2, -6)
     else
         list:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -36)
-        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
+        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -36)
     end
     list:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 8, 8)
     self.QueueListFrame = list
@@ -1194,7 +1278,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if not e then return end
                 if button == "LeftButton" then
                     if e.isPlaying then
-                        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+                        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
                         this.userHidden = false
                         this:UpdateDisplayFrameState()
                     elseif e.queueIndex then
@@ -1511,7 +1595,7 @@ function ReplayFrame:SetupFrameResize()
             if hasModel and this.ModelContainer then
                 -- content directly below full-width model container
                 this.ContentFrame:SetPoint("TOPLEFT", this.ModelContainer, "BOTTOMLEFT", 0, -6)
-                this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+                this.ContentFrame:SetPoint("TOPRIGHT", this.ModelContainer, "BOTTOMRIGHT", 0, -6)
             else
                 this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
                 this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)

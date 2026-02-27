@@ -159,7 +159,7 @@ function ReplayFrame:ApplyCompactMode()
         if self._hasValidModel and self.ModelContainer then
             -- Content sits below the embedded model
             self.ContentFrame:SetPoint("TOPLEFT", self.ModelContainer, "BOTTOMLEFT", 0, -6)
-            self.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+            self.ContentFrame:SetPoint("TOPRIGHT", self.ModelContainer, "BOTTOMRIGHT", 0, -6)
             self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
         else
             self.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
@@ -188,6 +188,9 @@ end
 -- ============================================================================
 
 function ReplayFrame:IsVoiceoverCurrenltyPlaying()
+    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.IsEffectivelyPlaying then
+        return CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+    end
     return CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()
 end
 
