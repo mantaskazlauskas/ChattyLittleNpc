@@ -500,7 +500,7 @@ function ReplayFrame:BuildQueueEntries()
         if self.PushHistory then
             local title = now.title
             if not title and now.questId then
-                title = CLN:GetTitleForQuestID and CLN:GetTitleForQuestID(now.questId) or nil
+                title = CLN.GetTitleForQuestID and CLN:GetTitleForQuestID(now.questId) or nil
             end
             if title then
                 self:PushHistory({

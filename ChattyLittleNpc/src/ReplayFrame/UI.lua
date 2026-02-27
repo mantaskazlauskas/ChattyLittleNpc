@@ -1345,7 +1345,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         -- Left-click: pause/resume
                         if CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
                     end
-                elseif button == "LeftButton" then e.queueIndex then
+                elseif button == "LeftButton" and e.queueIndex then
                         local qi = e.queueIndex
                         local toPlay = {}
                         for i = qi, #CLN.questsQueue do
