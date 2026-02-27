@@ -46,6 +46,20 @@ local function detectSeverity(msg)
     return SEV.INFO
 end
 
+-- Extract Logger category from message: "|cff...[LEVEL]|r[category] text" -> "category"
+local function extractLoggerCategory(msg)
+    if not msg then return nil end
+    return msg:match("|c%x+%[%a+%]|r%[(%a+)%]")
+end
+
+-- Strip Logger's color-coded severity+category prefix from message text
+local function stripLoggerPrefix(msg)
+    if not msg then return msg end
+    local stripped = msg:gsub("^|c%x+%[%a+%]|r%[%a+%] ", "")
+    if stripped ~= msg then return stripped end
+    return msg:gsub("^|c%x+%[%a+%]|r ", "")
+end
+
 local function pushLine(cat, text, sess, src, lvl)
     local buf = CLN._AnimLogBuffer
     local ts = now()
@@ -104,7 +118,13 @@ local function ensureHook()
             for i = 1, select('#', ...) do parts[#parts+1] = tostring(select(i, ...)) end
             local msg = table.concat(parts, " ")
             if not (string.find(msg, "[ANIM]", 1, true) or string.find(msg, "[DEBUG]", 1, true)) then
-                pushLine("app", msg, nil, "addon")
+                -- Detect severity before stripping the color-coded prefix
+                local lvl = detectSeverity(msg)
+                -- Extract the real Logger category (e.g. "ui", "system") from the prefix
+                local cat = extractLoggerCategory(msg) or "app"
+                -- Strip the redundant color-coded severity+category prefix
+                local clean = stripLoggerPrefix(msg)
+                pushLine(cat, clean, nil, "addon", lvl)
             end
             return
         end
@@ -249,27 +269,44 @@ end
 function LW:_FormatLines()
     local out = {}
     local count = 0
+    local sevLetters = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
     for i = 1, #CLN._AnimLogBuffer.lines do
         local L = CLN._AnimLogBuffer.lines[i]
         if lineMatchesFilters(L) then
             count = count + 1
             local sevColor = SEV_COLORS[L.lvl] or "|cffcccccc"
-            local timeStr = self._showTime ~= false and (sevColor .. fmtTime(L.t) .. "|r ") or ""
-            local cat = L.c and (sevColor .. "[" .. tostring(L.c) .. "]|r ") or ""
-            local sess = L.s and ("[sess:" .. tostring(L.s) .. "] ") or ""
-            out[#out + 1] = timeStr .. cat .. sess .. tostring(L.m)
+            local sevLetter = sevLetters[L.lvl] or "I"
+            local timeStr = self._showTime ~= false and ("|cff999999" .. fmtTime(L.t) .. "|r ") or ""
+            local sevTag = sevColor .. sevLetter .. "|r "
+            -- Build [source:category] or [source] tag
+            local src = L.r or "addon"
+            local cat = L.c or ""
+            local tag
+            if cat ~= "" and cat ~= src then
+                tag = "|cff888888[" .. src .. ":" .. cat .. "]|r "
+            elseif cat ~= "" then
+                tag = "|cff888888[" .. cat .. "]|r "
+            else
+                tag = "|cff888888[" .. src .. "]|r "
+            end
+            local sess = L.s and ("|cff666666sess:" .. tostring(L.s) .. "|r ") or ""
+            out[#out + 1] = timeStr .. sevTag .. tag .. sess .. tostring(L.m)
         end
     end
     return table.concat(out, "\n"), count
 end
 
-function LW:_Refresh()
+function LW:_Refresh(force)
     if not self._frame or not self._frame:IsShown() then return end
-    if not self._auto then return end
+    -- A nil _lastBufVersion means a filter changed and needs re-render even if paused
+    local filterChanged = (self._lastBufVersion == nil)
+    if not force and not filterChanged and not self._auto then return end
     if not self._edit then return end
     local t = now()
-    local throttle = self._throttleSec or 0.25
-    if self._lastRefresh and (t - self._lastRefresh) < throttle then return end
+    if not force and not filterChanged then
+        local throttle = self._throttleSec or 0.25
+        if self._lastRefresh and (t - self._lastRefresh) < throttle then return end
+    end
     self._lastRefresh = t
     -- Skip if buffer unchanged since last render
     local curVer = CLN._AnimLogBuffer.version or 0
@@ -328,9 +365,9 @@ function LW:Create()
     f:EnableMouse(true)
     f:SetResizable(true)
     if f.SetResizeBounds then
-        f:SetResizeBounds(700, 400, 1600, 1000)
+        f:SetResizeBounds(700, 520, 1600, 1000)
     else
-        if f.SetMinResize then f:SetMinResize(700, 400) end
+        if f.SetMinResize then f:SetMinResize(700, 520) end
         if f.SetMaxResize then f:SetMaxResize(1600, 1000) end
     end
 
@@ -581,7 +618,7 @@ function LW:Create()
     refreshBtn:SetSize(68, 22)
     refreshBtn:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 0, 4)
     refreshBtn:SetText("Refresh")
-    refreshBtn:SetScript("OnClick", function() LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh() end)
+    refreshBtn:SetScript("OnClick", function() LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh(true) end)
 
     local clearBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
     clearBtn:SetSize(52, 22)
@@ -591,7 +628,7 @@ function LW:Create()
         CLN._AnimLogBuffer.lines = {}
         CLN._AnimLogBuffer.cats = {}
         CLN._AnimLogBuffer.version = (CLN._AnimLogBuffer.version or 0) + 1
-        LW._lastBufVersion = nil; LW:_Refresh()
+        LW._lastBufVersion = nil; LW:_Refresh(true)
     end)
 
     -- ════════════════ RIGHT PANEL CONTENT ════════════════
@@ -732,7 +769,7 @@ function LW:Create()
     end)
 
     local showTimeChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-    showTimeChk:SetPoint("LEFT", pauseChk, "RIGHT", 40, 0)
+    showTimeChk:SetPoint("LEFT", pauseChk, "RIGHT", 12, 0)
     showTimeChk.text = showTimeChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     showTimeChk.text:SetPoint("LEFT", showTimeChk, "RIGHT", 2, 0)
     showTimeChk.text:SetText("Time")
@@ -740,7 +777,7 @@ function LW:Create()
     showTimeChk:SetScript("OnClick", function(self) LW._showTime = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
     local autoScrollChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
-    autoScrollChk:SetPoint("LEFT", showTimeChk, "RIGHT", 40, 0)
+    autoScrollChk:SetPoint("LEFT", showTimeChk, "RIGHT", 12, 0)
     autoScrollChk.text = autoScrollChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     autoScrollChk.text:SetPoint("LEFT", autoScrollChk, "RIGHT", 2, 0)
     autoScrollChk.text:SetText("Scroll")
