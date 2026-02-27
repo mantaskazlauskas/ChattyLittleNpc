@@ -106,6 +106,8 @@ local defaults = {
         editModeGlowHints = true,
         -- Accessibility: high-contrast mode for colorblind users
         highContrastMode = false,
+        -- Experimental: auto-pause addon voiceover when native NPC VO is detected
+        pauseOnNativeVO = false,
     }
 }
 
@@ -195,15 +197,30 @@ function CLN:OnEnable()
         self.ReplayFrame:LoadFramePosition()
     end
 
-    self.PlayButton:AttachQuestLogAndDetailsButtons()
-
-    if type(QuestMapFrame_UpdateAll) == "function" then
-        hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
-    end
-
-    if (QuestMapFrame) then
+    -- Quest Log play button: QuestMapFrame is a load-on-demand Blizzard addon
+    -- so it may not exist yet.  Try immediately, else defer until it loads.
+    local function tryAttachQuestLogButtons()
+        if not QuestMapFrame then return false end
+        self.PlayButton:AttachQuestLogAndDetailsButtons()
+        if type(QuestMapFrame_UpdateAll) == "function" then
+            hooksecurefunc("QuestMapFrame_UpdateAll", self.PlayButton.UpdatePlayButton)
+        end
         QuestMapFrame:HookScript("OnShow", self.PlayButton.UpdatePlayButton)
-        QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+        if QuestMapFrame.DetailsFrame then
+            QuestMapFrame.DetailsFrame:HookScript("OnHide", self.PlayButton.HidePlayButton)
+        end
+        return true
+    end
+    if not tryAttachQuestLogButtons() then
+        local waitFrame = CreateFrame("Frame")
+        waitFrame:RegisterEvent("ADDON_LOADED")
+        waitFrame:SetScript("OnEvent", function(f)
+            if QuestMapFrame then
+                f:UnregisterEvent("ADDON_LOADED")
+                f:SetScript("OnEvent", nil)
+                tryAttachQuestLogButtons()
+            end
+        end)
     end
 
     self:GetLoadedExpansionVoiceoverPacks()
@@ -287,7 +304,7 @@ function CLN:OnEnable()
                             self.ReplayFrame:_UpdateModelOnUpdateHook()
                         end
             elseif key == "questPlaybackMode" then
-                self:_SyncLegacyQuestPlaybackFlags()
+                -- no-op: legacy sync removed; questPlaybackMode is the single source of truth
             end
         end
         -- Use dot-notation per CallbackHandler: self is the addon receiving callbacks
@@ -426,10 +443,10 @@ function CLN:HandlePlaybackStart(questPhase)
     local gender = select(2, self:GetUnitInfo("npc"))
     
     if (questId > 0) then
-        self._playbackTimerGen = (self._playbackTimerGen or 0) + 1
-        local gen = self._playbackTimerGen
+        self._questTimerGen = (self._questTimerGen or 0) + 1
+        local gen = self._questTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            if self._playbackTimerGen ~= gen then return end
+            if self._questTimerGen ~= gen then return end
             self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
         end)
     end
@@ -446,10 +463,10 @@ end
 ]]
 function CLN:HandleGossipPlaybackStart(id, text, type, gender)
     if (id > 0 and text) then
-        self._playbackTimerGen = (self._playbackTimerGen or 0) + 1
-        local gen = self._playbackTimerGen
+        self._gossipTimerGen = (self._gossipTimerGen or 0) + 1
+        local gen = self._gossipTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            if self._playbackTimerGen ~= gen then return end
+            if self._gossipTimerGen ~= gen then return end
             self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender)
         end)
     end
