@@ -207,6 +207,15 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
 
+            -- Progress bar for the currently-playing row
+            local progressBar = row:CreateTexture(nil, "BORDER")
+            progressBar:SetPoint("BOTTOMLEFT", row, "BOTTOMLEFT", 6, 0)
+            progressBar:SetHeight(2)
+            progressBar:SetWidth(0.001)
+            progressBar:SetColorTexture(0.2, 1.0, 0.2, 0.5)
+            progressBar:Hide()
+            row.progressBar = progressBar
+
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnMouseUp", function(selfBtn, button)
                 local e = selfBtn._element
@@ -347,7 +356,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.progressBar then r.progressBar:Hide() end; r:SetScript("OnUpdate", nil) end
         local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
@@ -477,6 +486,25 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         row.bulletTex:SetSize(4, 4)
                         row.bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9) -- restore gold bullet
                         row.bulletTex:Show()
+                    end
+                end
+                -- Playback progress bar for the active row
+                if row.progressBar then
+                    if element.isPlaying then
+                        row.progressBar:Show()
+                        row:SetScript("OnUpdate", function(r)
+                            local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                            if not (cp and cp.startTime and cp.title and GetTime) then return end
+                            local elapsed = GetTime() - cp.startTime
+                            local estimated = CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title) or 0
+                            if estimated <= 0 then return end
+                            local maxW = math.max(1, (r:GetWidth() or 200) - 12)
+                            local progress = math.min(1, math.max(0, elapsed / estimated))
+                            r.progressBar:SetWidth(math.max(1, maxW * progress))
+                        end)
+                    else
+                        row.progressBar:Hide()
+                        row:SetScript("OnUpdate", nil)
                     end
                 end
                 local avail = self:GetRowTextAvailableWidth(row)

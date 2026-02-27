@@ -126,6 +126,18 @@ function ReplayFrame:EnsureCompactBadge()
     progressLine:Hide()
     badge.ProgressLine = progressLine
 
+    -- Progress updater: animate ProgressLine width per-frame while playing
+    badge._progressOnUpdate = function(_, _)
+        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        if not (cp and cp.startTime and cp.title and GetTime) then return end
+        local elapsed = GetTime() - cp.startTime
+        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title) or 0
+        if estimated <= 0 then return end
+        local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
+        local progress = math.min(1, math.max(0, elapsed / estimated))
+        progressLine:SetWidth(math.max(1, maxW * progress))
+    end
+
     -- Speaker glow pulse animation
     local glowAG = iconGlow:CreateAnimationGroup()
     glowAG:SetLooping("REPEAT")
@@ -206,11 +218,12 @@ function ReplayFrame:UpdateCompactBadge(force)
             badge.IconGlow:Show()
             if badge.GlowAnim and not badge.GlowAnim:IsPlaying() then badge.GlowAnim:Play() end
         end
-        -- Show progress line
+        -- Show animated progress line
         if badge.ProgressLine then
-            local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
-            badge.ProgressLine:SetWidth(maxW)
             badge.ProgressLine:Show()
+            if badge._progressOnUpdate then
+                badge:SetScript("OnUpdate", badge._progressOnUpdate)
+            end
         end
     else
         badge.Icon:SetVertexColor(0.5, 0.5, 0.5, 0.6)
@@ -218,6 +231,7 @@ function ReplayFrame:UpdateCompactBadge(force)
         if badge.GlowAnim and badge.GlowAnim:IsPlaying() then badge.GlowAnim:Stop() end
         if badge.IconGlow then badge.IconGlow:Hide() end
         if badge.ProgressLine then badge.ProgressLine:Hide() end
+        badge:SetScript("OnUpdate", nil)
     end
 end
 
