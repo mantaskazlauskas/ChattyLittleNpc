@@ -291,11 +291,29 @@ end
 
 --- Pause playback: stop current sound and freeze queue advancement.
 --- WoW has no sound seek API so the interrupted sound cannot resume mid-stream.
+--- Skips pausing if less than 1.5 seconds of estimated playback remain.
 function VoiceoverPlayer:PausePlayback()
     if self._paused then return end
-    self._paused = true
 
     local cp = self.currentlyPlaying
+    -- If the VO is almost finished, let it play out instead of pausing
+    if cp and cp.soundHandle and cp.startTime and cp.title and GetTime then
+        local elapsed = GetTime() - cp.startTime
+        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration
+            and CLN.Utils.EstimateVODuration(cp.title) or 0
+        if estimated > 0 then
+            local remaining = estimated - elapsed
+            if remaining < 1.5 then
+                if CLN.db.profile.debugMode and CLN.Logger then
+                    CLN.Logger:debug("Pause skipped: ~" .. string.format("%.1f", remaining) .. "s remaining", false, CLN.Utils.LogCategories.loader)
+                end
+                return
+            end
+        end
+    end
+
+    self._paused = true
+
     if cp and cp.soundHandle then
         StopSound(cp.soundHandle, 0)
         cp._pausedByUser = true
