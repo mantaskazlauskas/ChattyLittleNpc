@@ -327,7 +327,7 @@ function LW:_Refresh(force)
     if self._lineCountLabel then
         self._lineCountLabel:SetText(count .. " / " .. #CLN._AnimLogBuffer.lines .. " lines")
     end
-    if self._autoScroll ~= false then
+    if self._autoScroll ~= false and not self._scrollPaused then
         local n = (self._edit.GetNumLetters and self._edit:GetNumLetters()) or string.len(txt)
         if self._edit.SetCursorPosition and n then self._edit:SetCursorPosition(n) end
     end
@@ -732,6 +732,25 @@ function LW:Create()
     eb:SetWidth(math.max(200, right:GetWidth() - 24))
     sf:SetScrollChild(eb)
     LW._edit = eb
+    LW._scrollFrame = sf
+
+    -- "New entries" indicator (shown when scroll-paused)
+    local newBtn = CreateFrame("Button", nil, right, "UIPanelButtonTemplate")
+    newBtn:SetSize(110, 20)
+    newBtn:SetPoint("BOTTOM", sf, "BOTTOM", 0, 4)
+    newBtn:SetFrameLevel(right:GetFrameLevel() + 5)
+    newBtn:SetText("0 new")
+    newBtn:Hide()
+    newBtn:SetScript("OnClick", function()
+        LW._scrollPaused = false
+        if LW._scrollFrame then
+            local maxRange = LW._scrollFrame:GetVerticalScrollRange()
+            LW._scrollFrame:SetVerticalScroll(maxRange)
+        end
+        LW._lastBufVersion = nil
+        LW:_Refresh(true)
+    end)
+    LW._newEntriesBtn = newBtn
 
     right:SetScript("OnSizeChanged", function()
         if LW._edit and right:GetWidth() then
@@ -775,6 +794,7 @@ function LW:Create()
     pauseChk:SetScript("OnShow", function(self) self:SetChecked(LW._auto == false) end)
     pauseChk:SetScript("OnClick", function(self)
         LW._auto = not self:GetChecked()
+        LW._scrollPaused = false
         if LW._auto then LW._lastBufVersion = nil; LW:_Refresh() end
     end)
 
@@ -804,12 +824,39 @@ function LW:Create()
     -- ════════════════ FRAME SCRIPTS ════════════════
     f:SetScript("OnShow", function()
         LW._auto = (LW._auto ~= false)
+        LW._scrollPaused = false
         LW:_RebuildCategoryList()
         LW._lastBufVersion = nil
         LW:_Refresh()
     end)
     f:SetScript("OnUpdate", function()
         if not f:IsShown() then return end
+        -- Detect scroll-up: auto-pause when user scrolls away from bottom
+        if LW._auto and LW._autoScroll ~= false and LW._scrollFrame then
+            local maxRange = LW._scrollFrame:GetVerticalScrollRange()
+            local curScroll = LW._scrollFrame:GetVerticalScroll()
+            local atBottom = maxRange <= 1 or curScroll >= (maxRange - 2)
+            if atBottom and LW._scrollPaused then
+                LW._scrollPaused = false
+            elseif not atBottom and not LW._scrollPaused then
+                LW._scrollPaused = true
+                LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
+            end
+        end
+        -- Update "new entries" indicator
+        if LW._newEntriesBtn then
+            if LW._scrollPaused and LW._auto then
+                local newCount = (CLN._AnimLogBuffer.version or 0) - (LW._scrollPausedVersion or 0)
+                if newCount > 0 then
+                    LW._newEntriesBtn:SetText(newCount .. " new")
+                    LW._newEntriesBtn:Show()
+                else
+                    LW._newEntriesBtn:Hide()
+                end
+            else
+                LW._newEntriesBtn:Hide()
+            end
+        end
         if LW._auto then LW:_Refresh() end
     end)
 
