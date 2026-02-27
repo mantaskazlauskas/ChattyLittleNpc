@@ -442,11 +442,25 @@ function CLN:HandlePlaybackStart(questPhase)
     local npcId = select(6, self:GetUnitInfo("npc"))
     local gender = select(2, self:GetUnitInfo("npc"))
     
+    if self.db.profile.debugMode and self.Logger then
+        self.Logger:debug("HandlePlaybackStart phase=" .. tostring(questPhase)
+            .. " questId=" .. tostring(questId)
+            .. " npcId=" .. tostring(npcId)
+            .. " gen=" .. tostring((self._questTimerGen or 0) + 1),
+            false, self.Utils.LogCategories.loader)
+    end
+
     if (questId > 0) then
         self._questTimerGen = (self._questTimerGen or 0) + 1
         local gen = self._questTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
-            if self._questTimerGen ~= gen then return end
+            if self._questTimerGen ~= gen then
+                if self.db.profile.debugMode and self.Logger then
+                    self.Logger:debug("HandlePlaybackStart timer SKIPPED (gen mismatch: " .. tostring(gen) .. " vs " .. tostring(self._questTimerGen) .. ")",
+                        false, self.Utils.LogCategories.loader)
+                end
+                return
+            end
             self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId)
         end)
     end
