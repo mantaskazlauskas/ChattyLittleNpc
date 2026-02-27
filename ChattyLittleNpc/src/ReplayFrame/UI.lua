@@ -246,24 +246,6 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetHeight(1)
     self.HeaderDivider = divider
 
-    -- Progress bar: 2px gold texture below divider (indeterminate shimmer)
-    local progressBar = contentFrame:CreateTexture(nil, "ARTWORK")
-    progressBar:SetColorTexture(1.0, 0.82, 0.0, 0.7)
-    progressBar:SetPoint("TOPLEFT", divider, "BOTTOMLEFT", 0, -1)
-    progressBar:SetHeight(2)
-    progressBar:SetWidth(0)
-    progressBar:Hide()
-    self.ProgressBar = progressBar
-
-    -- Shimmer overlay for indeterminate progress
-    local shimmer = contentFrame:CreateTexture(nil, "OVERLAY")
-    shimmer:SetColorTexture(1.0, 1.0, 0.8, 0.4)
-    shimmer:SetPoint("TOPLEFT", progressBar, "TOPLEFT", 0, 0)
-    shimmer:SetHeight(2)
-    shimmer:SetWidth(30)
-    shimmer:Hide()
-    self.ProgressShimmer = shimmer
-
     -- Subtitle display: shows current dialogue text below model area
     local subtitleBg = CreateFrame("Frame", nil, contentFrame, "BackdropTemplate")
     subtitleBg:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 4, -4)
@@ -577,39 +559,6 @@ end
 -- =============================================
 -- Compact Badge (Collapsed Mode) Implementation
 -- =============================================
-function ReplayFrame:UpdateProgressBar()
-    if not self.ProgressBar then return end
-    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showProgressBar
-    if not enabled then
-        self.ProgressBar:Hide()
-        if self.ProgressShimmer then self.ProgressShimmer:Hide() end
-        return
-    end
-    local playing = self:IsVoiceoverCurrenltyPlaying()
-    if playing then
-        -- Show progress bar at full width of divider
-        local maxW = 0
-        if self.HeaderDivider and self.HeaderDivider.GetWidth then
-            maxW = self.HeaderDivider:GetWidth() or 200
-        end
-        self.ProgressBar:SetWidth(maxW)
-        self.ProgressBar:Show()
-        -- Animate shimmer
-        if self.ProgressShimmer then
-            self.ProgressShimmer:Show()
-            -- Simple shimmer: move shimmer across the bar using time
-            local t = GetTime and GetTime() or 0
-            local cycle = (t % 2) / 2 -- 0..1 over 2 seconds
-            local shimmerX = cycle * math.max(1, maxW - 30)
-            self.ProgressShimmer:ClearAllPoints()
-            self.ProgressShimmer:SetPoint("TOPLEFT", self.ProgressBar, "TOPLEFT", shimmerX, 0)
-        end
-    else
-        self.ProgressBar:Hide()
-        if self.ProgressShimmer then self.ProgressShimmer:Hide() end
-    end
-end
-
 -- =============================================================
 -- Animated collapse / expand (fade + subtle scale) for badge UI
 -- =============================================================

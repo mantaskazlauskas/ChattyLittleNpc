@@ -842,7 +842,6 @@ function ReplayFrame:UpdateDisplayFrame()
 
     -- Animation updates gated by visibility and playback
     self:UpdateAnimationsIfNeeded()
-    if self.UpdateProgressBar then self:UpdateProgressBar() end
 
 end
 

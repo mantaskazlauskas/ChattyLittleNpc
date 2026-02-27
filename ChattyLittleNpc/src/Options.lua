@@ -424,20 +424,6 @@ local options = {
                     get = function(info) return CLN.db.profile.combatAutoCollapse end,
                     set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
                 },
-                showProgressBar = {
-                    order = 5,
-                    type = 'toggle',
-                    width = 'full',
-                    name = 'Show Progress Bar',
-                    desc = 'Display a progress bar showing how far along the current voiceover is.',
-                    get = function(info) return CLN.db.profile.showProgressBar end,
-                    set = function(info, value)
-                        CLN.db.profile.showProgressBar = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateProgressBar then
-                            CLN.ReplayFrame:UpdateProgressBar()
-                        end
-                    end,
-                },
                 showQuestTypeBadges = {
                     order = 6,
                     type = 'toggle',

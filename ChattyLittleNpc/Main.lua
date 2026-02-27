@@ -93,8 +93,6 @@ local defaults = {
         editModeLayouts = {},
         -- Replay UI: combat behavior
         combatAutoCollapse = true,
-        -- Replay UI: progress bar
-        showProgressBar = true,
         -- Replay UI: subtitles
         showSubtitles = false,
         subtitleFontScale = 1.0,
@@ -306,8 +304,6 @@ function CLN:OnEnable()
                 elseif (not self.db.profile.combatAutoCollapse) and self.ReplayFrame._combatAutoCollapsed and self.ReplayFrame.OnCombatEnd then
                     self.ReplayFrame:OnCombatEnd()
                 end
-            elseif key == "showProgressBar" and self.ReplayFrame and self.ReplayFrame.UpdateProgressBar then
-                self.ReplayFrame:UpdateProgressBar()
             elseif key == "showSubtitles" and self.ReplayFrame then
                 local cur = self.VoiceoverPlayer and self.VoiceoverPlayer.currentlyPlaying
                 if self.db.profile.showSubtitles and cur and cur.title and self.ReplayFrame.ShowSubtitle then
@@ -374,7 +370,6 @@ function CLN:OnEnable()
             applyKey("alwaysShowReplayFrame")
             applyKey("debugNoAnim")
             applyKey("combatAutoCollapse")
-            applyKey("showProgressBar")
             applyKey("showSubtitles")
             applyKey("editModeGlowHints")
             applyKey("showQuestTypeBadges")
@@ -382,10 +377,10 @@ function CLN:OnEnable()
             applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showProgressBar"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self._dbProfileHooked = true
     end
