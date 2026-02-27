@@ -430,6 +430,8 @@ function ReplayFrame:PushHistory(entry)
     if not entry then return end
     local max = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueHistoryMaxEntries) or self._replayHistoryMax
     if max <= 0 then return end
+    -- Ensure timestamp exists
+    if not entry.completedAt then entry.completedAt = GetTime and GetTime() or 0 end
     -- Deduplicate: remove existing entry with same identity before re-inserting at top
     for i = #self._replayHistory, 1, -1 do
         local h = self._replayHistory[i]
@@ -442,6 +444,21 @@ function ReplayFrame:PushHistory(entry)
     table.insert(self._replayHistory, 1, entry) -- newest first
     while #self._replayHistory > max do
         table.remove(self._replayHistory)
+    end
+    -- Prune entries older than 5 minutes
+    self:PruneOldHistory()
+end
+
+local HISTORY_TTL = 300 -- 5 minutes in seconds
+
+function ReplayFrame:PruneOldHistory()
+    if not self._replayHistory then return end
+    local now = GetTime and GetTime() or 0
+    for i = #self._replayHistory, 1, -1 do
+        local h = self._replayHistory[i]
+        if h.completedAt and (now - h.completedAt) > HISTORY_TTL then
+            table.remove(self._replayHistory, i)
+        end
     end
 end
 
@@ -480,7 +497,8 @@ function ReplayFrame:BuildQueueEntries()
         end
     end
 
-    -- Append history entries (most recent first)
+    -- Append history entries (most recent first), pruning expired ones
+    self:PruneOldHistory()
     local history = self:GetHistory()
     if history and #history > 0 then
         table.insert(entries, { isDivider = true, label = "— History —" })
@@ -660,11 +678,19 @@ end
 -- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
 -- NOTE: Combat lockdown guards temporarily disabled for testing.
 function ReplayFrame:OnCombatStart()
-    -- TESTING: no-op — keep frame visible during combat
+    if self.DisplayFrame and self.DisplayFrame:IsShown() then
+        self._combatAutoCollapsed = true
+        self.DisplayFrame:Hide()
+    end
+    if self.NpcModelFrame then self.NpcModelFrame:Hide() end
+    if self.ModelContainer then self.ModelContainer:Hide() end
 end
 
 function ReplayFrame:OnCombatEnd()
-    -- TESTING: no-op — frame was never collapsed
+    if self._combatAutoCollapsed then
+        self._combatAutoCollapsed = nil
+        if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end
+    end
 end
 
 -- List refresh debounce/dirty handling
