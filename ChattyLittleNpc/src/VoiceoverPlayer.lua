@@ -14,6 +14,11 @@ CLN.VoiceoverPlayer = VoiceoverPlayer
 ---@return boolean isQueued, number index
 function VoiceoverPlayer:IsQuestPhaseQueued(questId, phase)
     if not (questId and phase) then return false end
+    -- Check currently playing item too (not just the queue)
+    local cp = VoiceoverPlayer.currentlyPlaying
+    if cp and cp.questId == questId and cp.phase == phase and cp.soundHandle then
+        return true, 0
+    end
     for i, q in ipairs(CLN.questsQueue) do
         if q.questId == questId and q.phase == phase then
             return true, i
@@ -22,7 +27,25 @@ function VoiceoverPlayer:IsQuestPhaseQueued(questId, phase)
     return false
 end
 
---- Remove duplicate quest-phase entries keeping the first occurrence.
+--- Deduplicate the queue, removing entries that match currently playing or are duplicated.
+function VoiceoverPlayer:DeduplicateQueue()
+    if not CLN.questsQueue then return end
+    local seen = {}
+    local cp = VoiceoverPlayer.currentlyPlaying
+    -- Mark currently playing as seen
+    if cp and cp.questId and cp.phase then
+        seen[cp.questId .. "|" .. cp.phase] = true
+    end
+    for i = #CLN.questsQueue, 1, -1 do
+        local q = CLN.questsQueue[i]
+        local key = (q.questId or "") .. "|" .. (q.phase or "") .. "|" .. (q.title or "")
+        if seen[key] then
+            table.remove(CLN.questsQueue, i)
+        else
+            seen[key] = true
+        end
+    end
+end
 
 function VoiceoverPlayer:GetCurrentlyPlayingObject()
     return {

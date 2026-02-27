@@ -313,17 +313,21 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         -- Queue is frozen while paused; don't advance
         if CLN and CLN.Logger then CLN.Logger:debug("Queue paused, skipping advancement.", false, CLN.Utils.LogCategories.loader) end
     elseif #CLN.questsQueue > 0 then
-        if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
-        -- Ensure previous emote/animation state is clean before starting next
-        if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
-            local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
-            if (not ok) and CLN and CLN.Logger then
-                CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
+        -- Deduplicate before advancing to avoid playing the same thing twice
+        CLN.VoiceoverPlayer:DeduplicateQueue()
+        if #CLN.questsQueue > 0 then
+            if CLN and CLN.Logger then CLN.Logger:debug("Playing next quest in queue.", false, CLN.Utils.LogCategories.loader) end
+            -- Ensure previous emote/animation state is clean before starting next
+            if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+                local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+                if (not ok) and CLN and CLN.Logger then
+                    CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
+                end
             end
+            local nextQuest = CLN.questsQueue[1]
+            CLN.VoiceoverPlayer.queueProcessed = false
+            CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
         end
-        local nextQuest = CLN.questsQueue[1]
-        CLN.VoiceoverPlayer.queueProcessed = false
-        CLN.VoiceoverPlayer:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
     else
         -- Nothing left in the queue; clear current if it matches the stopped handle
         local curr = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
