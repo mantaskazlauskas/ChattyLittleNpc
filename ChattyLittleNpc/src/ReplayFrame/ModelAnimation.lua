@@ -124,8 +124,12 @@ function ReplayFrame:AnimPanTo(targetZ, duration, opts)
     end
     local m = self.NpcModelFrame
     local fromZ = (self._currentZOffset ~= nil) and self._currentZOffset or (self.modelZOffset or 0)
-    if m and m.GetPosition then
-        -- PlayerModel doesn't provide GetPosition reliably; keep our cached value
+    -- Prefer the host's camera snapshot as ground truth for the current Z.
+    -- _currentZOffset may be stale (e.g. modelZOffset = -0.08 from setup) while
+    -- the camera was repositioned to faceZ by FrameFullBodyFront / _ApplyCamera.
+    -- Using the snapshot avoids a large first-frame delta in the SetTarget shim.
+    if m and m._lastCamSnapshot and m._lastCamSnapshot.tz ~= nil then
+        fromZ = m._lastCamSnapshot.tz
     end
     
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then

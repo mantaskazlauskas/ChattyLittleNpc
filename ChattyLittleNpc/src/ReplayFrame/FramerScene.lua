@@ -130,7 +130,15 @@ end
 function FS.ProjectFit(host, scale, center)
     if not host then return end
     if scale ~= nil and host.SetActorScale then host:SetActorScale(scale) end
-    if center ~= nil and host.SetTarget then host:SetTarget(center) end
+    -- Update target coordinates directly so _ApplyCamera positions the camera
+    -- at the requested center. Calling delta-based SetTarget before the absolute
+    -- _ApplyCamera would discard the center and create a coordinate-space
+    -- mismatch between _currentZOffset and the camera snapshot.
+    if center ~= nil then
+        if center.x ~= nil then host._targetX = tonumber(center.x) end
+        if center.y ~= nil then host._targetY = tonumber(center.y) end
+        if center.z ~= nil then host._targetZ = tonumber(center.z) end
+    end
     if host._ApplyCamera then host:_ApplyCamera() end
     debugf("projection", "FramerScene.ProjectFit: s=%s center=%s", tostring(scale), tostring(center))
 end
