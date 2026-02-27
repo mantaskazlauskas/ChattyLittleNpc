@@ -490,6 +490,11 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         return
     end
 
+    -- Auto-learn new creature IDs for already-whitelisted NPCs
+    if npcId and not wl[npcId] and npcName and wl[npcName] then
+        wl[npcId] = true
+    end
+
     -- Already paused? Extend the timer instead of double-pausing
     if isPaused then
         local dur = EstimateVODuration(text)
@@ -564,7 +569,8 @@ function EventHandler:RecordNpcSpeech(npcId, npcName, text, event)
 end
 
 --- Get unique NPCs from recent speeches that aren't already whitelisted or dismissed.
----@return table[] Array of { npcId, npcName, text } for popup display
+--- Groups by name and collects all seen IDs (same NPC can have multiple creature IDs).
+---@return table[] Array of { npcName, npcIds={id1,id2,...}, text } for popup display
 function EventHandler:GetUnaskedRecentNpcs()
     if not self._recentNpcSpeeches then return {} end
     local wl = CLN.db.profile.nativeVOWhitelist or {}
@@ -572,26 +578,39 @@ function EventHandler:GetUnaskedRecentNpcs()
     local now = GetTime and GetTime() or 0
     local cutoff = now - SPEECH_BUFFER_TTL
 
-    -- Deduplicate by npcId (or npcName if no ID), keep most recent text
-    local seen = {}
-    local result = {}
+    -- Group by npcName, collect all unique IDs and most recent text
+    local byName = {}
+    local order = {}
     for i = #self._recentNpcSpeeches, 1, -1 do
         local entry = self._recentNpcSpeeches[i]
         if entry.timestamp >= cutoff then
-            local key = entry.npcId and tostring(entry.npcId) or entry.npcName
-            if not seen[key] then
-                seen[key] = true
-                -- Skip if already whitelisted or dismissed
-                local isWhitelisted = (entry.npcId and wl[entry.npcId]) or wl[entry.npcName]
-                local isDismissed = (entry.npcId and dismissed[entry.npcId]) or dismissed[entry.npcName]
-                if not isWhitelisted and not isDismissed then
-                    table.insert(result, {
-                        npcId = entry.npcId,
-                        npcName = entry.npcName,
-                        text = entry.text,
-                    })
-                end
+            local name = entry.npcName or "Unknown"
+            if not byName[name] then
+                byName[name] = { npcName = name, npcIds = {}, text = entry.text, _idSet = {} }
+                table.insert(order, name)
             end
+            if entry.npcId and not byName[name]._idSet[entry.npcId] then
+                byName[name]._idSet[entry.npcId] = true
+                table.insert(byName[name].npcIds, entry.npcId)
+            end
+        end
+    end
+
+    local result = {}
+    for _, name in ipairs(order) do
+        local info = byName[name]
+        -- Skip if already whitelisted or dismissed (check name + any known ID)
+        local isWhitelisted = wl[name]
+        local isDismissed = dismissed[name]
+        if not isWhitelisted and not isDismissed then
+            for _, id in ipairs(info.npcIds) do
+                if wl[id] then isWhitelisted = true; break end
+                if dismissed[id] then isDismissed = true; break end
+            end
+        end
+        if not isWhitelisted and not isDismissed then
+            info._idSet = nil -- clean up temp
+            table.insert(result, info)
         end
     end
     return result

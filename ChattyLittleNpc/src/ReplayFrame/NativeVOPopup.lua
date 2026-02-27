@@ -119,16 +119,19 @@ function ReplayFrame:OnWhitelistPopupAccept(checks)
         local npc = cb._npcData
         if npc then
             if cb:GetChecked() then
-                -- Add to whitelist by both ID and name
-                if npc.npcId then wl[npc.npcId] = true end
+                -- Add to whitelist by name and all known IDs
                 if npc.npcName then wl[npc.npcName] = true end
+                local ids = npc.npcIds or {}
+                for _, id in ipairs(ids) do wl[id] = true end
                 if CLN.Logger then
-                    CLN.Logger:info("Whitelisted NPC: " .. tostring(npc.npcName) .. " (id=" .. tostring(npc.npcId) .. ")", false, CLN.Utils.LogCategories.loader)
+                    local idStr = #ids > 0 and table.concat(ids, ",") or "nil"
+                    CLN.Logger:info("Whitelisted NPC: " .. tostring(npc.npcName) .. " (ids=" .. idStr .. ")", false, CLN.Utils.LogCategories.loader)
                 end
             else
                 -- Unchecked = dismiss (don't ask again)
-                if npc.npcId then dismissed[npc.npcId] = true end
                 if npc.npcName then dismissed[npc.npcName] = true end
+                local ids = npc.npcIds or {}
+                for _, id in ipairs(ids) do dismissed[id] = true end
             end
         end
     end
