@@ -107,4 +107,4 @@ Fitting computes the distance needed so the actor’s height or width fits insid
 - Widget: ModelScene, ModelSceneActorBase
 - Actor bounds: GetActiveBoundingBox, GetMaxBoundingBox, GetModelBounds
 - Scene helpers: SetCameraFieldOfView, Project3DPointTo2D (diagnostics), camera clips
-- Data: C_ModelInfo (camera/actor/display info) where relevant
+- Data: C_ModelInfo (camera/actor/display info) — see [C_ModelInfo.md](C_ModelInfo.md) for full API reference
