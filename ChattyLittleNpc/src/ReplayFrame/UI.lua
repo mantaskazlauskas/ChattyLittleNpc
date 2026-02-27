@@ -27,6 +27,7 @@ function ReplayFrame:GetDisplayFrame()
     self.expandedWidth = self.expandedWidth or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
     local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or 475)
     local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or 165
+    if defaultH < 80 then defaultH = 165 end
     frame:SetSize(defaultW, defaultH)
     if frame.SetResizeBounds then frame:SetResizeBounds(260, 120) end
 

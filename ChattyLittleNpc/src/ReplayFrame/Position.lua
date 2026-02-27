@@ -52,10 +52,12 @@ end
 -- Load saved frame position and size from the database
 function ReplayFrame:LoadFramePosition()
     local pos = CLN.db.profile.framePos
-    -- Apply saved size first (if any)
+    -- Apply saved size first (if any), clamping corrupted collapsed heights
     local size = CLN.db.profile.frameSize
     if size and size.width and size.height and self.DisplayFrame and self.DisplayFrame.SetSize then
-        self.DisplayFrame:SetSize(size.width, size.height)
+        local h = size.height
+        if h < 80 then h = 165 end
+        self.DisplayFrame:SetSize(size.width, h)
     end
     if (pos) then
         self.DisplayFrame:ClearAllPoints()
