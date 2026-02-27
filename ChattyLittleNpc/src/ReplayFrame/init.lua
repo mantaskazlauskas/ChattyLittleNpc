@@ -517,7 +517,17 @@ function ReplayFrame:RefreshQueueDataProvider()
     local rowsFit = 6
     if self.ContentFrame and self.ContentFrame.GetHeight then
         local h = self.ContentFrame:GetHeight() or 0
-        rowsFit = math.max(1, math.floor((h - 36 - 8) / 24))
+        local available = h - 36 - 8 -- subtract header + divider + padding
+        if available < 20 then
+            -- Not enough space for even one row — hide list entirely
+            if self.QueueListFrame then self.QueueListFrame:Hide() end
+            return
+        end
+        rowsFit = math.max(1, math.floor(available / 24))
+    end
+    -- Ensure list is visible when we have space
+    if self.QueueListFrame and not self.QueueListFrame:IsShown() then
+        self.QueueListFrame:Show()
     end
     -- Scroll-aware: show a window of entries based on scroll offset
     self._scrollOffset = self._scrollOffset or 0
@@ -648,53 +658,13 @@ end
 
 -- Combat auto-collapse: hide frame during combat (FSM skips all frame
 -- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
+-- NOTE: Combat lockdown guards temporarily disabled for testing.
 function ReplayFrame:OnCombatStart()
-    if self.HideSubtitle then self:HideSubtitle() end
-    if not self.DisplayFrame or not self.DisplayFrame:IsShown() then return end
-    -- Already collapsed by user, nothing to do
-    if self.CollapseButton and self.CollapseButton._collapsed then return end
-    -- Instant collapse (skip animation to avoid taint during combat lockdown)
-    self._combatAutoCollapsed = true
-    -- Sync the collapse flag so OnSizeChanged and layout paths agree on state
-    if self.CollapseButton then self.CollapseButton._collapsed = true end
-    if self.ApplyImmediateCollapseState then
-        self:ApplyImmediateCollapseState(true)
-    elseif self.DisplayFrame then
-        self.DisplayFrame:Hide()
-    end
+    -- TESTING: no-op — keep frame visible during combat
 end
 
 function ReplayFrame:OnCombatEnd()
-    if not self._combatAutoCollapsed then return end
-    self._combatAutoCollapsed = false
-    -- Restore the collapse flag so layout returns to expanded mode
-    if self.CollapseButton then self.CollapseButton._collapsed = false end
-    -- Deferred restore: InCombatLockdown() may still be true briefly after PLAYER_REGEN_ENABLED
-    local function safeRestore()
-        if InCombatLockdown() then
-            C_Timer.After(0.2, safeRestore)
-            return
-        end
-        if self.ApplyImmediateCollapseState then
-            self:ApplyImmediateCollapseState(false)
-        end
-        if self.UpdateDisplayFrameState then
-            self:UpdateDisplayFrameState()
-        end
-        if self.MarkQueueDirty then self:MarkQueueDirty() end
-        if self.UpdateProgressBar then self:UpdateProgressBar() end
-        local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        if CLN and CLN.db and CLN.db.profile and CLN.db.profile.showSubtitles and cur and cur.title and self.ShowSubtitle then
-            self:ShowSubtitle(cur.title)
-        elseif self.HideSubtitle then
-            self:HideSubtitle()
-        end
-    end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0.1, safeRestore)
-    else
-        safeRestore()
-    end
+    -- TESTING: no-op — frame was never collapsed
 end
 
 -- List refresh debounce/dirty handling

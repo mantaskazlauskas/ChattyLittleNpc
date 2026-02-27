@@ -1653,6 +1653,20 @@ function ReplayFrame:SetupFrameResize()
         -- Layout the model area via extracted module
         if this.LayoutModelArea then this:LayoutModelArea(frame) end
 
+        -- Ensure minimum content space when model is visible
+        -- Header (~24px) + divider (5px) + at least 1 row (24px) + padding = ~60px
+        local MIN_CONTENT_HEIGHT = 60
+        if hasModel and this.ModelContainer then
+            local modelH = this.ModelContainer:GetHeight() or 0
+            local availContent = height - modelH - 8 - 6 - 5 -- top margin + gap + bottom margin
+            if availContent < MIN_CONTENT_HEIGHT then
+                -- Shrink model to fit, keeping minimum content area
+                local newModelH = math.max(40, height - MIN_CONTENT_HEIGHT - 8 - 6 - 5)
+                this.ModelContainer:SetHeight(newModelH)
+                if this.NpcModelFrame then this.NpcModelFrame:SetHeight(newModelH) end
+            end
+        end
+
         if this.ContentFrame then
             this.ContentFrame:ClearAllPoints()
             if hasModel and this.ModelContainer then
