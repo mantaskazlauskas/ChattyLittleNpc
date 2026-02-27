@@ -30,11 +30,17 @@ local function getCategories()
 end
 
 -- Normalize category to a known token; default to misc
+local _loggerCategorySet = nil
 local function normalizeCategory(cat)
 	if type(cat) ~= "string" or cat == "" then return (getCategories().misc or "misc") end
-	local C = getCategories()
-	for _, v in pairs(C) do if v == cat then return v end end
-	return C.misc or "misc"
+	-- Build set lazily on first use (categories may not be available at file load time)
+	if not _loggerCategorySet then
+		_loggerCategorySet = {}
+		local C = getCategories()
+		for _, v in pairs(C) do _loggerCategorySet[v] = true end
+	end
+	if _loggerCategorySet[cat] then return cat end
+	return getCategories().misc or "misc"
 end
 
 -- Should a message print to console based on severity and user prefs
