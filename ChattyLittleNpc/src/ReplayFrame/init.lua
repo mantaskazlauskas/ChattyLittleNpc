@@ -430,6 +430,15 @@ function ReplayFrame:PushHistory(entry)
     if not entry then return end
     local max = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueHistoryMaxEntries) or self._replayHistoryMax
     if max <= 0 then return end
+    -- Deduplicate: remove existing entry with same identity before re-inserting at top
+    for i = #self._replayHistory, 1, -1 do
+        local h = self._replayHistory[i]
+        if h.npcId == entry.npcId and h.title == entry.title
+           and (h.questId or "") == (entry.questId or "")
+           and (h.phase or "") == (entry.phase or "") then
+            table.remove(self._replayHistory, i)
+        end
+    end
     table.insert(self._replayHistory, 1, entry) -- newest first
     while #self._replayHistory > max do
         table.remove(self._replayHistory)
