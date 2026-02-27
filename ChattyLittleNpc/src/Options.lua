@@ -90,17 +90,15 @@ local options = {
                 },
                 nativeVOMode = {
                     order = 6,
-                    type = 'select',
+                    type = 'toggle',
                     width = 'full',
-                    name = 'Native NPC Voiceover Handling',
-                    desc = 'How to handle native NPC voiced speech while addon VO is playing.\n\n'
-                        .. '|cFFFFFFFFOff|r — Ignore NPC speech entirely.\n'
-                        .. '|cFFFFFFFFAll|r — Pause addon VO on any NPC speech (may false-positive on unvoiced text).\n'
-                        .. '|cFFFFFFFFWhitelist|r — Only pause for NPCs you\'ve confirmed have voice acting. '
-                        .. 'When you pause playback, a popup asks if you want to add recently speaking NPCs to the list.',
-                    values = { off = "Off", all = "All NPC Speech", whitelist = "Whitelist (Recommended)" },
-                    get = function(info) return CLN.db.profile.nativeVOMode or "off" end,
-                    set = function(info, value) CLN.db.profile.nativeVOMode = value end,
+                    name = 'Pause for Voiced NPCs',
+                    desc = 'When enabled, the addon pauses its voiceover when an NPC from your '
+                        .. 'whitelist speaks with native voice acting.\n\n'
+                        .. 'To add NPCs: pause playback while an NPC is speaking and a popup will '
+                        .. 'ask if you want to remember that NPC.',
+                    get = function(info) return (CLN.db.profile.nativeVOMode or "off") ~= "off" end,
+                    set = function(info, value) CLN.db.profile.nativeVOMode = value and "whitelist" or "off" end,
                 },
                 pauseForHeader = {
                     order = 10,

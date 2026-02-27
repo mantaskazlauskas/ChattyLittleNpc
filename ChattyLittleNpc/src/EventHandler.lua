@@ -440,7 +440,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         self:ExtendWhitelistPopupTimer(text)
     end
 
-    -- Mode check: "off" (default), "all", or "whitelist"
+    -- Only pause for whitelisted NPCs; "off" does nothing
     local mode = CLN.db.profile.nativeVOMode or "off"
     if mode == "off" then return end
 
@@ -454,7 +454,6 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     if not (isActive or isPaused) then return end
 
     -- Don't pause VO that's been playing a long time (likely almost finished)
-    -- Restarting from the beginning would waste more than it saves
     if isActive and cp.startTime and GetTime then
         local elapsed = GetTime() - cp.startTime
         local minPlayingThreshold = 15 -- seconds: skip pause if VO played this long
@@ -467,17 +466,15 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         end
     end
 
-    -- Whitelist check: in "whitelist" mode, only pause for known voiced NPCs
-    if mode == "whitelist" then
-        local wl = CLN.db.profile.nativeVOWhitelist
-        if not wl then return end
-        local matched = (npcId and wl[npcId]) or (npcName and wl[npcName])
-        if not matched then
-            if CLN.db.profile.debugMode and CLN.Logger then
-                CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
-            end
-            return
+    -- Whitelist check: only pause for NPCs the user has explicitly confirmed
+    local wl = CLN.db.profile.nativeVOWhitelist
+    if not wl then return end
+    local matched = (npcId and wl[npcId]) or (npcName and wl[npcName])
+    if not matched then
+        if CLN.db.profile.debugMode and CLN.Logger then
+            CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
         end
+        return
     end
 
     -- Already paused? Extend the timer instead of double-pausing

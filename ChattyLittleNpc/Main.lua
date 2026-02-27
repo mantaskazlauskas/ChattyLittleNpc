@@ -132,9 +132,14 @@ function CLN:_MigrateSavedVars()
     -- Migrate pauseOnNativeVO boolean → nativeVOMode
     if p.pauseOnNativeVO ~= nil then
         if p.pauseOnNativeVO == true and (not p.nativeVOMode or p.nativeVOMode == "off") then
-            p.nativeVOMode = "all"
+            p.nativeVOMode = "whitelist"
         end
         p.pauseOnNativeVO = nil
+    end
+
+    -- Migrate legacy "all" mode → "whitelist" (all mode removed)
+    if p.nativeVOMode == "all" then
+        p.nativeVOMode = "whitelist"
     end
 
     -- Migrate enableQuestPlaybackQueueing + stopVoiceoverAfterDialogWindowClose → questPlaybackMode
