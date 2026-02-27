@@ -330,3 +330,23 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
 
     return nil
 end
+
+--- Estimate how long a spoken line of text takes.
+--- ~65 WPM ≈ 11.2 chars/sec for English (slower NPCs), +1.5 s buffer, scaled up by 1/5.
+---@param text string|nil  The text to estimate duration for.
+---@param minDuration number|nil  Floor clamp in seconds (default 2).
+---@param maxDuration number|nil  Ceiling clamp in seconds (default unlimited).
+---@return number seconds
+function Utils.EstimateVODuration(text, minDuration, maxDuration)
+    local floor = minDuration or 2
+    local raw
+    if not text or #text == 0 then
+        raw = 3.6
+    else
+        raw = (#text / 11.2 + 1.5) * 1.2
+    end
+    if maxDuration then
+        return math.max(floor, math.min(maxDuration, raw))
+    end
+    return math.max(floor, raw)
+end

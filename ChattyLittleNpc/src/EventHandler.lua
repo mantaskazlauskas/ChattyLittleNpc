@@ -436,9 +436,7 @@ end
 ---@param text string
 ---@return number seconds
 local function EstimateVODuration(text)
-    if not text or #text == 0 then return 3 end
-    -- ~65 WPM ≈ 11.2 chars/sec for English (slower NPCs).  Add 1.5 s buffer.
-    return math.max(2, #text / 11.2 + 1.5)
+    return CLN.Utils.EstimateVODuration(text)
 end
 
 --- Fires for CHAT_MSG_MONSTER_SAY / YELL / WHISPER / EMOTE.

@@ -359,8 +359,8 @@ function ReplayFrame:ShowSubtitle(text)
         end
         self.SubtitleText:SetText(sentences[idx])
         self.SubtitleFrame:SetAlpha(1)
-        -- Duration scales with sentence length: ~0.07s per character, clamped 1.5–5s
-        local dur = math.max(1.5, math.min(5.0, #sentences[idx] * 0.07))
+        -- Duration scales with sentence length, clamped 1.5–5s
+        local dur = math.max(1.5, math.min(5.0, #sentences[idx] * 0.07 * 1.2))
         self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
     end
 

@@ -359,14 +359,18 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                 isFirstGroup = false
                 
                 -- Create group header
-                local header = self:CreateHeader(content, group.name)
+                local headerText = group.name or ""
+                if type(headerText) == "function" then headerText = headerText() or "" end
+                local header = self:CreateHeader(content, headerText)
                 header:SetPoint("TOPLEFT", 6, yOffset)
                 yOffset = yOffset - 24
                 contentHeight = contentHeight + 24
                 
                 -- Optional group description
                 if group.desc then
-                    local desc = self:CreateDescription(content, group.desc)
+                    local descText = group.desc
+                    if type(descText) == "function" then descText = descText() or "" end
+                    local desc = self:CreateDescription(content, descText)
                     desc:SetPoint("TOPLEFT", 8, yOffset)
                     local descHeight = 20
                     yOffset = yOffset - descHeight
@@ -490,9 +494,13 @@ function ConfigSystem:CreateControl(parent, opt)
     elseif opt.type == "execute" then
         return self:CreateButton(parent, opt)
     elseif opt.type == "description" then
-        return self:CreateDescription(parent, opt.name or "")
+        local text = opt.name or ""
+        if type(text) == "function" then text = text() or "" end
+        return self:CreateDescription(parent, text)
     elseif opt.type == "header" then
-        return self:CreateHeader(parent, opt.name or "")
+        local text = opt.name or ""
+        if type(text) == "function" then text = text() or "" end
+        return self:CreateHeader(parent, text)
     elseif opt.type == "input" then
         return self:CreateInput(parent, opt)
     end

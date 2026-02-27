@@ -159,6 +159,67 @@ class TestNormalizeQuestPhase(unittest.TestCase):
         self.assertFalse(self._is_canonical(""))
 
 
+class TestEstimateVODuration(unittest.TestCase):
+    """Test Utils.EstimateVODuration shared helper."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "Utils/Utils.lua")
+
+    def _estimate(self, text, min_dur=None, max_dur=None):
+        args = f'"{text}"' if text is not None else "nil"
+        if min_dur is not None:
+            args += f", {min_dur}"
+            if max_dur is not None:
+                args += f", {max_dur}"
+        elif max_dur is not None:
+            args += f", nil, {max_dur}"
+        return lua_call(self.lua, f"""
+            return _G.ChattyLittleNpc.Utils.EstimateVODuration({args})
+        """)
+
+    def test_nil_text_returns_default(self):
+        """nil text should return 3.6 (original 3 * 1.2)."""
+        self.assertAlmostEqual(self._estimate(None), 3.6, places=2)
+
+    def test_empty_text_returns_default(self):
+        """Empty text should return 3.6."""
+        self.assertAlmostEqual(self._estimate(""), 3.6, places=2)
+
+    def test_nil_text_respects_max_clamp(self):
+        """nil text with maxDuration should be capped."""
+        result = self._estimate(None, min_dur=1.0, max_dur=2.0)
+        self.assertAlmostEqual(result, 2.0, places=2)
+
+    def test_short_text_uses_floor(self):
+        """Very short text should hit the floor of 2."""
+        result = self._estimate("Hi")
+        self.assertGreaterEqual(result, 2.0)
+
+    def test_increased_by_one_fifth(self):
+        """Result should be 1.2x the old formula (#text / 11.2 + 1.5)."""
+        text = "A" * 112  # old: 112/11.2 + 1.5 = 11.5, new: 11.5 * 1.2 = 13.8
+        self.assertAlmostEqual(self._estimate(text), 13.8, places=1)
+
+    def test_custom_min_clamp(self):
+        """Custom minDuration should override default floor."""
+        result = self._estimate("Hi", min_dur=5.0)
+        self.assertGreaterEqual(result, 5.0)
+
+    def test_custom_max_clamp(self):
+        """Custom maxDuration should cap the result."""
+        text = "A" * 500  # would be large without cap
+        result = self._estimate(text, min_dur=1.5, max_dur=5.0)
+        self.assertLessEqual(result, 5.0)
+
+    def test_no_max_means_unlimited(self):
+        """Without maxDuration, result is unbounded above minDuration."""
+        text = "A" * 500
+        result = self._estimate(text)
+        self.assertGreater(result, 5.0)
+
+
 class TestContainsString(unittest.TestCase):
     """Test Utils:ContainsString."""
 
