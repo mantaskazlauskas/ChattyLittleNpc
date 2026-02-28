@@ -148,10 +148,20 @@ end
 local PLAYBACK_GRACE_SEC = 0.6
 -- Extended grace from last watcher confirmation (watcher runs every 0.5s)
 local WATCHER_GRACE_SEC = 1.5
+-- Hard timeout: if a sound has been "playing" for this long without watcher
+-- confirmation, consider it stuck and let the queue advance.
+local MAX_UNCONFIRMED_SEC = 30
 function VoiceoverPlayer:IsEffectivelyPlaying()
     local cp = self.currentlyPlaying
     if not cp or not cp.soundHandle then return false end
     if cp.isPlaying and cp:isPlaying() then return true end
+    -- Hard timeout: if started long ago and watcher never confirmed, give up
+    if cp.startTime and GetTime then
+        local elapsed = GetTime() - cp.startTime
+        if elapsed > MAX_UNCONFIRMED_SEC and not cp._lastConfirmedPlayingAt then
+            return false
+        end
+    end
     -- Fallback 1: treat the sound as playing within startup grace window
     if cp.startTime and GetTime then
         local elapsed = GetTime() - cp.startTime
@@ -509,8 +519,12 @@ end
 --- Unlike ForceStopCurrentSound, this preserves suspended playback and the
 --- queue, advancing through queue → suspended → idle in order.
 function VoiceoverPlayer:SkipCurrentSound()
+    -- Guard against re-entrancy (rapid double-click on skip)
+    if self._skipping then return end
+    self._skipping = true
+
     local cp = self.currentlyPlaying
-    if not cp then return end
+    if not cp then self._skipping = false; return end
 
     -- Push skipped item to history
     if cp.title or cp.questId then
@@ -536,17 +550,20 @@ function VoiceoverPlayer:SkipCurrentSound()
         self:DeduplicateQueue()
         if #CLN.questsQueue > 0 then
             local nextQuest = CLN.questsQueue[1]
+            self._skipping = false
             self:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
             return
         end
     end
     if self:HasSuspendedPlayback() then
+        self._skipping = false
         self:ResumeSuspendedPlayback()
         return
     end
 
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+    self._skipping = false
 end
 
 -- ============================================================================
