@@ -777,16 +777,35 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     local talkChance = self._loopTalkChance or 0.95
     local talkMin, talkMax = self._loopTalkMin or 3.5, self._loopTalkMax or 6.5
     local idleMin, idleMax = self._loopIdleMin or 0.2, self._loopIdleMax or 0.5
+    local nowT = now or (GetTime and GetTime() or 0)
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local traits = self.GetPersonalityTraits and self:GetPersonalityTraits(cur and cur.npcId) or { playful = 0.5, energy = 0.5, idleVarianceScale = 1, talkEnergyScale = 1 }
+    local playful = tonumber(traits.playful) or 0.5
+    local energy = tonumber(traits.energy) or 0.5
+    local idleVarianceScale = tonumber(traits.idleVarianceScale) or 1
+    local talkEnergyScale = tonumber(traits.talkEnergyScale) or 1
 
     -- Prefer talking; inject short idle rarely and never twice in a row
     -- Rare point gesture chance (~5%) during talk segments for emphatic text
     local chooseIdle
     local choosePoint = false
+    local dramaticPause = false
     if self._emoteFirstSegmentForced then
         chooseIdle = false
         self._emoteFirstSegmentForced = false
     else
+        local title = (cur and cur.title) or ""
+        local hasEllipsis = type(title) == "string" and title:find("%.%.%.") ~= nil
+        local hasEmDash = type(title) == "string" and title:find("%-%-") ~= nil
+        local hasAllCaps = type(title) == "string" and title:find("%f[%a][A-Z][A-Z][A-Z]+%f[^%a]") ~= nil
+        local dramaticDetected = hasEllipsis or hasEmDash or hasAllCaps
+        local dramaticReady = (not self._lastDramaticPauseTime) or ((nowT - self._lastDramaticPauseTime) >= 15)
+        dramaticPause = dramaticDetected and dramaticReady
         chooseIdle = (not self._loopLastWasIdle) and (math.random() > talkChance)
+        if dramaticPause then
+            chooseIdle = true
+            choosePoint = false
+        end
         -- Point gesture: only if not idle, not recently pointed, and model supports it
         if not chooseIdle and not self._loopLastWasPoint and math.random() < 0.05 then
             local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -807,6 +826,8 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
         self._emoteSegType = "point"
     elseif not chooseIdle then
         dur = math.random() * (talkMax - talkMin) + talkMin
+        local talkDurScale = 1.2 - (energy * 0.4)
+        dur = dur * talkDurScale * (0.85 + (talkEnergyScale * 0.15))
         self._loopLastWasIdle = false
         self._loopLastWasPoint = false
         -- Emote loop re-entry: change animation only, camera already at Talk position
@@ -814,13 +835,53 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
         self._emoteSegType = "talk"
     else
         dur = math.random() * (idleMax - idleMin) + idleMin
+        local idleVariance = (math.random() * 2 - 1) * 0.3 * idleVarianceScale
+        dur = dur * (1 + idleVariance)
+        if dramaticPause then
+            dur = 0.8 + math.random() * 0.4
+            self._lastDramaticPauseTime = nowT
+            self._nextTalkAnimId = (self.AnimIds and self.AnimIds.TALK_EXCLM) or 64
+            if self.AnimZoomTo and self._currentZoom then
+                self:AnimZoomTo(self._currentZoom + 0.03, dur, { easing = "linear" })
+            end
+        end
+        local fidgetChance = 0.10 * (0.6 + playful * 0.8)
+        local canFidget = (not dramaticPause) and ((not self._lastFidgetTime) or ((nowT - self._lastFidgetTime) >= 8))
+        local useFidget = canFidget and (math.random() < fidgetChance)
         self._loopLastWasIdle = true
         self._loopLastWasPoint = false
-        -- Brief idle pause in emote loop: change animation only, don't pan camera
-        self:PlayIdleEmote({ duration = 0, skipCamera = true })
-        self._emoteSegType = "idle"
+        if useFidget then
+            self._lastFidgetTime = nowT
+            local roll = math.random(1, 3)
+            if roll == 1 and self.SetModelAnim and self:ModelHasAnimation((self.AnimIds and self.AnimIds.YES) or 185) then
+                self:SetModelAnim((self.AnimIds and self.AnimIds.YES) or 185)
+                dur = math.max(dur, 0.6)
+                self._emoteSegType = "fidget_nod"
+            elseif roll == 2 and self.SetModelAnim and self:ModelHasAnimation((self.AnimIds and self.AnimIds.NO) or 186) then
+                self:SetModelAnim((self.AnimIds and self.AnimIds.NO) or 186)
+                dur = math.max(dur, 0.6)
+                self._emoteSegType = "fidget_headshake"
+            else
+                local baseZ = (self._currentZOffset ~= nil) and self._currentZOffset or (self.modelZOffset or 0)
+                local lean = (math.random() > 0.5) and 0.02 or -0.02
+                if self.AnimPanTo then
+                    self:AnimPanTo(baseZ + lean, 0.25, { easing = "linear", onComplete = function()
+                        if self.AnimPanTo then
+                            self:AnimPanTo(baseZ, 0.30, { easing = "easeOutCubic" })
+                        end
+                    end })
+                end
+                if self.SetModelAnim then self:SetModelAnim(0) end
+                dur = math.max(dur, 0.7)
+                self._emoteSegType = "fidget_lean"
+            end
+        else
+            -- Brief idle pause in emote loop: change animation only, don't pan camera
+            self:PlayIdleEmote({ duration = 0, skipCamera = true })
+            self._emoteSegType = dramaticPause and "dramatic_pause" or "idle"
+        end
     end
-    local nowT = now or (GetTime and GetTime() or 0)
+    dur = math.max(0.15, dur)
     -- Switch to timer-based scheduling; do not rely on per-frame polling
     self._emoteSegEndTime = nil
     
@@ -829,9 +890,11 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     if m and not choosePoint then
         if not chooseIdle then
             -- Force set talk animation in case PlayTalkEmote didn't work
-            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
             local talkId = 60
-            if self.ChooseTalkAnimIdForText and cur and cur.title then
+            if self._nextTalkAnimId then
+                talkId = self._nextTalkAnimId
+                self._nextTalkAnimId = nil
+            elseif self.ChooseTalkAnimIdForText and cur and cur.title then
                 talkId = self:ChooseTalkAnimIdForText(cur.title)
             end
             if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end

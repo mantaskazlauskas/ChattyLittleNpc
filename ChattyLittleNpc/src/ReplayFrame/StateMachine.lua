@@ -14,6 +14,7 @@ ReplayFrame.State = ReplayFrame.State or {
     TALK = "talk",
     BOW  = "bow",
     POINT = "point",
+    RESIDUE = "residue",
 }
 local S = ReplayFrame.State
 
@@ -62,8 +63,11 @@ function ReplayFrame:InitStateMachine()
         if fsm.state == S.TALK then
             if self.StopEmoteLoop then self:StopEmoteLoop() end
         end
-        if fsm.state == S.WAVE or fsm.state == S.BOW or fsm.state == S.POINT then
+        if fsm.state == S.WAVE or fsm.state == S.BOW or fsm.state == S.POINT or fsm.state == S.RESIDUE then
             if self.CancelEmote then self:CancelEmote() end
+            if fsm.state == S.RESIDUE then
+                fsm.residueToken = (fsm.residueToken or 0) + 1
+            end
         end
 
         -- transition
@@ -147,6 +151,8 @@ function ReplayFrame:InitStateMachine()
             end
         elseif newState == S.TALK then
             if self.StartEmoteLoop then self:StartEmoteLoop() end
+        elseif newState == S.RESIDUE then
+            if self.StopEmoteLoop then self:StopEmoteLoop() end
         end
     end
 
@@ -159,6 +165,9 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     if InCombatLockdown and InCombatLockdown() then return end
     self:InitStateMachine()
     local fsm = self._fsm
+    if fsm.state == S.RESIDUE then
+        fsm.residueToken = (fsm.residueToken or 0) + 1
+    end
     if not cur then 
         if self.Debug then self:Debug("FSM_OnPlaybackStart called with no current playback") end
         return 
@@ -263,6 +272,78 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
     self._fsmMarkInteracted()
 end
 
+function ReplayFrame:_FSM_DetectResidueEmotion(text)
+    local msg = tostring(text or "")
+    local lower = msg:lower()
+    local analysis = self.AnalyzeText and self:AnalyzeText(msg) or nil
+
+    if lower:find("angry") or lower:find("rage") or lower:find("hate") or lower:find("furious") then
+        return "angry"
+    end
+    if lower:find("sad") or lower:find("sorry") or lower:find("grief") or lower:find("mourn") then
+        return "sad"
+    end
+    if lower:find("thank") or lower:find("great") or lower:find("wonderful") or lower:find("glad") then
+        return "excited"
+    end
+    if analysis and analysis.hasExclamation then
+        return "excited"
+    end
+    if msg:find("!") then return "excited" end
+    return "neutral"
+end
+
+function ReplayFrame:_FSM_StartResidue(lastMsg)
+    local fsm = self._fsm
+    if not fsm then return false end
+    local duration = 1.5 + math.random() * 1.0
+    local emotion = self:_FSM_DetectResidueEmotion(lastMsg)
+    local A = self.AnimIds or {}
+
+    self:_fsm_enter(S.RESIDUE)
+    fsm.residueToken = (fsm.residueToken or 0) + 1
+    local tok = fsm.residueToken
+
+    if emotion == "excited" then
+        local cheerId = A.CHEER or 68
+        local animId = (self.ModelHasAnimation and self:ModelHasAnimation(cheerId)) and cheerId or (A.YES or 185)
+        if self.SetModelAnim then self:SetModelAnim(animId) end
+    elseif emotion == "sad" then
+        if self.SetModelAnim then self:SetModelAnim(A.IDLE or 0) end
+        if self.AnimZoomTo and self._currentZoom then
+            self:AnimZoomTo(self._currentZoom - 0.03, duration, { easing = "linear" })
+        end
+    elseif emotion == "angry" then
+        local pointId = A.POINT or 25
+        if self.SetModelAnim then
+            if self.ModelHasAnimation and self:ModelHasAnimation(pointId) then
+                self:SetModelAnim(pointId)
+            else
+                self:SetModelAnim((A.TALK_EXCLM or 64))
+            end
+        end
+    else
+        if self.SetModelAnim then self:SetModelAnim(A.YES or 185) end
+        if self.AnimZoomTo and self._currentZoom then
+            self:AnimZoomTo(self._currentZoom - 0.02, duration, { easing = "linear" })
+        end
+    end
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(duration, function()
+            if not self._fsm then return end
+            if self._fsm.state ~= S.RESIDUE then return end
+            if tok ~= (self._fsm.residueToken or 0) then return end
+            self:_fsm_enter(S.IDLE)
+            local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
+            self._fsm.hideAt = now() + delay
+        end)
+    else
+        self:_fsm_enter(S.IDLE)
+    end
+    return true
+end
+
 function ReplayFrame:FSM_OnPlaybackStop(lastMsg)
     if InCombatLockdown and InCombatLockdown() then return end
     self:InitStateMachine()
@@ -294,7 +375,11 @@ function ReplayFrame:FSM_OnPlaybackStop(lastMsg)
     
     fsm.lastMsg = lastMsg
 
-    -- Always go to IDLE on stop; farewell support removed
+    if self:_FSM_StartResidue(lastMsg) then
+        return
+    end
+
+    -- Always go to IDLE on stop when residue is unavailable
     if self.Debug then self:Debug("Entering IDLE state") end
     self:_fsm_enter(S.IDLE)
     -- schedule hide shortly if nothing is playing

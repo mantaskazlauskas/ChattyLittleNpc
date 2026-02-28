@@ -32,6 +32,7 @@ src/ReplayFrame/CollapseAnimation.lua
 src/ReplayFrame/CompactBadge.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
+src/ReplayFrame/PersonalitySeed.lua
 src/ReplayFrame/ModelAnimation.lua
 src/ReplayFrame/ModelEmotes.lua
 src/ReplayFrame/StateMachine.lua

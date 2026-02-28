@@ -30,6 +30,54 @@ local function ensureAnimTable(self)
     if not self._anims then self._anims = {} end
 end
 
+function ReplayFrame:BreathingCameraUpdate(elapsed)
+    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+        return
+    end
+    if not elapsed or elapsed <= 0 then return end
+    ensureAnimTable(self)
+    self._breathPhase = (self._breathPhase or 0) + elapsed
+    if #self._anims > 0 then
+        self._breathBaseZoom = nil
+        self._breathBaseZ = nil
+        return
+    end
+
+    local m = self.NpcModelFrame
+    if not m then return end
+
+    local traits = self.GetPersonalityTraits and self:GetPersonalityTraits() or { energy = 0.5, driftAmplitudeScale = 1 }
+    local energyScale = 0.5 + (tonumber(traits.energy) or 0.5)
+    local driftScale = tonumber(traits.driftAmplitudeScale) or 1
+    local ampScale = math.max(0.5, math.min(1.5, energyScale * driftScale))
+    local period = 6 - ((tonumber(traits.energy) or 0.5) * 2)
+    period = math.max(4, math.min(6, period))
+    local omega = (math.pi * 2) / period
+
+    if self._breathBaseZoom == nil then
+        local baseZoom = self._currentZoom or 0.65
+        if m.GetPortraitZoom then
+            local ok, z = pcall(m.GetPortraitZoom, m)
+            if ok and type(z) == "number" then baseZoom = z end
+        end
+        self._breathBaseZoom = baseZoom
+    end
+    if self._breathBaseZ == nil then
+        self._breathBaseZ = (self._currentZOffset ~= nil) and self._currentZOffset or (self.modelZOffset or 0)
+    end
+
+    local phase = self._breathPhase
+    local zoomOffset = math.sin(phase * omega) * 0.004 * ampScale
+    local panOffset = math.sin((phase * omega) + 1.2) * 0.002 * ampScale
+    local targetZoom = applyClamp((self._breathBaseZoom or 0.65) + zoomOffset, 0, 1.5)
+    local targetZ = (self._breathBaseZ or 0) + panOffset
+
+    if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, targetZoom) end
+    if m.SetPosition then pcall(m.SetPosition, m, 0, 0, targetZ) end
+    self._currentZoom = targetZoom
+    self._currentZOffset = targetZ
+end
+
 -- Public: stop all animations of a given kind ("zoom"|"pan")
 function ReplayFrame:AnimStop(kind)
     if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
@@ -157,6 +205,7 @@ function ReplayFrame:AnimUpdate(elapsed)
     end
     if not elapsed or elapsed <= 0 then return end
     ensureAnimTable(self)
+    if self.BreathingCameraUpdate then self:BreathingCameraUpdate(elapsed) end
     if #self._anims == 0 then 
         if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
         return 
@@ -166,6 +215,7 @@ function ReplayFrame:AnimUpdate(elapsed)
     
     local m = self.NpcModelFrame
     local remain = {}
+    local completions
     for _, a in ipairs(self._anims) do
         a.t = a.t + elapsed
         local d = a.dur
@@ -185,14 +235,21 @@ function ReplayFrame:AnimUpdate(elapsed)
             self._currentZOffset = v
         end
         if rt >= 1 then
-            -- complete
+            -- Defer onComplete until after self._anims is updated to avoid
+            -- callbacks that call AnimPanTo/AnimZoomTo having their new
+            -- animation silently overwritten by the remain assignment below.
             if a.onComplete then
-                pcall(a.onComplete)
+                if not completions then completions = {} end
+                table.insert(completions, a.onComplete)
             end
         else
             table.insert(remain, a)
         end
     end
     self._anims = remain
+    -- Fire deferred completions now that self._anims is safe to mutate
+    if completions then
+        for _, cb in ipairs(completions) do pcall(cb) end
+    end
     if #self._anims == 0 and self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
 end
