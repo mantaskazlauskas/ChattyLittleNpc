@@ -41,10 +41,10 @@ function HC.Attach(host)
         host.SetPosition = function(self, x, y, z)
             local tz = tonumber(z)
             if tz == nil then return end
-            local tx = (self._targetX ~= nil) and self._targetX or 0
-            local ty = (self._targetY ~= nil) and self._targetY or 0
+            -- Only pass Z; SetTarget preserves prevTx/prevTy from snapshot
+            -- when x/y are nil, avoiding drift to origin for offset models
             self._internalPanActive = true
-            pcall(self.SetTarget, self, { x = tx, y = ty, z = tz })
+            pcall(self.SetTarget, self, { z = tz })
             self._internalPanActive = nil
         end
     end

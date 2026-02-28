@@ -594,6 +594,8 @@ function M.Attach(host, backend)
         local px, py, pz = tx, ty + d, tz
         self._camBaseZ = tz
         self._camDist = d
+        -- Keep _zoom consistent so GetPortraitZoom won't desync AnimZoomTo
+        self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         if self._lastBounds then self:_UpdateClipPlanesForFit(d, self._lastBounds, 0.12) end
         self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
@@ -734,6 +736,10 @@ function M.Attach(host, backend)
         local d = math.max(needDistV, needDistH)
         d = math.max(d, 1.0)
         self._camDist = d
+        -- Keep _zoom consistent so GetPortraitZoom won't desync AnimZoomTo
+        self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+        -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
+        self._distance = nil
         -- Preserve last target center if available
         local s = self._lastCamSnapshot or {}
         local tx = s.tx or b.center.x or 0
@@ -793,10 +799,14 @@ function M.Attach(host, backend)
         local d = math.max(needDistV, needDistH)
         d = math.max(d, 1.0)
         self._camDist = d
+        -- Sync _zoom from geometry distance so AnimZoomTo reads correct baseline
+        self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+        -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
+        self._distance = nil
         self._camBaseZ = faceZ
         local px, py, pz = (b.center.x or 0), (b.center.y or 0) + d, faceZ
         local tx, ty, tz = (b.center.x or 0), (b.center.y or 0), faceZ
-    self:_DebugLog("framing", "Fit dist=%.2f fov=%.2f aspect=%.2f size=(%.2f,%.2f,%.2f)", d, fov, aspect, b.size.x or 0, b.size.y or 0, b.size.z or 0)
+    self:_DebugLog("framing", "Fit dist=%.2f zoom=%.3f fov=%.2f aspect=%.2f size=(%.2f,%.2f,%.2f)", d, self._zoom or -1, fov, aspect, b.size.x or 0, b.size.y or 0, b.size.z or 0)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
     self:_UpdateClipPlanesForFit(d, b, paddingFrac)
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
@@ -844,14 +854,18 @@ function M.Attach(host, backend)
         d = math.max(d, 1.0)
 
         self._camDist = d
+        -- Sync _zoom from geometry distance so AnimZoomTo reads correct baseline
+        self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+        -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
+        self._distance = nil
         self._camBaseZ = world.targetZ
         self._lastBounds = cbox
 
         local px, py, pz = world.targetX, world.targetY + d, world.targetZ
         local tx, ty, tz = world.targetX, world.targetY, world.targetZ
 
-        self:_DebugLog("framing", "FrameRegion(%s) class=%s dist=%.2f targetZ=%.2f visH=%.2f fitW=%.2f",
-            regionName, class, d, world.targetZ, world.visibleH, world.fitWidth)
+        self:_DebugLog("framing", "FrameRegion(%s) class=%s dist=%.2f zoom=%.3f targetZ=%.2f visH=%.2f fitW=%.2f",
+            regionName, class, d, self._zoom or -1, world.targetZ, world.visibleH, world.fitWidth)
 
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
@@ -870,6 +884,7 @@ function M.Attach(host, backend)
                     self:_DebugLog("framing", "FrameRegion: projection refined dist %.2f -> %.2f", d, refined)
                     d = refined
                     self._camDist = d
+                    self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
                     px, py, pz = tx, ty + d, tz
                     self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
                     self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
@@ -909,7 +924,9 @@ function M.Attach(host, backend)
         local r = CLN and CLN.ReplayFrame
         if r then
             if r.AnimPanTo then r:AnimPanTo(world.targetZ, dur) end
-            if r.AnimZoomTo then r:AnimZoomTo(d, dur) end
+            -- Convert geometry distance to zoom-space for AnimZoomTo
+            local zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+            if r.AnimZoomTo then r:AnimZoomTo(zoom, dur) end
         end
         self:_DebugLog("framing", "TransitionToRegion(%s) dist=%.2f targetZ=%.2f dur=%.2f", regionName or "bust", d, world.targetZ, dur)
     end
