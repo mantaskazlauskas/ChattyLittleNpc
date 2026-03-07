@@ -36,6 +36,10 @@ src/ReplayFrame/EditMode/Registry.lua
 src/ReplayFrame/EditMode/Persistence.lua
 src/ReplayFrame/EditMode/ConversationWindow.lua
 src/ReplayFrame/EditMode/ModelWindow.lua
+src/ReplayFrame/EditMode/OverlayFactory.lua
+src/ReplayFrame/EditMode/Guides.lua
+src/ReplayFrame/EditMode/SnapManager.lua
+src/ReplayFrame/EditMode/ImportExport.lua
 src/ReplayFrame/EditMode/Init.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
