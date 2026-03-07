@@ -129,10 +129,9 @@ function Registry:CycleSelection(reverse)
 end
 
 --- Clear Blizzard's Edit Mode system selection.
+--- Does NOT call ClearSelectedSystem() directly — that triggers protected
+--- calls (SetClampRectInsets on action bars) causing ADDON_ACTION_BLOCKED taint.
 function Registry:ClearBlizzardSelection()
-    if EditModeManagerFrame and EditModeManagerFrame.ClearSelectedSystem then
-        EditModeManagerFrame:ClearSelectedSystem()
-    end
     if EditModeSystemSettingsDialog
        and EditModeSystemSettingsDialog.IsShown
        and EditModeSystemSettingsDialog:IsShown() then

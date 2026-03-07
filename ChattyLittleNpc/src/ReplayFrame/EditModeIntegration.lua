@@ -7,9 +7,9 @@ ReplayFrame.EditModeIntegration = Integration
 local hasAPI = (C_EditMode and type(C_EditMode.GetLayouts) == "function")
 local EditMode -- resolved in Init()
 local function clearBlizzardSelection()
-    if EditModeManagerFrame and EditModeManagerFrame.ClearSelectedSystem then
-        EditModeManagerFrame:ClearSelectedSystem()
-    end
+    -- Do NOT call EditModeManagerFrame:ClearSelectedSystem() — it triggers
+    -- protected calls (SetClampRectInsets on action bars) that cause taint.
+    -- Instead, just hide the settings dialog if it's showing.
     if EditModeSystemSettingsDialog and EditModeSystemSettingsDialog.IsShown
        and EditModeSystemSettingsDialog:IsShown() then
         EditModeSystemSettingsDialog:Hide()
@@ -353,6 +353,11 @@ function ReplayFrame:EndManualEdit()
 end
 C_Timer.After(2, function()
     if hasAPI and EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+        ReplayFrame._blizzardEditMode = true
+        ReplayFrame._forceShow = true
+        ReplayFrame.userHidden = false
+        ReplayFrame:GetDisplayFrame()
+        if ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:Show() end
         Integration:ShowOverlay()
         local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
         if Registry then Registry:OnEnter() end
