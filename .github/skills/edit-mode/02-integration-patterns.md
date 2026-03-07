@@ -7,21 +7,38 @@
 
 ## Detecting Edit Mode State Changes
 
-There are **no events** for entering/exiting Edit Mode. Use `hooksecurefunc`:
+There are **no frame events** for entering/exiting Edit Mode, but three approaches exist:
 
 ```lua
--- REQUIRED: Hook EditModeManagerFrame methods
-hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
-    -- Player entered Edit Mode
+-- Approach A: EventRegistry callbacks (cleanest — used by Bartender4)
+-- Available in retail Dragonflight+; does NOT exist on Classic
+EventRegistry:RegisterCallback("EditMode.Enter", function()
     MyAddon:OnEditModeEnter()
 end)
-
-hooksecurefunc(EditModeManagerFrame, "ExitEditMode", function()
-    -- Player exited Edit Mode
+EventRegistry:RegisterCallback("EditMode.Exit", function()
     MyAddon:OnEditModeExit()
 end)
 
--- OPTIONAL: Listen for layout changes (fires on save, switch, import, login)
+-- Approach B: HookScript on manager frame (used by LibEditMode)
+EditModeManagerFrame:HookScript("OnShow", function() MyAddon:OnEditModeEnter() end)
+EditModeManagerFrame:HookScript("OnHide", function() MyAddon:OnEditModeExit() end)
+
+-- Approach C: hooksecurefunc (used by EditModeExpanded, ChattyLittleNpc)
+hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
+    MyAddon:OnEditModeEnter()
+end)
+hooksecurefunc(EditModeManagerFrame, "ExitEditMode", function()
+    MyAddon:OnEditModeExit()
+end)
+```
+
+**Which to use?**
+- **EventRegistry** is cleanest (can unregister), but only exists on retail Dragonflight+
+- **HookScript** is simplest and works on any version with Edit Mode
+- **hooksecurefunc** gives the most control (fires specifically on those methods, not on any show/hide)
+
+```lua
+-- ALSO: Listen for layout changes (fires on save, switch, import, login)
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
 frame:SetScript("OnEvent", function(self, event, layoutInfo, reconcileLayouts)

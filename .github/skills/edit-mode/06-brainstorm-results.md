@@ -20,7 +20,7 @@ zone-based auto-switch (pivoted from spec-based).
 - **Domain**: Strong — full Blizzard FrameXML source analyzed (200+ functions)
 - **Recency**: Current — Midnight 12.0 beta API documentation reviewed
 - **Research**: 5 addon codebases analyzed (EditModeExpanded, LibEditMode, Bartender4, ElvUI, muleyoUI)
-- **Critical correction**: Claude Sonnet caught that arrow-key nudging **already exists** in the codebase (lines 456-475 of EditModeIntegration.lua). Gemini caught that spatial audio panning is **technically infeasible** (no Lua API for stereo control).
+- **Critical correction**: Claude Sonnet caught that arrow-key nudging **already exists** in the addon source (`src/ReplayFrame/EditModeIntegration.lua`). Gemini caught that spatial audio panning is **technically infeasible** (no Lua API for stereo control).
 
 ---
 
@@ -47,8 +47,8 @@ waveform preview) so users can position and resize the frame with realistic cont
 Clear the dummy on Edit Mode exit.
 
 **Why it wins**: The addon's unique value is voiceover + 3D models. Editing an empty rectangle
-defeats the purpose. This already partially exists (dummy queue injection in EditPanel.lua
-lines 687-705) — extend it to trigger automatically on Edit Mode enter.
+defeats the purpose. This already partially exists (dummy queue injection in
+`src/ReplayFrame/EditPanel.lua`) — extend it to trigger automatically on Edit Mode enter.
 
 **Implementation path**: Hook `EditModeManagerFrame:EnterEditMode`. If queue empty, call
 existing `InjectSampleData()`. On `ExitEditMode`, clear sample. ~50 lines of code.
@@ -196,10 +196,10 @@ opt-in experimental mode.
 ## Critical Corrections & Blind Spots
 
 ### Already Implemented (Don't Re-build)
-- ✅ Arrow-key nudging (1px/5px/20px) — exists at EditModeIntegration.lua lines 456-475
-- ✅ Grid snapping — exists using `accountSettings.gridSpacing`
-- ✅ Sample data injection — exists in EditPanel.lua lines 687-705 (but not auto-triggered)
-- ✅ Model height slider — exists (sub-element editing adds drag modality, not new capability)
+- ✅ Arrow-key nudging (1px/5px/20px) — `src/ReplayFrame/EditModeIntegration.lua`
+- ✅ Grid snapping — uses `accountSettings.gridSpacing`
+- ✅ Sample data injection — `src/ReplayFrame/EditPanel.lua` (but not auto-triggered on Edit Mode enter)
+- ✅ Model height slider — exists in EditPanel (sub-element editing adds drag modality, not new capability)
 
 ### Blind Spots Identified by Critics
 1. **Classic version degradation** (Claude Sonnet) — All ideas assume Edit Mode exists. Classic

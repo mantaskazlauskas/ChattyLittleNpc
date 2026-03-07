@@ -1,7 +1,8 @@
 # Blizzard Edit Mode — Source Code Reference
 
-> **Source commit:** `3fefc3a27250137e2554384b413b9060a4fefcfd` from [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source)
+> **Source:** [Gethe/wow-ui-source](https://github.com/Gethe/wow-ui-source) — `live` branch, commit `3fefc3a` (Patch 11.1.5 / 11.1.7 era)
 > **Path prefix:** `Interface/AddOns/Blizzard_EditMode/Shared/`
+> **Note:** Function signatures may shift in Midnight (12.0). Verify against live client FrameXML.
 
 ---
 
