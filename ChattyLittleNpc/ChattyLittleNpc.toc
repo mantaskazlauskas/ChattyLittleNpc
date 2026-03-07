@@ -4,6 +4,7 @@
 ## Author: Tuubby
 ## Version: 3.1.0
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB, VoicedNpcContributions
+## OptionalDeps: EditModeExpanded
 
 Core/Print.lua
 Core/Events.lua
@@ -30,6 +31,12 @@ src/ReplayFrame/UI.lua
 src/ReplayFrame/QueueList.lua
 src/ReplayFrame/CollapseAnimation.lua
 src/ReplayFrame/CompactBadge.lua
+src/ReplayFrame/EditMode/Window.lua
+src/ReplayFrame/EditMode/Registry.lua
+src/ReplayFrame/EditMode/Persistence.lua
+src/ReplayFrame/EditMode/ConversationWindow.lua
+src/ReplayFrame/EditMode/ModelWindow.lua
+src/ReplayFrame/EditMode/Init.lua
 src/ReplayFrame/EditModeIntegration.lua
 src/ReplayFrame/EditPanel.lua
 src/ReplayFrame/PersonalitySeed.lua
