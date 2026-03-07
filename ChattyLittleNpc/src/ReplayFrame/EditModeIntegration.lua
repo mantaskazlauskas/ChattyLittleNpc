@@ -20,6 +20,15 @@ ReplayFrame.EditModeIntegration = Integration
 -- or index correlation with C_EditMode.activeLayout must subtract this offset.
 local HIDDEN_BASE_LAYOUTS = 2
 
+local function clearBlizzardSelection()
+    if EditModeManagerFrame and EditModeManagerFrame.ClearSelectedSystem then
+        EditModeManagerFrame:ClearSelectedSystem()
+    elseif EditModeSystemSettingsDialog and EditModeSystemSettingsDialog.IsShown
+           and EditModeSystemSettingsDialog:IsShown() then
+        EditModeSystemSettingsDialog:Hide()
+    end
+end
+
 local function logDebug(msg)
     if CLN and CLN.Logger then CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui) end
 end
@@ -135,6 +144,7 @@ function Integration:PersistCurrentToLayout()
         height = CLN.db.profile.frameSize.height
     } or nil
     bucket.npcModelFrameHeight = CLN.db.profile.npcModelFrameHeight
+    -- modelOffsetX/Y removed — model area is always docked at top
     if ReplayFrame.DisplayFrame then
         local p, _, r, x, y = ReplayFrame.DisplayFrame:GetPoint(1)
         bucket.framePos = { point = p, relativePoint = r, x = x, y = y }
@@ -177,10 +187,14 @@ function Integration:ApplyLayout(name)
     end
     if data.npcModelFrameHeight and not exclude.npcModelFrameHeight and data.npcModelFrameHeight ~= CLN.db.profile.npcModelFrameHeight then
         CLN.db.profile.npcModelFrameHeight = data.npcModelFrameHeight
+        ReplayFrame.npcModelFrameHeight = data.npcModelFrameHeight
+        if ReplayFrame.ModelContainer then
+            ReplayFrame.ModelContainer:SetHeight(data.npcModelFrameHeight)
+        end
         if ReplayFrame.NpcModelFrame then
             ReplayFrame.NpcModelFrame:SetHeight(data.npcModelFrameHeight)
-            if ReplayFrame.Relayout then ReplayFrame:Relayout() end
         end
+        if ReplayFrame.Relayout then ReplayFrame:Relayout() end
         changed = true
     end
     local pos = (not exclude.framePos) and (data.framePos or data.displayFramePos) or nil -- accept legacy key
@@ -203,50 +217,67 @@ function Integration:EnsureOverlay()
     ov:Hide()
     ov:SetFrameStrata("FULLSCREEN_DIALOG")
     ov:SetFrameLevel(parent:GetFrameLevel() + 50)
-    -- Border (retain tooltip style for clear contrast)
+    -- Backdrop border (color managed by RefreshVisualState)
     ov:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 12, insets = { left=2,right=2,top=2,bottom=2 } })
-    ov:SetBackdropBorderColor(1.0,0.82,0,0.85)
+    ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
 
-    -- Legacy visual polish: subtle blue base fill + brighter hover layer
-    local baseFill = ov:CreateTexture(nil, "BACKGROUND")
-    baseFill:SetAllPoints()
-    -- #7299AA (0.447, 0.600, 0.667) @ 0.20 alpha
-    baseFill:SetColorTexture(0.447, 0.600, 0.667, 0.20)
-    ov._baseFill = baseFill
+    -- Single fill texture; color switches between hover (blue) and selected (gold)
+    local bgFill = ov:CreateTexture(nil, "BACKGROUND")
+    bgFill:SetAllPoints()
+    bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+    ov._bgFill = bgFill
 
-    local hoverFill = ov:CreateTexture(nil, "BACKGROUND")
-    hoverFill:SetAllPoints()
-    -- #A9DBED (0.663, 0.859, 0.929) @ 0.30 alpha
-    hoverFill:SetColorTexture(0.663, 0.859, 0.929, 0.30)
-    hoverFill:Hide()
-    ov._hoverFill = hoverFill
+    -- Text holder at higher frame level to render above model sub-overlay
+    local textHolder = CreateFrame("Frame", nil, ov)
+    textHolder:SetAllPoints(ov)
+    textHolder:SetFrameLevel(ov:GetFrameLevel() + 20)
 
-    -- Simple 1px inner border (hover color) for sharper silhouette
-    local inner = {}
-    local edges = {"TOP","BOTTOM","LEFT","RIGHT"}
-    for _, edge in ipairs(edges) do
-        local t = ov:CreateTexture(nil, "BORDER")
-        t:SetColorTexture(0.663, 0.859, 0.929, 0.85)
-        if edge == "TOP" then
-            t:SetPoint("TOPLEFT", 1, -1)
-            t:SetPoint("TOPRIGHT", -1, -1)
-            t:SetHeight(1)
-        elseif edge == "BOTTOM" then
-            t:SetPoint("BOTTOMLEFT", 1, 1)
-            t:SetPoint("BOTTOMRIGHT", -1, 1)
-            t:SetHeight(1)
-        elseif edge == "LEFT" then
-            t:SetPoint("TOPLEFT", 1, -1)
-            t:SetPoint("BOTTOMLEFT", 1, 1)
-            t:SetWidth(1)
-        elseif edge == "RIGHT" then
-            t:SetPoint("TOPRIGHT", -1, -1)
-            t:SetPoint("BOTTOMRIGHT", -1, 1)
-            t:SetWidth(1)
+    -- Centered "Click to Edit" text (hover state, Blizzard style)
+    local clickText = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    clickText:SetPoint("CENTER")
+    clickText:SetText("Click to Edit")
+    clickText:SetTextColor(1, 1, 1, 0.70)
+    clickText:Hide()
+    ov._clickToEditText = clickText
+
+    -- Centered frame label (selected/active state)
+    local selLabel = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    selLabel:SetPoint("CENTER")
+    selLabel:SetText("Chatty Little NPC")
+    selLabel:SetTextColor(1.0, 0.82, 0.0, 0.90)
+    selLabel:Hide()
+    ov._selectedLabel = selLabel
+
+    -- Visual state flags
+    ov._selected = false
+    ov._hovered  = false
+
+    function ov:RefreshVisualState()
+        if self._selected then
+            -- Selected: muted amber-brown fill + warm gold border (matches Blizzard Edit Mode)
+            self._bgFill:SetColorTexture(0.69, 0.57, 0.31, 0.35)
+            self:SetBackdropBorderColor(0.82, 0.69, 0.35, 0.90)
+            if self._clickToEditText then self._clickToEditText:Hide() end
+            if self._selectedLabel then self._selectedLabel:Show() end
+        elseif self._hovered then
+            -- Hover: light blue fill + blue border + "Click to Edit"
+            self._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
+            self:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
+            if self._selectedLabel then self._selectedLabel:Hide() end
+            if self._clickToEditText then self._clickToEditText:Show() end
+        else
+            -- Default: very subtle presence
+            self._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+            self:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
+            if self._clickToEditText then self._clickToEditText:Hide() end
+            if self._selectedLabel then self._selectedLabel:Hide() end
         end
-        table.insert(inner, t)
     end
-    ov._innerBorder = inner
+
+    function ov:SetSelected(selected)
+        self._selected = selected
+        self:RefreshVisualState()
+    end
 
     ov:EnableMouse(true)
     ov:SetMovable(true)
@@ -255,6 +286,11 @@ function Integration:EnsureOverlay()
         if InCombatLockdown and InCombatLockdown() then return end
         f._dragging = true
         parent:StartMoving()
+        -- Select on drag start (matches Blizzard Edit Mode behavior)
+        if not f._selected then
+            clearBlizzardSelection()
+            if ReplayFrame and ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
+        end
     end)
     ov:SetScript("OnDragStop", function(f)
         parent:StopMovingOrSizing(); f._dragging = nil
@@ -262,13 +298,7 @@ function Integration:EnsureOverlay()
         self:PersistCurrentToLayout()
     end)
 
-    -- Hover feedback for polish (do not interfere with drag state)
-    ov:SetScript("OnEnter", function(f)
-        if f._hoverFill then f._hoverFill:Show() end
-    end)
-    ov:SetScript("OnLeave", function(f)
-        if f._hoverFill and not f._dragging and not f._resizing then f._hoverFill:Hide() end
-    end)
+    -- (hover feedback moved to state-aware OnEnter/OnLeave below)
 
     local grip = CreateFrame("Frame", nil, ov)
     grip:SetPoint("BOTTOMRIGHT")
@@ -278,14 +308,15 @@ function Integration:EnsureOverlay()
     tex:SetAllPoints(); tex:SetTexture("Interface/ChatFrame/UI-ChatIM-SizeGrabber-Up")
     grip:SetScript("OnMouseDown", function(g,btn)
         if btn~="LeftButton" or (InCombatLockdown and InCombatLockdown()) then return end
-        parent:StartSizing("BOTTOMRIGHT"); g._resizing=true
+        parent:StartSizing("BOTTOMRIGHT"); ov._resizing=true
     end)
     grip:SetScript("OnMouseUp", function(g)
-        parent:StopMovingOrSizing(); g._resizing=nil
+        parent:StopMovingOrSizing(); ov._resizing=nil
         if ReplayFrame.SaveFramePosition then ReplayFrame:SaveFramePosition() end
         self:PersistCurrentToLayout()
         if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-    if ov._hoverFill then ov._hoverFill:Hide() end
+    if ov._hovered == nil then ov._hovered = false end
+    ov:RefreshVisualState()
     end)
     -- Lock awareness: disable drag/resize if frame locked
     function ov:RefreshLockState()
@@ -305,23 +336,25 @@ function Integration:EnsureOverlay()
     ov:RefreshLockState()
 
     ov:SetScript("OnEnter", function(f)
-        if f._hoverFill then f._hoverFill:Show() end
-        if GameTooltip and GameTooltip.SetOwner then
+        f._hovered = true
+        f:RefreshVisualState()
+        if not f._selected and GameTooltip and GameTooltip.SetOwner then
             GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
             GameTooltip:ClearLines()
-            GameTooltip:AddLine("Chatty Little NPC", 1,1,1)
             local locked = ReplayFrame.IsFrameLocked and ReplayFrame:IsFrameLocked()
             if locked then
-                GameTooltip:AddLine("Locked: unlock to drag/resize.", 0.85,0.85,0.85,true)
+                GameTooltip:AddLine("Locked \226\128\148 unlock to drag/resize", 0.85,0.85,0.85,true)
             else
-                GameTooltip:AddLine("Drag to move (Shift=1px, Ctrl=20px arrow nudge).", 0.85,0.85,0.85,true)
+                GameTooltip:AddLine("Drag to move \194\183 Arrows to nudge", 0.85,0.85,0.85,true)
             end
-            GameTooltip:AddLine("Click frame to open settings.", 0.75,0.75,0.75,true)
             GameTooltip:Show()
         end
     end)
     ov:SetScript("OnLeave", function(f)
-        if f._hoverFill and not f._dragging and not f._resizing then f._hoverFill:Hide() end
+        if not f._dragging and not f._resizing then
+            f._hovered = false
+            f:RefreshVisualState()
+        end
         if GameTooltip_Hide then GameTooltip_Hide() end
     end)
     -- Simple click (no drag) opens settings; overlay eats clicks so provide here
@@ -337,20 +370,21 @@ function Integration:EnsureOverlay()
         local dist2 = dx*dx + dy*dy
         local elapsed = (GetTime and GetTime() or 0) - (f._clickStartTime or 0)
         if dist2 < 25*25 and elapsed < 0.75 then
+            clearBlizzardSelection()
             if ReplayFrame and ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
         end
     end)
     self.overlay = ov
-    -- Layout badge (updates dynamically)
+    -- Layout badge: dark pill at top-left (Blizzard edit mode style)
     local badgeHolder = CreateFrame("Frame", nil, ov, "BackdropTemplate")
-    badgeHolder:SetPoint("TOPLEFT", 4, -4)
+    badgeHolder:SetPoint("TOPLEFT", 6, -6)
     badgeHolder:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 8, insets = {left=2,right=2,top=2,bottom=2} })
-    badgeHolder:SetBackdropColor(0,0,0,0.40)
-    badgeHolder:SetBackdropBorderColor(0.663, 0.859, 0.929, 0.6)
-    badgeHolder:SetSize(10, 20) -- minimal until we know text
+    badgeHolder:SetBackdropColor(0.05, 0.05, 0.05, 0.70)
+    badgeHolder:SetBackdropBorderColor(0.30, 0.30, 0.30, 0.50)
+    badgeHolder:SetSize(10, 18)
     local badge = badgeHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    badge:SetPoint("LEFT", 4, 0)
-    badge:SetText("") -- no placeholder text; hide until resolved
+    badge:SetPoint("LEFT", 5, 0)
+    badge:SetText("")
     badgeHolder:Hide()
     ov._badgeHolder = badgeHolder
     ov._badge = badge
@@ -417,6 +451,74 @@ function Integration:EnsureOverlay()
             Integration:PersistCurrentToLayout()
         end
     end)
+
+    -- =====================================================
+    -- Model overlay: separate overlay attached to ModelContainer (which is now a standalone frame)
+    -- =====================================================
+    local function createModelOverlay()
+        if not ReplayFrame.ModelContainer then return end
+        local mc = ReplayFrame.ModelContainer
+        local modelOv = CreateFrame("Frame", nil, mc, "BackdropTemplate")
+        modelOv:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 10, insets = { left=2,right=2,top=2,bottom=2 } })
+        modelOv:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
+        modelOv:SetAllPoints(mc)
+        modelOv:SetFrameStrata("FULLSCREEN_DIALOG")
+        modelOv:EnableMouse(true)
+        modelOv:Hide()
+
+        local modelFill = modelOv:CreateTexture(nil, "BACKGROUND")
+        modelFill:SetAllPoints()
+        modelFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+        modelOv._bgFill = modelFill
+
+        modelOv._hovered = false
+
+        local modelLabel = modelOv:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        modelLabel:SetPoint("CENTER")
+        modelLabel:SetText("Model Area")
+        modelLabel:SetTextColor(1, 1, 1, 0.50)
+        modelLabel:Hide()
+
+        function modelOv:RefreshVisualState()
+            if self._hovered then
+                self._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
+                self:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
+                modelLabel:Show()
+            else
+                self._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+                self:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
+                modelLabel:Hide()
+            end
+        end
+
+        modelOv:SetScript("OnEnter", function(f)
+            f._hovered = true
+            f:RefreshVisualState()
+            if GameTooltip and GameTooltip.SetOwner then
+                GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
+                GameTooltip:ClearLines()
+                GameTooltip:AddLine("Model Area", 0.85,0.85,0.85,true)
+                GameTooltip:Show()
+            end
+        end)
+        modelOv:SetScript("OnLeave", function(f)
+            f._hovered = false
+            f:RefreshVisualState()
+            if GameTooltip_Hide then GameTooltip_Hide() end
+        end)
+        return modelOv
+    end
+
+    -- Deferred: model overlay created on first ShowOverlay when ModelContainer exists
+    ov._createModelOverlay = createModelOverlay
+    ov._modelOverlay = nil
+    ov._refreshModelOverlay = function()
+        -- Model overlay is SetAllPoints to ModelContainer, no manual positioning needed
+        -- Just ensure it exists and visibility is correct
+        if not ov._modelOverlay and ReplayFrame.ModelContainer then
+            ov._modelOverlay = createModelOverlay()
+        end
+    end
 end
 
 function Integration:ShowOverlay()
@@ -428,6 +530,11 @@ function Integration:ShowOverlay()
             ReplayFrame.DisplayFrame:SetResizable(true)
         end
         self.overlay:Show()
+        -- Sync selected state: if edit panel is already open, mark as selected
+        if self.overlay.SetSelected then
+            local panelOpen = ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown()
+            self.overlay:SetSelected(panelOpen == true)
+        end
         -- Auto focus overlay for arrow key nudging
         self.overlay:SetPropagateKeyboardInput(false)
         -- Some Frame types (non-EditBox) lack SetFocus; safeguard to avoid Lua error
@@ -455,6 +562,31 @@ function Integration:ShowOverlay()
         end
         -- Provide sample queue contents if nothing active for easier styling
         self:InjectSampleDataIfNeeded()
+
+        -- Show ModelContainer with preview model if no NPC model is active
+        if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
+            self._previewModelContainer = true
+            ReplayFrame._hasValidModel = true
+            ReplayFrame.ModelContainer:Show()
+            if ReplayFrame.NpcModelFrame and not ReplayFrame.NpcModelFrame:IsShown() then
+                self._previewModel = true
+                ReplayFrame.NpcModelFrame:Show()
+                pcall(function()
+                    if ReplayFrame.NpcModelFrame.SetUnit then ReplayFrame.NpcModelFrame:SetUnit("player") end
+                end)
+            end
+            -- Re-layout so container gets proper dimensions and position
+            if ReplayFrame.LayoutModelArea and ReplayFrame.DisplayFrame then
+                ReplayFrame:LayoutModelArea(ReplayFrame.DisplayFrame)
+            end
+        end
+        -- Ensure model overlay is created now that container is visible
+        if self.overlay._refreshModelOverlay then
+            self.overlay._refreshModelOverlay()
+        end
+        if self.overlay._modelOverlay then
+            self.overlay._modelOverlay:Show()
+        end
     end
 end
 function Integration:HideOverlay()
@@ -464,7 +596,18 @@ function Integration:HideOverlay()
             ReplayFrame.DisplayFrame:SetResizable(false)
         end
         if self.overlay.RefreshDebugGlows then self.overlay:RefreshDebugGlows(false) end
+        if self.overlay._modelOverlay then self.overlay._modelOverlay:Hide() end
         self.overlay:Hide()
+        -- Clean up preview model/container shown for edit mode
+        if self._previewModel and ReplayFrame.NpcModelFrame then
+            ReplayFrame.NpcModelFrame:Hide()
+            self._previewModel = nil
+        end
+        if self._previewModelContainer and ReplayFrame.ModelContainer then
+            ReplayFrame._hasValidModel = false
+            ReplayFrame.ModelContainer:Hide()
+            self._previewModelContainer = nil
+        end
         -- If we injected sample entries, restore the real queue now
         if ReplayFrame and ReplayFrame._editModeSamples then
             ReplayFrame._editModeSamples = nil
@@ -530,6 +673,10 @@ function Integration:Init()
     if C_EditMode and C_EditMode.OnEditModeExit then
         hooksecurefunc(C_EditMode, "OnEditModeExit", function()
             self:HideOverlay()
+            -- Also close the edit settings panel when leaving Edit Mode
+            if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
+                ReplayFrame._editPanel:Hide()
+            end
             if ReplayFrame and ReplayFrame._editModeSamples then
                 ReplayFrame._editModeSamples = nil
                 if ReplayFrame.SetQueueData then
@@ -544,6 +691,7 @@ function Integration:Init()
                     ReplayFrame.DisplayFrame:Hide()
                 end
             end
+            -- V2 exit is handled by EditMode/Init.lua via EditModeManagerFrame.ExitEditMode hook
         end)
     end
 
@@ -562,6 +710,13 @@ function Integration:Init()
                     b:SetPoint("BOTTOMLEFT", EditModeManagerFrame, "BOTTOMLEFT", 16, 16)
                 end
                 b:SetScript("OnClick", function()
+                    clearBlizzardSelection()
+                    -- V2: select conversation window by default
+                    local Registry = EditMode and EditMode.Registry
+                    if Registry then
+                        local selected = Registry:GetSelected()
+                        Registry:Select(selected or "conversation", "button")
+                    end
                     if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
                     self:ShowOverlay()
                 end)
@@ -589,10 +744,33 @@ function Integration:Init()
         end)
         self._enterHooked = true
     end
+
+    -- When Blizzard selects one of their systems, deselect ours
+    if EditModeManagerFrame and not self._selectHooked then
+        if EditModeManagerFrame.SelectSystem then
+            hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
+                if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
+                    ReplayFrame._editPanel:Hide()
+                end
+            end)
+            self._selectHooked = true
+        elseif EditModeSystemSettingsDialog then
+            EditModeSystemSettingsDialog:HookScript("OnShow", function()
+                if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
+                    ReplayFrame._editPanel:Hide()
+                end
+            end)
+            self._selectHooked = true
+        end
+    end
 end
 
 -- External entry from addon startup
 function ReplayFrame:InitEditModeIntegration()
+    -- Bootstrap the new v2 Edit Mode layer (migration, dock state, registration)
+    if self.EditMode and self.EditMode.Bootstrap then
+        self.EditMode.Bootstrap()
+    end
     if not hasAPI then return end
     if self.EditModeIntegration then self.EditModeIntegration:Init() end
 end
@@ -607,12 +785,21 @@ function ReplayFrame:PersistToActiveLayout()
             self.EditModeIntegration:PersistCurrentToLayout()
         end
     end
+    -- V2: also persist via the new two-window system
+    local Persistence = self.EditMode and self.EditMode.Persistence
+    if Persistence then
+        Persistence:PersistAll()
+        Persistence:SyncToLegacyProfile()
+    end
 end
 
 -- Auto-start overlay if Edit Mode already open when addon loads
 C_Timer.After(2, function()
     if hasAPI and EditModeManagerFrame and EditModeManagerFrame:IsShown() and ReplayFrame.EditModeIntegration then
         ReplayFrame.EditModeIntegration:ShowOverlay()
+        -- V2: also show new overlays
+        local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
+        if Registry then Registry:OnEnter() end
     end
 end)
 
@@ -727,7 +914,9 @@ function ReplayFrame:ImportEditModeBundle(bundle, opts)
         if self.ApplyFrameScale then self:ApplyFrameScale() end
         if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
         if self.DisplayFrame and p.frameSize then self.DisplayFrame:SetSize(p.frameSize.width, p.frameSize.height) end
-        if self.NpcModelFrame then self.NpcModelFrame:SetHeight(p.npcModelFrameHeight or 140) end
+        self.npcModelFrameHeight = p.npcModelFrameHeight or 140
+        if self.ModelContainer then self.ModelContainer:SetHeight(self.npcModelFrameHeight) end
+        if self.NpcModelFrame then self.NpcModelFrame:SetHeight(self.npcModelFrameHeight) end
         if self.Relayout then self:Relayout() end
         -- Persist to active layout bucket
         if self.PersistToActiveLayout then self:PersistToActiveLayout() end
@@ -1055,6 +1244,80 @@ function ReplayFrame:BindBlizzardEditMode()
     end
 end
 
+-- Create/show an Edit Mode overlay for the model container (drag only, no resize)
+function ReplayFrame:EnsureModelEditOverlay()
+    if not self.ModelContainer then return end
+    if self._modelEditOverlay then return end
+
+    local mc = self.ModelContainer
+    local ov = CreateFrame("Frame", nil, mc, "BackdropTemplate")
+    ov:SetAllPoints(mc)
+    ov:Hide()
+    ov:SetFrameStrata("FULLSCREEN_DIALOG")
+    if mc.GetFrameLevel then
+        ov:SetFrameLevel(mc:GetFrameLevel() + 50)
+    end
+    ov:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 12, insets = { left=2,right=2,top=2,bottom=2 } })
+    ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
+
+    local bgFill = ov:CreateTexture(nil, "BACKGROUND")
+    bgFill:SetAllPoints()
+    bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+    ov._bgFill = bgFill
+
+    local textHolder = CreateFrame("Frame", nil, ov)
+    textHolder:SetAllPoints(ov)
+    textHolder:SetFrameLevel(ov:GetFrameLevel() + 5)
+
+    local label = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("CENTER")
+    label:SetText("NPC Model")
+    label:SetTextColor(1.0, 0.82, 0.0, 0.90)
+
+    ov:EnableMouse(true)
+    ov:SetMovable(true)
+    ov:RegisterForDrag("LeftButton")
+
+    ov:SetScript("OnDragStart", function(f)
+        if InCombatLockdown and InCombatLockdown() then return end
+        f._dragging = true
+        mc:StartMoving()
+    end)
+    ov:SetScript("OnDragStop", function(f)
+        mc:StopMovingOrSizing()
+        f._dragging = nil
+        -- Set explicit width when undocking for the first time
+        if not ReplayFrame:IsModelUndocked() and ReplayFrame.DisplayFrame then
+            local w = ReplayFrame.DisplayFrame:GetWidth()
+            mc:SetWidth(w)
+        end
+        if ReplayFrame.SaveModelPosition then ReplayFrame:SaveModelPosition() end
+    end)
+
+    ov:SetScript("OnEnter", function(f)
+        f._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
+        ov:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
+        if GameTooltip and GameTooltip.SetOwner then
+            GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine("NPC Model \226\128\148 Drag to undock & reposition", 0.85, 0.85, 0.85, true)
+            if ReplayFrame:IsModelUndocked() then
+                GameTooltip:AddLine("Reset position to re-dock above conversations.", 0.80, 0.80, 0.80, true)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    ov:SetScript("OnLeave", function(f)
+        if not f._dragging then
+            f._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
+            ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
+        end
+        if GameTooltip_Hide then GameTooltip_Hide() end
+    end)
+
+    self._modelEditOverlay = ov
+end
+
 -- Toggle a lightweight Edit Mode to move/resize the replay frame
 function ReplayFrame:SetEditMode(enabled)
     self._editMode = not not enabled
@@ -1065,6 +1328,12 @@ function ReplayFrame:SetEditMode(enabled)
         if self._editOverlay then self._editOverlay:Show() end
         if self._hoverOverlay then self._hoverOverlay:Hide() end
         if self._editBorder then for _, t in ipairs(self._editBorder) do t:Show() end end
+
+        -- Show model edit overlay if model container exists (child auto-hides with parent)
+        if self.ModelContainer then
+            self:EnsureModelEditOverlay()
+            if self._modelEditOverlay then self._modelEditOverlay:Show() end
+        end
 
     local locked = self.IsFrameLocked and self:IsFrameLocked()
     self.DisplayFrame:SetResizable(true)
@@ -1146,6 +1415,7 @@ function ReplayFrame:SetEditMode(enabled)
         if self._glowGrip then self._glowGrip:SetAlpha(0.9) end
     else
         if self._editOverlay then self._editOverlay:Hide() end
+        if self._modelEditOverlay then self._modelEditOverlay:Hide() end
     if self.ResizeGrip then self.ResizeGrip:Hide() end
         if self._hoverOverlay then self._hoverOverlay:Hide() end
         if self._editBorder then for _, t in ipairs(self._editBorder) do t:Hide() end end
