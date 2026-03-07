@@ -396,6 +396,58 @@ function ReplayFrame:CreateEditPanel()
     panel.resetButton = CreateEditModeButton(panel, "Reset Defaults", 304, 24)
     panel.resetButton:SetPoint("BOTTOMLEFT", panel.layoutBtn, "TOPLEFT", 0, 6)
     panel.resetButton:SetPoint("BOTTOMRIGHT", panel.bundleBtn, "TOPRIGHT", 0, 6)
+
+    -- Reset Positions button: re-dock model + reset both frames to screen center
+    panel.resetPosButton = CreateEditModeButton(panel, "Reset All Positions", 304, 24)
+    panel.resetPosButton:SetPoint("BOTTOMLEFT", panel.resetButton, "TOPLEFT", 0, 6)
+    panel.resetPosButton:SetPoint("BOTTOMRIGHT", panel.resetButton, "TOPRIGHT", 0, 6)
+    panel.resetPosButton:SetScript("OnClick", function()
+        -- Reset conversation window to center-right
+        if ReplayFrame.DisplayFrame then
+            ReplayFrame.DisplayFrame:ClearAllPoints()
+            ReplayFrame.DisplayFrame:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
+            ReplayFrame.DisplayFrame:SetSize(475, 165)
+            ReplayFrame.DisplayFrame:SetScale(1.0)
+        end
+        -- Re-dock model above conversation
+        local ModelWin = ReplayFrame.EditMode and ReplayFrame.EditMode.ModelWindow
+        if ModelWin then
+            if ModelWin.frame then
+                ModelWin.frame:SetSize(475, 140)
+            end
+            ModelWin:Dock()
+        elseif ReplayFrame.ModelContainer then
+            ReplayFrame.ModelContainer:ClearAllPoints()
+            if ReplayFrame.DisplayFrame then
+                ReplayFrame.ModelContainer:SetPoint("BOTTOMLEFT", ReplayFrame.DisplayFrame, "TOPLEFT", 0, 2)
+                ReplayFrame.ModelContainer:SetPoint("BOTTOMRIGHT", ReplayFrame.DisplayFrame, "TOPRIGHT", 0, 2)
+            end
+            ReplayFrame.ModelContainer:SetSize(475, 140)
+        end
+        -- Show model container if hidden
+        if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
+            ReplayFrame._hasValidModel = true
+            ReplayFrame.ModelContainer:Show()
+        end
+        if ReplayFrame.NpcModelFrame then
+            ReplayFrame.NpcModelFrame:SetHeight(140)
+        end
+        -- Update profile
+        if CLN.db and CLN.db.profile then
+            CLN.db.profile.framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 200, yOfs = 0 }
+            CLN.db.profile.frameSize = { width = 475, height = 165 }
+            CLN.db.profile.frameScale = 1.0
+            CLN.db.profile.npcModelFrameHeight = 140
+            CLN.db.profile.modelFramePos = nil
+        end
+        -- Persist to layout
+        if ReplayFrame.PersistToActiveLayout then
+            ReplayFrame:PersistToActiveLayout()
+        end
+        if ReplayFrame.Relayout then ReplayFrame:Relayout() end
+        if CLN.Logger then CLN.Logger:info("All positions reset and model re-docked", false, CLN.Utils.LogCategories.ui) end
+    end)
+    if attachTooltip then attachTooltip(panel.resetPosButton, "Reset Positions", "Reset both the Conversation and Model windows to default positions and re-dock the model above the conversation.") end
     
     -- Event handlers
     -- Live preview helpers (do not commit to DB until Accept)
