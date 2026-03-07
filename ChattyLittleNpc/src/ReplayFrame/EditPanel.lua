@@ -207,11 +207,15 @@ function ReplayFrame:CreateEditPanel()
                     -- Write through to v2 exclude config
                     local emExclude = EditMode.Persistence:EnsureExcludeConfig()
                     -- Map flat keys back to v2 per-window structure
-                    if key == "frameScale" then (emExclude.conversation or {}).scale = exclude[key]
-                    elseif key == "queueTextScale" then (emExclude.conversation or {}).textScale = exclude[key]
-                    elseif key == "frameSize" then (emExclude.conversation or {}).size = exclude[key]
-                    elseif key == "npcModelFrameHeight" then (emExclude.model or {}).size = exclude[key]
-                    elseif key == "framePos" then (emExclude.conversation or {}).pos = exclude[key]
+                    if emExclude.conversation then
+                        if key == "frameScale" then emExclude.conversation.scale = exclude[key]
+                        elseif key == "queueTextScale" then emExclude.conversation.textScale = exclude[key]
+                        elseif key == "frameSize" then emExclude.conversation.size = exclude[key]
+                        elseif key == "framePos" then emExclude.conversation.pos = exclude[key]
+                        end
+                    end
+                    if emExclude.model then
+                        if key == "npcModelFrameHeight" then emExclude.model.size = exclude[key] end
                     end
                     local name = EditMode.Persistence:GetActiveLayoutName()
                     if name then EditMode.Persistence:ApplyLayout(name) end
@@ -542,7 +546,7 @@ function ReplayFrame:CreateEditPanel()
 
     panel.resetButton:SetScript("OnClick", function()
         panel._suppressDirty = true
-        local defaults = { scale=1.0, textScale=1.0, width=475, height=310, modelHeight=140 }
+        local defaults = { scale=1.0, textScale=1.0, width=475, height=165, modelHeight=140 }
         for _, row in ipairs(panel._formBuilder.rows) do
             if row.type == "slider" and row.slider then
                 local def = defaults[row.origKey or row.key]

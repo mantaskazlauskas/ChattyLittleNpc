@@ -260,9 +260,8 @@ end
 ---@return table parsed  { version = 1, conversation?, model? }
 function ImportExport:ParseV1Meta(str)
     local kv = {}
-    for pair in string.gmatch(str or "", "([%w]+=[^;]*);") do
-        local k, v = pair:match("^(%w+)=([^;]*)$")
-        if k then kv[k] = v end
+    for k, v in string.gmatch(str or "", "(%w+)=([^;]*)") do
+        kv[k] = v
     end
 
     local result = { version = 1, conversation = nil, model = nil }

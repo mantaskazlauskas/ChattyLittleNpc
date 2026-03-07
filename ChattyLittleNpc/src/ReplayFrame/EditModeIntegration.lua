@@ -9,8 +9,9 @@ local EditMode -- resolved in Init()
 local function clearBlizzardSelection()
     if EditModeManagerFrame and EditModeManagerFrame.ClearSelectedSystem then
         EditModeManagerFrame:ClearSelectedSystem()
-    elseif EditModeSystemSettingsDialog and EditModeSystemSettingsDialog:IsShown()
-           and EditModeSystemSettingsDialog:IsShown() then
+    end
+    if EditModeSystemSettingsDialog and EditModeSystemSettingsDialog.IsShown
+       and EditModeSystemSettingsDialog:IsShown() then
         EditModeSystemSettingsDialog:Hide()
     end
 end
@@ -183,8 +184,19 @@ Integration.overlay = {
 function Integration:Init()
     EditMode = ReplayFrame.EditMode
     if self._init or not hasAPI then return end
-    local Registry, Persistence = getModules()
+    local Registry, Persistence, ImportExport = getModules()
     if not Registry or not Persistence then return end
+
+    -- Inject UI methods onto ImportExport so EditPanel.lua can find them
+    if ImportExport then
+        if not ImportExport.ShowBundleDialog then
+            ImportExport.ShowBundleDialog = function() Integration:ShowBundleDialog() end
+        end
+        if not ImportExport.ShowLayoutManager then
+            ImportExport.ShowLayoutManager = function() Integration:ShowLayoutManager() end
+        end
+    end
+
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
     eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -206,6 +218,7 @@ function Integration:Init()
     self._eventFrame = eventFrame
     if C_EditMode and C_EditMode.OnEditModeExit and hooksecurefunc and not self._exitHooked then
         hooksecurefunc(C_EditMode, "OnEditModeExit", function()
+            ReplayFrame._blizzardEditMode = false
             self:HideOverlay()
             if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then ReplayFrame._editPanel:Hide() end
             if ReplayFrame.DisplayFrame then
@@ -249,6 +262,9 @@ function Integration:Init()
     if EditModeManagerFrame and hooksecurefunc and not self._enterHooked then
         hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
             if InCombatLockdown and InCombatLockdown() then return end
+            ReplayFrame._blizzardEditMode = true
+            ReplayFrame._forceShow = true
+            ReplayFrame.userHidden = false
             ReplayFrame:GetDisplayFrame()
             if ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:Show() end
             self:ShowOverlay()
@@ -326,7 +342,9 @@ function ReplayFrame:EndManualEdit()
     self._manualEdit = false
     self:SetEditMode(false)
     if self.SaveFramePosition then self:SaveFramePosition() end
-    if not (self.IsBlizzardInEditMode and self:IsBlizzardInEditMode()) then
+    local blizActive = hasAPI and EditModeManagerFrame
+        and EditModeManagerFrame.IsInEditMode and EditModeManagerFrame:IsInEditMode()
+    if not blizActive then
         self._forceShow = false
         local playing = self.IsVoiceoverCurrenltyPlaying and self:IsVoiceoverCurrenltyPlaying()
         local empty = self.IsQuestQueueEmpty and self:IsQuestQueueEmpty()
@@ -340,3 +358,4 @@ C_Timer.After(2, function()
         if Registry then Registry:OnEnter() end
     end
 end)
+

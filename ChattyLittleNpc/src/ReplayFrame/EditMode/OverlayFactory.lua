@@ -211,7 +211,13 @@ local function createResizeGrip(ov, controller)
         local parent = controller.frame
         if not parent then return end
 
-        parent:StartSizing("BOTTOMRIGHT")
+        -- Docked model: can only resize vertically (top edge free, bottom anchored)
+        local sizeDir = "BOTTOMRIGHT"
+        if controller.IsDocked and controller:IsDocked() then
+            sizeDir = "TOP"
+        end
+
+        parent:StartSizing(sizeDir)
         texDown:Show()
         tex:Hide()
         OverlayFactory:SetState(controller, "resizing")
@@ -293,10 +299,12 @@ local function wireInteraction(ov, controller)
         local x, y = GetCursorPosition()
         self._clickStartX = x
         self._clickStartY = y
+        self._didDrag = false
     end)
 
     ov:SetScript("OnMouseUp", function(self, btn)
         if btn ~= "LeftButton" then return end
+        if self._didDrag then self._didDrag = nil; return end
         if ov._state == "dragging" or ov._state == "resizing" then return end
 
         local x, y = GetCursorPosition()
@@ -323,6 +331,7 @@ local function wireInteraction(ov, controller)
     ov:SetScript("OnDragStart", function()
         if controller.locked then return end
         if InCombatLockdown() then return end
+        ov._didDrag = true
 
         -- Select on drag start
         local Registry = EditMode.Registry
@@ -337,15 +346,17 @@ local function wireInteraction(ov, controller)
         end
 
         OverlayFactory:SetState(controller, "dragging")
-        parent:StartMoving()
+        local liveFrame = controller:EnsureFrame()
+        if liveFrame then liveFrame:StartMoving() end
     end)
 
     -- ====== OnDragStop ======
     ov:SetScript("OnDragStop", function()
-        parent:StopMovingOrSizing()
+        local liveFrame = controller:EnsureFrame()
+        if liveFrame then liveFrame:StopMovingOrSizing() end
         OverlayFactory:SetState(controller, "selected")
         saveAndPersist(controller)
-        -- TODO: SnapManager integration (Phase 3)
+        -- TODO: Wire SnapManager:Evaluate + Commit here
     end)
 
     -- ====== OnKeyDown (keyboard nudging + Tab cycling + Escape) ======

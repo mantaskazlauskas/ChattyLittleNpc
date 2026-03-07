@@ -131,13 +131,26 @@ function Persistence:MigrateIfNeeded()
                 }
             end
 
-            -- Build model state (v1 had no independent model position per layout)
+            -- Build model state — preserve undocked position from global profile
+            local globalModelPos = p.modelFramePos
+            local isDocked = (globalModelPos == nil or type(globalModelPos) ~= "table")
             local modelState = {
-                docked = true, -- v1 was always docked
+                docked = isDocked,
             }
             if v1.npcModelFrameHeight then
                 local w = (v1.frameSize and v1.frameSize.width) or 475
                 modelState.size = { width = w, height = v1.npcModelFrameHeight }
+            end
+            if not isDocked and globalModelPos then
+                modelState.pos = {
+                    point         = globalModelPos.point,
+                    relativePoint = globalModelPos.relativePoint,
+                    x             = globalModelPos.xOfs or 0,
+                    y             = globalModelPos.yOfs or 0,
+                }
+                if globalModelPos.width and modelState.size then
+                    modelState.size.width = globalModelPos.width
+                end
             end
 
             migrated.layouts[name] = {
@@ -198,16 +211,15 @@ function Persistence:GetActiveLayoutName()
     local list = layouts.layouts
     local idx = tonumber(layouts.activeLayout)
 
-    -- Primary: direct index lookup
+    -- Primary: try adjusted index first (subtract hidden Modern/Classic presets)
     if idx then
-        if list[idx] and list[idx].layoutName then
-            return list[idx].layoutName
-        end
-        -- Adjust for hidden Modern/Classic presets
         local adj = idx - HIDDEN_BASE_LAYOUTS
         if adj >= 1 and list[adj] and list[adj].layoutName then
-            logDebug(string.format("Active layout index %d adjusted -> %d", idx, adj))
             return list[adj].layoutName
+        end
+        -- Direct index (some clients may already align)
+        if list[idx] and list[idx].layoutName then
+            return list[idx].layoutName
         end
     end
 
@@ -219,7 +231,7 @@ function Persistence:GetActiveLayoutName()
         end
     end
 
-    -- Fallback 2: probe nearby indices
+    -- Fallback 2: probe nearby indices with active flag requirement
     if idx then
         for shift = -3, 3 do
             local cand = list[idx + shift]
@@ -230,12 +242,8 @@ function Persistence:GetActiveLayoutName()
         end
     end
 
-    -- Fallback 3: first entry
-    if list[1] and list[1].layoutName then
-        logWarn("Could not determine active layout; defaulting to first entry")
-        return list[1].layoutName
-    end
-
+    -- No fallback to first entry — return nil to prevent writing to wrong bucket
+    logWarn("Could not determine active layout; returning nil (no persist/apply)")
     return nil
 end
 
