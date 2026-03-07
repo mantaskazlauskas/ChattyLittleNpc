@@ -80,6 +80,8 @@ local defaults = {
         buttonPosY = -30,
         -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"
         questPlaybackMode = "queue",
+        -- Gossip playback mode (independent from quests): "queue" | "stopOnClose" | "manual"
+        gossipPlaybackMode = "queue",
         audioChannel = "MASTER",
         -- Rendering backend preference for the Replay Frame model host: 'auto' | 'scene' | 'player'
         renderBackend = "auto",
@@ -116,6 +118,11 @@ local defaults = {
         nativeVOWhitelist = {},
         -- Dismissed NPCs: don't ask about these again in the popup
         nativeVODismissed = {},
+        -- Text continuation: show remaining text when resuming from ≥75%
+        textContinuationEnabled = true,
+        textContinuationThreshold = 0.75,
+        -- Reading pace coefficient: adjusted by adaptive-pace learning (1.0 = default ~200 WPM)
+        readingPaceCoefficient = 1.0,
     }
 }
 
@@ -159,10 +166,11 @@ function CLN:_MigrateSavedVars()
         p.stopVoiceoverAfterDialogWindowClose = nil
     end
 
-    -- Migrate layoutPositions/layoutSizes → editModeLayouts
+    -- Migrate layoutPositions/layoutSizes → editModeLayouts (legacy pre-v1 keys)
+    -- These are migrated to v1 format here, then Persistence:MigrateIfNeeded()
+    -- handles v1→v2 migration on first Edit Mode init.
     if p.layoutPositions or p.layoutSizes then
         if not p.editModeLayouts then p.editModeLayouts = {} end
-        -- Best-effort: merge any existing per-layout data
         if type(p.layoutPositions) == "table" then
             for name, pos in pairs(p.layoutPositions) do
                 if not p.editModeLayouts[name] then p.editModeLayouts[name] = {} end

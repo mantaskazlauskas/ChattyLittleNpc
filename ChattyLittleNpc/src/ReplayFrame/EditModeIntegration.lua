@@ -1,632 +1,141 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
-
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
-
--- ============================================================================
--- Blizzard Edit Mode Integration (per-layout settings for ChattyLittleNpc)
--- ============================================================================
--- Provides: per-layout persistence of frameScale, queueTextScale, frameSize,
--- npcModelFrameHeight, position; overlay highlight + drag/resize while in
--- Edit Mode; injected button on Edit Mode UI to open addon edit panel.
--- ============================================================================
-
 local Integration = {}
 ReplayFrame.EditModeIntegration = Integration
-
--- Blizzard reserves two internal presets (Modern=0, Classic=1) that don't appear in the
--- returned layouts list we enumerate. We treat them as hidden so any numeric prefixing
--- or index correlation with C_EditMode.activeLayout must subtract this offset.
-local HIDDEN_BASE_LAYOUTS = 2
-
+local hasAPI = (C_EditMode and type(C_EditMode.GetLayouts) == "function")
+local EditMode -- resolved in Init()
 local function clearBlizzardSelection()
     if EditModeManagerFrame and EditModeManagerFrame.ClearSelectedSystem then
         EditModeManagerFrame:ClearSelectedSystem()
-    elseif EditModeSystemSettingsDialog and EditModeSystemSettingsDialog.IsShown
+    elseif EditModeSystemSettingsDialog and EditModeSystemSettingsDialog:IsShown()
            and EditModeSystemSettingsDialog:IsShown() then
         EditModeSystemSettingsDialog:Hide()
     end
 end
-
 local function logDebug(msg)
     if CLN and CLN.Logger then CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui) end
 end
 local function logInfo(msg, chat)
     if CLN and CLN.Logger then CLN.Logger:info(msg, chat or false, CLN.Utils.LogCategories.ui) end
 end
-
-local hasAPI = (C_EditMode and type(C_EditMode.GetLayouts) == "function")
--- Marker for appended Chatty settings bundle versioned
-local BUNDLE_MARK = "#CLN1#"
-
-local function ensureStore()
-    CLN.db.profile.editModeLayouts = CLN.db.profile.editModeLayouts or {}
-    return CLN.db.profile.editModeLayouts
+local function resolve()
+    if not EditMode then EditMode = ReplayFrame.EditMode end
+    return EditMode
 end
-
-local function ensureExcludeConfig()
-    local p = CLN.db.profile
-    p.editModeExclude = p.editModeExclude or {
-        frameScale = false,
-        queueTextScale = false,
-        frameSize = false,
-        npcModelFrameHeight = false,
-        framePos = false,
-    }
-    return p.editModeExclude
+local function getModules()
+    local em = resolve()
+    if not em then return nil end
+    return em.Registry, em.Persistence, em.ImportExport, em.OverlayFactory
 end
-
--- One-time migration: move any legacy displayFramePos keys to framePos (unified naming)
-local migratedPositions = false
-local function migratePositions()
-    if migratedPositions then return end
-    local store = CLN.db and CLN.db.profile and CLN.db.profile.editModeLayouts
-    if not store then return end
-    for name, bucket in pairs(store) do
-        if bucket.displayFramePos and not bucket.framePos then
-            local p = bucket.displayFramePos
-            bucket.framePos = { point = p.point, relativePoint = p.relPoint or p.relativePoint, x = p.x, y = p.y }
-            bucket.displayFramePos = nil
-        end
+local function clearSamplesAndPreview(self)
+    if self._previewModel and ReplayFrame.NpcModelFrame then ReplayFrame.NpcModelFrame:Hide(); self._previewModel = nil end
+    if self._previewModelContainer and ReplayFrame.ModelContainer then
+        ReplayFrame._hasValidModel = false
+        ReplayFrame.ModelContainer:Hide()
+        self._previewModelContainer = nil
     end
-    migratedPositions = true
-end
-
----@return string|nil activeLayoutName
-function Integration:GetActiveLayoutName()
-    if not hasAPI then return nil end
-    local ok, layouts = pcall(C_EditMode.GetLayouts)
-    if not ok or not layouts or not layouts.layouts then return nil end
-    local list = layouts.layouts
-    local idx = tonumber(layouts.activeLayout)
-    -- Primary: direct index lookup (expected API contract)
-    if idx then
-        -- Direct attempt (some clients may already align)
-        if list[idx] and list[idx].layoutName then
-            return list[idx].layoutName
-        end
-        -- Adjust for hidden Modern/Classic presets (activeLayout uses full list including them)
-        local adj = idx - HIDDEN_BASE_LAYOUTS
-        if adj >= 1 and list[adj] and list[adj].layoutName then
-            if CLN and CLN.Logger then
-                CLN.Logger:debug(string.format("Active layout index %d adjusted -> %d (hidden base=%d)", idx, adj, HIDDEN_BASE_LAYOUTS), false, CLN.Utils.LogCategories.ui)
-            end
-            return list[adj].layoutName
-        end
-    end
-    -- Fallback 1: scan for explicit active flag Blizzard sometimes exposes
-    for i, l in ipairs(list) do
-        if l.isActive or l.active or l.isLayoutActive then
-            if CLN and CLN.Logger then
-                CLN.Logger:debug("Active layout determined by isActive flag scan (index="..i..")", false, CLN.Utils.LogCategories.ui)
-            end
-            return l.layoutName
-        end
-    end
-    -- Fallback 2: some users report index offset (+2). Probe nearby indices.
-    if idx then
-        for shift = -3, 3 do
-            local cand = list[idx + shift]
-            if cand and cand.layoutName and (cand.isActive or cand.active or cand.isLayoutActive) then
-                if CLN and CLN.Logger then
-                    CLN.Logger:debug("Active layout index adjusted by "..shift.." (reported="..tostring(idx)..")", false, CLN.Utils.LogCategories.ui)
-                end
-                return cand.layoutName
-            end
-        end
-    end
-    -- Fallback 3: last resort: return first entry (least desirable but better than nil)
-    if list[1] and list[1].layoutName then
-        if CLN and CLN.Logger then
-            CLN.Logger:warn("Could not confidently determine active layout; defaulting to first entry", false, CLN.Utils.LogCategories.ui)
-            -- Provide diagnostic dump
-            for i,l in ipairs(list) do
-                CLN.Logger:debug(string.format("Layout[%d] name=%s activeFlags=%s%s%s", i, l.layoutName or "?", l.isActive and "isActive " or "", l.active and "active " or "", l.isLayoutActive and "isLayoutActive" or ""), false, CLN.Utils.LogCategories.ui)
-            end
-        end
-        return list[1].layoutName
-    end
-    return nil
-end
-
--- Persist current profile settings to the active layout bucket
-function Integration:PersistCurrentToLayout()
-    local name = self:GetActiveLayoutName()
-    if not name then return end
-    local store = ensureStore()
-    local bucket = store[name] or {}
-    local exclude = ensureExcludeConfig()
-    bucket.frameScale = CLN.db.profile.frameScale
-    bucket.queueTextScale = CLN.db.profile.queueTextScale
-    bucket.frameSize = CLN.db.profile.frameSize and {
-        width = CLN.db.profile.frameSize.width,
-        height = CLN.db.profile.frameSize.height
-    } or nil
-    bucket.npcModelFrameHeight = CLN.db.profile.npcModelFrameHeight
-    -- modelOffsetX/Y removed — model area is always docked at top
-    if ReplayFrame.DisplayFrame then
-        local p, _, r, x, y = ReplayFrame.DisplayFrame:GetPoint(1)
-        bucket.framePos = { point = p, relativePoint = r, x = x, y = y }
-    end
-    -- Respect opt-out by clearing values (so they won't override later)
-    if exclude.frameScale then bucket.frameScale = nil end
-    if exclude.queueTextScale then bucket.queueTextScale = nil end
-    if exclude.frameSize then bucket.frameSize = nil end
-    if exclude.npcModelFrameHeight then bucket.npcModelFrameHeight = nil end
-    if exclude.framePos then bucket.framePos = nil end
-    store[name] = bucket
-    logInfo("Saved per-layout settings for '"..name.."'")
-end
-
--- Apply stored settings for layout if present
-function Integration:ApplyLayout(name)
-    if not name then return end
-    local store = CLN.db.profile.editModeLayouts
-    local data = store and store[name]
-    if not data then logDebug("No saved settings for layout '"..name.."'") return end
-    local exclude = ensureExcludeConfig()
-    local changed = false
-    if data.frameScale and not exclude.frameScale and data.frameScale ~= CLN.db.profile.frameScale then
-        CLN.db.profile.frameScale = data.frameScale
-        if ReplayFrame.ApplyFrameScale then ReplayFrame:ApplyFrameScale() end
-        changed = true
-    end
-    if data.queueTextScale and not exclude.queueTextScale and data.queueTextScale ~= CLN.db.profile.queueTextScale then
-        CLN.db.profile.queueTextScale = data.queueTextScale
+    if ReplayFrame and ReplayFrame._editModeSamples then
+        ReplayFrame._editModeSamples = nil
+        if ReplayFrame.SetQueueData and ReplayFrame.BuildQueueEntries then ReplayFrame:SetQueueData(ReplayFrame:BuildQueueEntries()) end
         if ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
-        changed = true
+        logDebug("Cleared sample queue entries after hiding overlay")
     end
-    if data.frameSize and not exclude.frameSize and data.frameSize.width and data.frameSize.height then
-        CLN.db.profile.frameSize = { width = data.frameSize.width, height = data.frameSize.height }
-        if ReplayFrame.DisplayFrame then
-            ReplayFrame.DisplayFrame:SetSize(data.frameSize.width, data.frameSize.height)
-            if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-        end
-        changed = true
-    end
-    if data.npcModelFrameHeight and not exclude.npcModelFrameHeight and data.npcModelFrameHeight ~= CLN.db.profile.npcModelFrameHeight then
-        CLN.db.profile.npcModelFrameHeight = data.npcModelFrameHeight
-        ReplayFrame.npcModelFrameHeight = data.npcModelFrameHeight
-        if ReplayFrame.ModelContainer then
-            ReplayFrame.ModelContainer:SetHeight(data.npcModelFrameHeight)
-        end
-        if ReplayFrame.NpcModelFrame then
-            ReplayFrame.NpcModelFrame:SetHeight(data.npcModelFrameHeight)
-        end
-        if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-        changed = true
-    end
-    local pos = (not exclude.framePos) and (data.framePos or data.displayFramePos) or nil -- accept legacy key
-    if pos and ReplayFrame.DisplayFrame and pos.point and (pos.relativePoint or pos.relPoint) then
-        local rp = pos.relativePoint or pos.relPoint
-        ReplayFrame.DisplayFrame:ClearAllPoints()
-        ReplayFrame.DisplayFrame:SetPoint(pos.point, UIParent, rp, pos.x or 0, pos.y or 0)
-        -- also write back to profile global framePos for other systems consistency
-        CLN.db.profile.framePos = { point = pos.point, relativePoint = rp, xOfs = pos.x or 0, yOfs = pos.y or 0 }
-    end
-    if changed then logInfo("Applied settings for layout '"..name.."'") else logDebug("Layout '"..name.."' already matched current settings") end
 end
-
--- Overlay for drag/resize when Edit Mode is open
-function Integration:EnsureOverlay()
-    if self.overlay or not ReplayFrame.DisplayFrame then return end
-    local parent = ReplayFrame.DisplayFrame
-    local ov = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    ov:SetAllPoints(parent)
-    ov:Hide()
-    ov:SetFrameStrata("FULLSCREEN_DIALOG")
-    ov:SetFrameLevel(parent:GetFrameLevel() + 50)
-    -- Backdrop border (color managed by RefreshVisualState)
-    ov:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 12, insets = { left=2,right=2,top=2,bottom=2 } })
-    ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-
-    -- Single fill texture; color switches between hover (blue) and selected (gold)
-    local bgFill = ov:CreateTexture(nil, "BACKGROUND")
-    bgFill:SetAllPoints()
-    bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-    ov._bgFill = bgFill
-
-    -- Text holder at higher frame level to render above model sub-overlay
-    local textHolder = CreateFrame("Frame", nil, ov)
-    textHolder:SetAllPoints(ov)
-    textHolder:SetFrameLevel(ov:GetFrameLevel() + 20)
-
-    -- Centered "Click to Edit" text (hover state, Blizzard style)
-    local clickText = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    clickText:SetPoint("CENTER")
-    clickText:SetText("Click to Edit")
-    clickText:SetTextColor(1, 1, 1, 0.70)
-    clickText:Hide()
-    ov._clickToEditText = clickText
-
-    -- Centered frame label (selected/active state)
-    local selLabel = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    selLabel:SetPoint("CENTER")
-    selLabel:SetText("Chatty Little NPC")
-    selLabel:SetTextColor(1.0, 0.82, 0.0, 0.90)
-    selLabel:Hide()
-    ov._selectedLabel = selLabel
-
-    -- Visual state flags
-    ov._selected = false
-    ov._hovered  = false
-
-    function ov:RefreshVisualState()
-        if self._selected then
-            -- Selected: muted amber-brown fill + warm gold border (matches Blizzard Edit Mode)
-            self._bgFill:SetColorTexture(0.69, 0.57, 0.31, 0.35)
-            self:SetBackdropBorderColor(0.82, 0.69, 0.35, 0.90)
-            if self._clickToEditText then self._clickToEditText:Hide() end
-            if self._selectedLabel then self._selectedLabel:Show() end
-        elseif self._hovered then
-            -- Hover: light blue fill + blue border + "Click to Edit"
-            self._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
-            self:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
-            if self._selectedLabel then self._selectedLabel:Hide() end
-            if self._clickToEditText then self._clickToEditText:Show() end
-        else
-            -- Default: very subtle presence
-            self._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-            self:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-            if self._clickToEditText then self._clickToEditText:Hide() end
-            if self._selectedLabel then self._selectedLabel:Hide() end
-        end
+function Integration:GetActiveLayoutName()
+    local _, Persistence = getModules()
+    if not hasAPI or not Persistence then return nil end
+    return Persistence:GetActiveLayoutName()
+end
+function Integration:ApplyLayout(name)
+    local _, Persistence = getModules()
+    if not hasAPI or not Persistence then return end
+    Persistence:ApplyLayout(name)
+end
+function Integration:PersistCurrentToLayout()
+    local _, Persistence = getModules()
+    if not hasAPI or not Persistence then return end
+    Persistence:PersistAll()
+    Persistence:SyncToLegacyProfile()
+end
+function Integration:ShowBundleDialog()
+    local _, _, ImportExport = getModules()
+    if not hasAPI or not ImportExport then
+        if CLN and CLN.Print then CLN:Print("Edit Mode API unavailable") end
+        return
     end
-
-    function ov:SetSelected(selected)
-        self._selected = selected
-        self:RefreshVisualState()
-    end
-
-    ov:EnableMouse(true)
-    ov:SetMovable(true)
-    ov:RegisterForDrag("LeftButton")
-    ov:SetScript("OnDragStart", function(f)
-        if InCombatLockdown and InCombatLockdown() then return end
-        f._dragging = true
-        parent:StartMoving()
-        -- Select on drag start (matches Blizzard Edit Mode behavior)
-        if not f._selected then
-            clearBlizzardSelection()
-            if ReplayFrame and ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
-        end
-    end)
-    ov:SetScript("OnDragStop", function(f)
-        parent:StopMovingOrSizing(); f._dragging = nil
-        if ReplayFrame.SaveFramePosition then ReplayFrame:SaveFramePosition() end
-        self:PersistCurrentToLayout()
-    end)
-
-    -- (hover feedback moved to state-aware OnEnter/OnLeave below)
-
-    local grip = CreateFrame("Frame", nil, ov)
-    grip:SetPoint("BOTTOMRIGHT")
-    grip:SetSize(18,18)
-    grip:EnableMouse(true)
-    local tex = grip:CreateTexture(nil,"OVERLAY")
-    tex:SetAllPoints(); tex:SetTexture("Interface/ChatFrame/UI-ChatIM-SizeGrabber-Up")
-    grip:SetScript("OnMouseDown", function(g,btn)
-        if btn~="LeftButton" or (InCombatLockdown and InCombatLockdown()) then return end
-        parent:StartSizing("BOTTOMRIGHT"); ov._resizing=true
-    end)
-    grip:SetScript("OnMouseUp", function(g)
-        parent:StopMovingOrSizing(); ov._resizing=nil
-        if ReplayFrame.SaveFramePosition then ReplayFrame:SaveFramePosition() end
-        self:PersistCurrentToLayout()
-        if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-    if ov._hovered == nil then ov._hovered = false end
-    ov:RefreshVisualState()
-    end)
-    -- Lock awareness: disable drag/resize if frame locked
-    function ov:RefreshLockState()
-        local locked = ReplayFrame.IsFrameLocked and ReplayFrame:IsFrameLocked()
-        if locked then
-            ov:EnableMouse(true) -- allow hover/tooltip
-            ov:SetScript("OnDragStart", nil)
-            if grip then grip:EnableMouse(false) end
-        else
-            grip:EnableMouse(true)
-            ov:SetScript("OnDragStart", function(f)
-                if InCombatLockdown and InCombatLockdown() then return end
-                f._dragging = true; parent:StartMoving()
-            end)
-        end
-    end
-    ov:RefreshLockState()
-
-    ov:SetScript("OnEnter", function(f)
-        f._hovered = true
-        f:RefreshVisualState()
-        if not f._selected and GameTooltip and GameTooltip.SetOwner then
-            GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
-            GameTooltip:ClearLines()
-            local locked = ReplayFrame.IsFrameLocked and ReplayFrame:IsFrameLocked()
-            if locked then
-                GameTooltip:AddLine("Locked \226\128\148 unlock to drag/resize", 0.85,0.85,0.85,true)
-            else
-                GameTooltip:AddLine("Drag to move \194\183 Arrows to nudge", 0.85,0.85,0.85,true)
-            end
-            GameTooltip:Show()
-        end
-    end)
-    ov:SetScript("OnLeave", function(f)
-        if not f._dragging and not f._resizing then
-            f._hovered = false
-            f:RefreshVisualState()
-        end
-        if GameTooltip_Hide then GameTooltip_Hide() end
-    end)
-    -- Simple click (no drag) opens settings; overlay eats clicks so provide here
-    ov:SetScript("OnMouseDown", function(f, btn)
-        if btn ~= "LeftButton" then return end
-        f._clickStartTime = GetTime and GetTime() or 0
-        local x,y = GetCursorPosition(); f._clickStartX, f._clickStartY = x,y
-    end)
-    ov:SetScript("OnMouseUp", function(f, btn)
-        if btn ~= "LeftButton" then return end
-        if f._dragging or f._resizing then return end
-        local x,y = GetCursorPosition(); local dx=(x or 0)-(f._clickStartX or 0); local dy=(y or 0)-(f._clickStartY or 0)
-        local dist2 = dx*dx + dy*dy
-        local elapsed = (GetTime and GetTime() or 0) - (f._clickStartTime or 0)
-        if dist2 < 25*25 and elapsed < 0.75 then
-            clearBlizzardSelection()
-            if ReplayFrame and ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
-        end
-    end)
-    self.overlay = ov
-    -- Layout badge: dark pill at top-left (Blizzard edit mode style)
-    local badgeHolder = CreateFrame("Frame", nil, ov, "BackdropTemplate")
-    badgeHolder:SetPoint("TOPLEFT", 6, -6)
-    badgeHolder:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 8, insets = {left=2,right=2,top=2,bottom=2} })
-    badgeHolder:SetBackdropColor(0.05, 0.05, 0.05, 0.70)
-    badgeHolder:SetBackdropBorderColor(0.30, 0.30, 0.30, 0.50)
-    badgeHolder:SetSize(10, 18)
-    local badge = badgeHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    badge:SetPoint("LEFT", 5, 0)
-    badge:SetText("")
-    badgeHolder:Hide()
-    ov._badgeHolder = badgeHolder
-    ov._badge = badge
-
-    -- Arrow key usage hint (only show once unless user resets debug)
-    local hint = ov:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetPoint("TOPRIGHT", -6, -6)
-    hint:SetText("Arrows: move (Shift=1,Ctrl=20)")
-    hint:Hide()
-    ov._hint = hint
-    if CLN.db and CLN.db.profile and CLN.db.profile.debugMode and not CLN.db.profile._editModeArrowHintShown then
-        hint:Show()
-        C_Timer.After(6, function()
-            if hint and hint:IsShown() then hint:Hide() end
-            if CLN.db and CLN.db.profile then CLN.db.profile._editModeArrowHintShown = true end
+    if not self._bundleDialog then
+        local frame = CreateFrame("Frame", "ChattyNpcBundleDialog", UIParent, "BasicFrameTemplateWithInset")
+        frame:SetSize(560, 420)
+        frame:SetPoint("CENTER")
+        frame:Hide()
+        local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+        title:SetPoint("TOP", 0, -12)
+        title:SetText("Chatty NPC Import / Export")
+        local scroll = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 16, -40)
+        scroll:SetPoint("BOTTOMRIGHT", -32, 58)
+        local editBox = CreateFrame("EditBox", nil, scroll)
+        editBox:SetMultiLine(true)
+        editBox:SetAutoFocus(false)
+        editBox:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
+        editBox:SetWidth(500)
+        editBox:SetText("")
+        editBox:SetScript("OnEscapePressed", function() frame:Hide() end)
+        editBox:SetScript("OnCursorChanged", function(_, _, y)
+            local range = scroll:GetVerticalScrollRange() or 0
+            if y < 0 then scroll:SetVerticalScroll(math.min(-y, range)) end
         end)
-    end
-
-    -- Debug glows for key buttons (re-uses action button border look): only if debugMode
-    local function addGlow(target)
-        if not (target and target.CreateTexture) then return end
-        if target._clnGlow then return end
-        local g = target:CreateTexture(nil, "OVERLAY")
-        g:SetTexture("Interface/Buttons/UI-ActionButton-Border")
-        g:SetBlendMode("ADD")
-        g:SetAllPoints(target)
-        g:SetAlpha(0.0)
-        target._clnGlow = g
-    end
-    if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
-        addGlow(ReplayFrame.OptionsButton)
-        addGlow(ReplayFrame.ClearButton)
-        addGlow(ReplayFrame.CollapseButton)
-        addGlow(ReplayFrame.EditModeButton)
-        if ReplayFrame.ResizeGrip then addGlow(ReplayFrame.ResizeGrip) end
-        ov._debugGlowActive = true
-    end
-    function ov:RefreshDebugGlows(show)
-        if not ov._debugGlowActive then return end
-        local a = show and 0.9 or 0.0
-        local btns = { ReplayFrame.OptionsButton, ReplayFrame.ClearButton, ReplayFrame.CollapseButton, ReplayFrame.EditModeButton, ReplayFrame.ResizeGrip }
-        for _, b in ipairs(btns) do if b and b._clnGlow then b._clnGlow:SetAlpha(a) end end
-    end
-
-    ov:EnableKeyboard(true)
-    ov:SetPropagateKeyboardInput(true)
-    ov:SetScript("OnKeyDown", function(frame, key)
-        -- Keyboard nudging (only when not dragging/resizing)
-        if frame._dragging or frame._resizing then return end
-        local locked = ReplayFrame.IsFrameLocked and ReplayFrame:IsFrameLocked()
-        if locked then return end
-        local moveKeys = { LEFT = true, RIGHT = true, UP = true, DOWN = true }
-        if not moveKeys[key] then return end
-        local px = 5
-        if IsShiftKeyDown and IsShiftKeyDown() then px = 1 end
-        if IsControlKeyDown and IsControlKeyDown() then px = 20 end
-        local dx, dy = 0,0
-        if key == "LEFT" then dx = -px elseif key == "RIGHT" then dx = px elseif key == "UP" then dy = px elseif key == "DOWN" then dy = -px end
-        if ReplayFrame.DisplayFrame then
-            local p, _, r, x, y = ReplayFrame.DisplayFrame:GetPoint(1)
-            ReplayFrame.DisplayFrame:ClearAllPoints()
-            ReplayFrame.DisplayFrame:SetPoint(p or "CENTER", UIParent, r or "CENTER", (x or 0)+dx, (y or 0)+dy)
-            if ReplayFrame.SaveFramePosition then ReplayFrame:SaveFramePosition() end
-            Integration:PersistCurrentToLayout()
-        end
-    end)
-
-    -- =====================================================
-    -- Model overlay: separate overlay attached to ModelContainer (which is now a standalone frame)
-    -- =====================================================
-    local function createModelOverlay()
-        if not ReplayFrame.ModelContainer then return end
-        local mc = ReplayFrame.ModelContainer
-        local modelOv = CreateFrame("Frame", nil, mc, "BackdropTemplate")
-        modelOv:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 10, insets = { left=2,right=2,top=2,bottom=2 } })
-        modelOv:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-        modelOv:SetAllPoints(mc)
-        modelOv:SetFrameStrata("FULLSCREEN_DIALOG")
-        modelOv:EnableMouse(true)
-        modelOv:Hide()
-
-        local modelFill = modelOv:CreateTexture(nil, "BACKGROUND")
-        modelFill:SetAllPoints()
-        modelFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-        modelOv._bgFill = modelFill
-
-        modelOv._hovered = false
-
-        local modelLabel = modelOv:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        modelLabel:SetPoint("CENTER")
-        modelLabel:SetText("Model Area")
-        modelLabel:SetTextColor(1, 1, 1, 0.50)
-        modelLabel:Hide()
-
-        function modelOv:RefreshVisualState()
-            if self._hovered then
-                self._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
-                self:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
-                modelLabel:Show()
-            else
-                self._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-                self:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-                modelLabel:Hide()
+        scroll:SetScrollChild(editBox)
+        local exportBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        exportBtn:SetSize(110, 24)
+        exportBtn:SetPoint("BOTTOMLEFT", 16, 20)
+        exportBtn:SetText("Export")
+        exportBtn:SetScript("OnClick", function()
+            local bundle, err = ImportExport:ExportBundle()
+            if not bundle then
+                if CLN and CLN.Print then CLN:Print("Export failed: " .. tostring(err)) end
+                return
             end
-        end
-
-        modelOv:SetScript("OnEnter", function(f)
-            f._hovered = true
-            f:RefreshVisualState()
-            if GameTooltip and GameTooltip.SetOwner then
-                GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
-                GameTooltip:ClearLines()
-                GameTooltip:AddLine("Model Area", 0.85,0.85,0.85,true)
-                GameTooltip:Show()
-            end
+            editBox:SetText(bundle)
+            if editBox.HighlightText then editBox:HighlightText() end
+            if editBox.SetFocus then editBox:SetFocus() end
+            if CLN and CLN.Print then CLN:Print("Bundle exported to dialog") end
         end)
-        modelOv:SetScript("OnLeave", function(f)
-            f._hovered = false
-            f:RefreshVisualState()
-            if GameTooltip_Hide then GameTooltip_Hide() end
+        local importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        importBtn:SetSize(110, 24)
+        importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
+        importBtn:SetText("Import")
+        importBtn:SetScript("OnClick", function()
+            local ok, msg = ImportExport:ImportBundle(editBox:GetText() or "")
+            if CLN and CLN.Print then CLN:Print((ok and "Import success: " or "Import failed: ") .. tostring(msg)) end
+            if ok then Integration:UpdateLayoutBadge() end
         end)
-        return modelOv
+        local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+        closeBtn:SetSize(110, 24)
+        closeBtn:SetPoint("BOTTOMRIGHT", -16, 20)
+        closeBtn:SetText("Close")
+        closeBtn:SetScript("OnClick", function() frame:Hide() end)
+        frame.editBox = editBox
+        self._bundleDialog = frame
     end
-
-    -- Deferred: model overlay created on first ShowOverlay when ModelContainer exists
-    ov._createModelOverlay = createModelOverlay
-    ov._modelOverlay = nil
-    ov._refreshModelOverlay = function()
-        -- Model overlay is SetAllPoints to ModelContainer, no manual positioning needed
-        -- Just ensure it exists and visibility is correct
-        if not ov._modelOverlay and ReplayFrame.ModelContainer then
-            ov._modelOverlay = createModelOverlay()
-        end
-    end
+    self._bundleDialog:Show()
+    self._bundleDialog:Raise()
 end
-
-function Integration:ShowOverlay()
-    if not hasAPI then return end
-    self:EnsureOverlay()
-    if self.overlay then
-        -- Enable resizing during edit mode
-        if ReplayFrame.DisplayFrame and ReplayFrame.DisplayFrame.SetResizable then
-            ReplayFrame.DisplayFrame:SetResizable(true)
-        end
-        self.overlay:Show()
-        -- Sync selected state: if edit panel is already open, mark as selected
-        if self.overlay.SetSelected then
-            local panelOpen = ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown()
-            self.overlay:SetSelected(panelOpen == true)
-        end
-        -- Auto focus overlay for arrow key nudging
-        self.overlay:SetPropagateKeyboardInput(false)
-        -- Some Frame types (non-EditBox) lack SetFocus; safeguard to avoid Lua error
-        if self.overlay.SetFocus then
-            self.overlay:SetFocus()
-        else
-            -- Ensure it still receives key presses
-            if self.overlay.EnableKeyboard then self.overlay:EnableKeyboard(true) end
-            if CLN and CLN.Logger then
-                CLN.Logger:debug("Overlay has no SetFocus; enabled keyboard input instead", false, CLN.Utils.LogCategories.ui)
-            end
-        end
-        -- Only flash badge holder briefly when first showing in session
-        if not self._badgeFlashDone then
-            self._badgeFlashDone = true
-            if self.overlay._badgeHolder then
-                self.overlay._badgeHolder.fade = self.overlay._badgeHolder:CreateAnimationGroup()
-                local a1 = self.overlay._badgeHolder.fade:CreateAnimation("Alpha")
-                a1:SetFromAlpha(0); a1:SetToAlpha(1); a1:SetDuration(0.25)
-                self.overlay._badgeHolder.fade:Play()
-            end
-        end
-        if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
-            if self.overlay.RefreshDebugGlows then self.overlay:RefreshDebugGlows(true) end
-        end
-        -- Provide sample queue contents if nothing active for easier styling
-        self:InjectSampleDataIfNeeded()
-
-        -- Show ModelContainer with preview model if no NPC model is active
-        if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
-            self._previewModelContainer = true
-            ReplayFrame._hasValidModel = true
-            ReplayFrame.ModelContainer:Show()
-            if ReplayFrame.NpcModelFrame and not ReplayFrame.NpcModelFrame:IsShown() then
-                self._previewModel = true
-                ReplayFrame.NpcModelFrame:Show()
-                pcall(function()
-                    if ReplayFrame.NpcModelFrame.SetUnit then ReplayFrame.NpcModelFrame:SetUnit("player") end
-                end)
-            end
-            -- Re-layout so container gets proper dimensions and position
-            if ReplayFrame.LayoutModelArea and ReplayFrame.DisplayFrame then
-                ReplayFrame:LayoutModelArea(ReplayFrame.DisplayFrame)
-            end
-        end
-        -- Ensure model overlay is created now that container is visible
-        if self.overlay._refreshModelOverlay then
-            self.overlay._refreshModelOverlay()
-        end
-        if self.overlay._modelOverlay then
-            self.overlay._modelOverlay:Show()
-        end
-    end
+function Integration:ShowLayoutManager()
+    if CLN and CLN.Print then CLN:Print("Layout Manager: coming soon") end
 end
-function Integration:HideOverlay()
-    if self.overlay then
-        -- Disable resizing outside edit mode
-        if ReplayFrame.DisplayFrame and ReplayFrame.DisplayFrame.SetResizable then
-            ReplayFrame.DisplayFrame:SetResizable(false)
-        end
-        if self.overlay.RefreshDebugGlows then self.overlay:RefreshDebugGlows(false) end
-        if self.overlay._modelOverlay then self.overlay._modelOverlay:Hide() end
-        self.overlay:Hide()
-        -- Clean up preview model/container shown for edit mode
-        if self._previewModel and ReplayFrame.NpcModelFrame then
-            ReplayFrame.NpcModelFrame:Hide()
-            self._previewModel = nil
-        end
-        if self._previewModelContainer and ReplayFrame.ModelContainer then
-            ReplayFrame._hasValidModel = false
-            ReplayFrame.ModelContainer:Hide()
-            self._previewModelContainer = nil
-        end
-        -- If we injected sample entries, restore the real queue now
-        if ReplayFrame and ReplayFrame._editModeSamples then
-            ReplayFrame._editModeSamples = nil
-            if ReplayFrame.SetQueueData and ReplayFrame.BuildQueueEntries then
-                ReplayFrame:SetQueueData(ReplayFrame:BuildQueueEntries())
-            end
-            if ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
-            if CLN and CLN.Logger then CLN.Logger:debug("Cleared sample queue entries after hiding overlay", false, CLN.Utils.LogCategories.ui) end
-        end
-    end
+function Integration:UpdateLayoutBadge()
+    local Registry, _, _, OverlayFactory = getModules()
+    if not hasAPI or not Registry or not OverlayFactory then return end
+    Registry:ForEach(function(_, controller) OverlayFactory:RefreshVisuals(controller) end)
 end
-
--- Inject sample rows for styling when queue empty & nothing playing
 function Integration:InjectSampleDataIfNeeded()
     if not ReplayFrame or not ReplayFrame.SetQueueData then return end
     local realCount = (CLN.questsQueue and #CLN.questsQueue or 0)
     local playing = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
-    if realCount > 0 or playing then return end
-    if ReplayFrame._editModeSamples then return end
+    if realCount > 0 or playing or ReplayFrame._editModeSamples then return end
     local samples = {
         { isPlaying = true, label = "[Now Playing] Sample: The Fallen Watcher", tooltip = "Sample active narration" },
         { label = "Camp Torchlighting", tooltip = "Sample queued quest #1" },
@@ -638,986 +147,196 @@ function Integration:InjectSampleDataIfNeeded()
     ReplayFrame:SetQueueData(samples)
     if ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
 end
-
--- Event wiring
+function Integration:ShowOverlay()
+    if not hasAPI then return end
+    local Registry, _, _, OverlayFactory = getModules()
+    if not Registry or not OverlayFactory then return end
+    Registry:ForEach(function(_, controller) OverlayFactory:Show(controller) end)
+    self:InjectSampleDataIfNeeded()
+    if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
+        self._previewModelContainer = true
+        ReplayFrame._hasValidModel = true
+        ReplayFrame.ModelContainer:Show()
+        if ReplayFrame.NpcModelFrame and not ReplayFrame.NpcModelFrame:IsShown() then
+            self._previewModel = true
+            ReplayFrame.NpcModelFrame:Show()
+            pcall(function() if ReplayFrame.NpcModelFrame.SetUnit then ReplayFrame.NpcModelFrame:SetUnit("player") end end)
+        end
+        if ReplayFrame.LayoutModelArea and ReplayFrame.DisplayFrame then ReplayFrame:LayoutModelArea(ReplayFrame.DisplayFrame) end
+    end
+end
+function Integration:HideOverlay()
+    local Registry, _, _, OverlayFactory = getModules()
+    if Registry and OverlayFactory then Registry:ForEach(function(_, controller) OverlayFactory:Hide(controller) end) end
+    clearSamplesAndPreview(self)
+end
+Integration.overlay = {
+    SetSelected = function(_, selected)
+        if not EditMode or not EditMode.Registry then return end
+        if selected then
+            EditMode.Registry:Select("conversation", "panel")
+        else
+            EditMode.Registry:Select(nil, "panel")
+        end
+    end,
+}
 function Integration:Init()
+    EditMode = ReplayFrame.EditMode
     if self._init or not hasAPI then return end
-    migratePositions()
-    ensureExcludeConfig()
-    -- EDIT_MODE_LAYOUTS_UPDATED -> apply active layout bucket
-    local f = CreateFrame("Frame")
-    f:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
-    f:RegisterEvent("PLAYER_REGEN_ENABLED")
-    f:SetScript("OnEvent", function(_,evt)
-        if evt == "EDIT_MODE_LAYOUTS_UPDATED" then
-            -- Defer slightly to let Blizzard finalize internal state
+    local Registry, Persistence = getModules()
+    if not Registry or not Persistence then return end
+    local eventFrame = CreateFrame("Frame")
+    eventFrame:RegisterEvent("EDIT_MODE_LAYOUTS_UPDATED")
+    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    eventFrame:SetScript("OnEvent", function(_, event)
+        if event == "EDIT_MODE_LAYOUTS_UPDATED" then
             C_Timer.After(0.05, function()
-                local name = self:GetActiveLayoutName()
-                if name then self:ApplyLayout(name) end
+                local name = Persistence:GetActiveLayoutName()
+                if name then Persistence:ApplyLayout(name) end
                 self:UpdateLayoutBadge()
-                -- Also refresh badge inside settings panel if it's open
-                if ReplayFrame and ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() and ReplayFrame._editPanel.RefreshLayoutBadge then
+                if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() and ReplayFrame._editPanel.RefreshLayoutBadge then
                     ReplayFrame._editPanel:RefreshLayoutBadge()
                 end
             end)
-        elseif evt == "PLAYER_REGEN_ENABLED" then
-            if self._pendingApplyLayout then
-                local n = self._pendingApplyLayout; self._pendingApplyLayout=nil; self:ApplyLayout(n)
-            end
-            if self._pendingPersist then self._pendingPersist=false; self:PersistCurrentToLayout() end
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            Persistence:ApplyPendingLayout()
+            if self._pendingPersist then self._pendingPersist = false; self:PersistCurrentToLayout() end
         end
     end)
-    self.eventFrame = f
-
-    -- Hook Edit Mode exit to hide overlay + clean samples + auto-hide frame if empty
-    if C_EditMode and C_EditMode.OnEditModeExit then
+    self._eventFrame = eventFrame
+    if C_EditMode and C_EditMode.OnEditModeExit and hooksecurefunc and not self._exitHooked then
         hooksecurefunc(C_EditMode, "OnEditModeExit", function()
             self:HideOverlay()
-            -- Also close the edit settings panel when leaving Edit Mode
-            if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
-                ReplayFrame._editPanel:Hide()
-            end
-            if ReplayFrame and ReplayFrame._editModeSamples then
-                ReplayFrame._editModeSamples = nil
-                if ReplayFrame.SetQueueData then
-                    ReplayFrame:SetQueueData(ReplayFrame:BuildQueueEntries())
-                end
-                if ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
-            end
-            if ReplayFrame and ReplayFrame.DisplayFrame then
+            if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then ReplayFrame._editPanel:Hide() end
+            if ReplayFrame.DisplayFrame then
+                ReplayFrame._forceShow = false
                 local playing = ReplayFrame.IsVoiceoverCurrenltyPlaying and ReplayFrame:IsVoiceoverCurrenltyPlaying()
                 local empty = ReplayFrame.IsQuestQueueEmpty and ReplayFrame:IsQuestQueueEmpty()
-                if not playing and empty and not ReplayFrame._manualEdit then
-                    ReplayFrame.DisplayFrame:Hide()
-                end
+                if not playing and empty and not ReplayFrame._manualEdit then ReplayFrame.DisplayFrame:Hide() end
             end
-            -- V2 exit is handled by EditMode/Init.lua via EditModeManagerFrame.ExitEditMode hook
+        end)
+        self._exitHooked = true
+    end
+    if not self._buttonTicker then
+        local elapsed = 0
+        self._buttonTicker = C_Timer.NewTicker(0.25, function(ticker)
+            elapsed = elapsed + 0.25
+            if EditModeManagerFrame then
+                if not self._buttonInjected then
+                    local b = CreateFrame("Button", nil, EditModeManagerFrame, "UIPanelButtonTemplate")
+                    b:SetSize(120, 20)
+                    b:SetText("Chatty NPC")
+                    if EditModeManagerFrame.RevertAllChangesButton then
+                        b:SetPoint("TOPLEFT", EditModeManagerFrame.RevertAllChangesButton, "BOTTOMLEFT", 0, -6)
+                    else
+                        b:SetPoint("BOTTOMLEFT", EditModeManagerFrame, "BOTTOMLEFT", 16, 16)
+                    end
+                    b:SetScript("OnClick", function()
+                        clearBlizzardSelection()
+                        Registry:Select("conversation", "button")
+                        if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
+                        self:ShowOverlay()
+                    end)
+                    self._buttonInjected = true
+                    logDebug("Injected Chatty NPC button into Edit Mode UI")
+                end
+                ticker:Cancel()
+            elseif elapsed >= 5 then
+                ticker:Cancel()
+            end
         end)
     end
-
-    -- Inject button into Edit Mode UI when available
-    local elapsed = 0
-    self._ticker = C_Timer.NewTicker(0.5, function(t)
-        elapsed = elapsed + 0.5
-        if EditModeManagerFrame then
-            if not self._buttonInjected then
-                local b = CreateFrame("Button", nil, EditModeManagerFrame, "UIPanelButtonTemplate")
-                b:SetSize(120,20)
-                b:SetText("Chatty NPC")
-                if EditModeManagerFrame.RevertAllChangesButton then
-                    b:SetPoint("TOPLEFT", EditModeManagerFrame.RevertAllChangesButton, "BOTTOMLEFT", 0, -6)
-                else
-                    b:SetPoint("BOTTOMLEFT", EditModeManagerFrame, "BOTTOMLEFT", 16, 16)
-                end
-                b:SetScript("OnClick", function()
-                    clearBlizzardSelection()
-                    -- V2: select conversation window by default
-                    local Registry = EditMode and EditMode.Registry
-                    if Registry then
-                        local selected = Registry:GetSelected()
-                        Registry:Select(selected or "conversation", "button")
-                    end
-                    if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
-                    self:ShowOverlay()
-                end)
-                self._buttonInjected = true
-                logDebug("Injected Chatty NPC button into Edit Mode UI")
-            end
-            t:Cancel()
-        elseif elapsed >= 5 then
-            t:Cancel()
-        end
-    end)
-
-    self._init = true
-    logInfo("Edit Mode integration initialized")
-
-    -- Hook EnterEditMode to force-show frame + overlay
     if EditModeManagerFrame and hooksecurefunc and not self._enterHooked then
         hooksecurefunc(EditModeManagerFrame, "EnterEditMode", function()
             if InCombatLockdown and InCombatLockdown() then return end
-            if not ReplayFrame.DisplayFrame and ReplayFrame.GetDisplayFrame then ReplayFrame:GetDisplayFrame() end
+            ReplayFrame:GetDisplayFrame()
             if ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:Show() end
             self:ShowOverlay()
-            self:HookFrameClickToOpen()
-            self:UpdateLayoutBadge()
         end)
         self._enterHooked = true
     end
-
-    -- When Blizzard selects one of their systems, deselect ours
-    if EditModeManagerFrame and not self._selectHooked then
-        if EditModeManagerFrame.SelectSystem then
-            hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
-                if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
-                    ReplayFrame._editPanel:Hide()
-                end
-            end)
-            self._selectHooked = true
-        elseif EditModeSystemSettingsDialog then
-            EditModeSystemSettingsDialog:HookScript("OnShow", function()
-                if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then
-                    ReplayFrame._editPanel:Hide()
-                end
-            end)
-            self._selectHooked = true
-        end
+    if EditModeManagerFrame and EditModeManagerFrame.SelectSystem and hooksecurefunc and not self._selectHooked then
+        hooksecurefunc(EditModeManagerFrame, "SelectSystem", function()
+            if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then ReplayFrame._editPanel:Hide() end
+        end)
+        self._selectHooked = true
     end
+    self._init = true
+    logInfo("Edit Mode integration initialized")
 end
-
--- External entry from addon startup
 function ReplayFrame:InitEditModeIntegration()
-    -- Bootstrap the new v2 Edit Mode layer (migration, dock state, registration)
-    if self.EditMode and self.EditMode.Bootstrap then
-        self.EditMode.Bootstrap()
-    end
-    if not hasAPI then return end
+    local em = self.EditMode
+    if em and em.Bootstrap then em.Bootstrap() end
     if self.EditModeIntegration then self.EditModeIntegration:Init() end
 end
-
--- When our edit panel Accept is clicked
 function ReplayFrame:PersistToActiveLayout()
-    if self.EditModeIntegration then
-        if InCombatLockdown and InCombatLockdown() then
-            self.EditModeIntegration._pendingPersist = true
-            if CLN.Logger then CLN.Logger:debug("Persist deferred (combat)", false, CLN.Utils.LogCategories.ui) end
-        else
-            self.EditModeIntegration:PersistCurrentToLayout()
-        end
-    end
-    -- V2: also persist via the new two-window system
     local Persistence = self.EditMode and self.EditMode.Persistence
-    if Persistence then
-        Persistence:PersistAll()
-        Persistence:SyncToLegacyProfile()
-    end
-end
-
--- Auto-start overlay if Edit Mode already open when addon loads
-C_Timer.After(2, function()
-    if hasAPI and EditModeManagerFrame and EditModeManagerFrame:IsShown() and ReplayFrame.EditModeIntegration then
-        ReplayFrame.EditModeIntegration:ShowOverlay()
-        -- V2: also show new overlays
-        local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
-        if Registry then Registry:OnEnter() end
-    end
-end)
-
--- ============================================================================
--- Export / Import Bundle (Blizzard layout string + Chatty Edit Mode settings)
--- Only includes frameScale, queueTextScale, frameSize, npcModelFrameHeight, position.
--- Format: <BlizzardLayoutString>#CLN1#<Base64(metaString)>
--- metaString: key=value; pairs; numeric values; safe ASCII.
--- ============================================================================
-
-local function buildMetaString()
-    local p = CLN.db.profile
-    local pos = p.framePos or {}
-    local size = p.frameSize or { width = 475, height = 165 }
-    local keys = {
-        fs = tonumber(p.frameScale) or 1,
-        ts = tonumber(p.queueTextScale) or 1,
-        w = tonumber(size.width) or 475,
-        h = tonumber(size.height) or 165,
-        mh = tonumber(p.npcModelFrameHeight) or 140,
-        pt = pos.point or "CENTER",
-        rp = pos.relativePoint or "CENTER",
-        px = tonumber(pos.xOfs) or 0,
-        py = tonumber(pos.yOfs) or 0,
-    }
-    local order = { "fs","ts","w","h","mh","pt","rp","px","py" }
-    local parts = {}
-    for _, k in ipairs(order) do table.insert(parts, k .. "=" .. tostring(keys[k])) end
-    return table.concat(parts, ";") .. ";"
-end
-
-local function parseMetaString(str)
-    local out = {}
-    for pair in string.gmatch(str or "", "([%w]+=[^;]*);") do
-        local k, v = pair:match("^(%w+)=([^;]*)$")
-        if k then out[k] = v end
-    end
-    return out
-end
-
-function ReplayFrame:ExportEditModeBundle()
-    if not hasAPI then return nil, "Edit Mode API unavailable" end
-    local layouts = C_EditMode.GetLayouts()
-    if not layouts or not layouts.layouts then return nil, "No layouts" end
-    local activeName = self.EditModeIntegration and self.EditModeIntegration:GetActiveLayoutName() or nil
-    local li
-    if activeName then
-        for _, l in ipairs(layouts.layouts) do
-            if l.layoutName == activeName then li = l break end
-        end
-    end
-    if not li then
-        local idx = layouts.activeLayout
-        li = idx and layouts.layouts[idx]
-    end
-    if not li then return nil, "Active layout not found" end
-    local base = C_EditMode.ConvertLayoutInfoToString(li)
-    if not base then return nil, "Conversion failed" end
-    local meta = buildMetaString()
-    local encoded = CLN.Base64:Encode(meta)
-    local bundle = base .. BUNDLE_MARK .. encoded
-    logInfo("Exported Chatty Edit Mode bundle (len="..#bundle..")")
-    return bundle
-end
-
--- Applies Chatty settings portion only; optionally saves imported layout as new
--- opts: { saveLayout=true, layoutNameOverride="Name" }
-function ReplayFrame:ImportEditModeBundle(bundle, opts)
-    if type(bundle) ~= "string" or bundle == "" then return false, "Empty" end
-    if not hasAPI then return false, "Edit Mode API unavailable" end
-    opts = opts or {}
-    local base, encoded = bundle:match("^(.-)"..BUNDLE_MARK.."([A-Za-z0-9%+/=]+)$")
-    local metaTbl = nil
-    if encoded then
-        local ok, decoded = pcall(function() return CLN.Base64:Decode(encoded) end)
-        if ok and decoded then metaTbl = parseMetaString(decoded) else return false, "Meta decode failed" end
-    else
-        base = bundle -- treat entire string as base layout; no Chatty meta
-    end
-    local okLayout, layoutInfo = pcall(C_EditMode.ConvertStringToLayoutInfo, base)
-    if not okLayout or not layoutInfo then return false, "Layout parse failed" end
-    -- Optionally save layout (add to layouts list)
-    if opts.saveLayout then
-        local all = C_EditMode.GetLayouts()
-        if all and all.layouts then
-            layoutInfo.layoutName = opts.layoutNameOverride or (layoutInfo.layoutName .. " (CLN)")
-            -- Validate name
-            if C_EditMode.IsValidLayoutName and not C_EditMode.IsValidLayoutName(layoutInfo.layoutName) then
-                layoutInfo.layoutName = layoutInfo.layoutName:sub(1, 20)
-            end
-            table.insert(all.layouts, layoutInfo)
-            C_EditMode.SaveLayouts(all)
-            -- Set active to the new one
-            C_EditMode.SetActiveLayout(#all.layouts)
-        end
-    end
-    -- Apply Chatty meta settings
-    if metaTbl then
-        local p = CLN.db.profile
-        local function num(k) local v = tonumber(metaTbl[k]); return v end
-        if num("fs") then p.frameScale = math.max(0.5, math.min(2.0, num("fs"))) end
-        if num("ts") then p.queueTextScale = math.max(0.75, math.min(1.5, num("ts"))) end
-        if num("w") and num("h") then p.frameSize = { width = math.max(200, math.min(1000, num("w"))), height = math.max(100, math.min(600, num("h"))) } end
-        if num("mh") then p.npcModelFrameHeight = math.max(50, math.min(300, num("mh"))) end
-        p.framePos = {
-            point = metaTbl.pt or "CENTER",
-            relativePoint = metaTbl.rp or "CENTER",
-            xOfs = num("px") or 0,
-            yOfs = num("py") or 0,
-        }
-        -- Re-apply visuals
-        if self.ApplyFrameScale then self:ApplyFrameScale() end
-        if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-        if self.DisplayFrame and p.frameSize then self.DisplayFrame:SetSize(p.frameSize.width, p.frameSize.height) end
-        self.npcModelFrameHeight = p.npcModelFrameHeight or 140
-        if self.ModelContainer then self.ModelContainer:SetHeight(self.npcModelFrameHeight) end
-        if self.NpcModelFrame then self.NpcModelFrame:SetHeight(self.npcModelFrameHeight) end
-        if self.Relayout then self:Relayout() end
-        -- Persist to active layout bucket
-        if self.PersistToActiveLayout then self:PersistToActiveLayout() end
-        logInfo("Imported Chatty settings from bundle")
-    else
-        logDebug("No Chatty settings segment found in bundle; applied layout only")
-    end
-    return true
-end
-
--- Simple slash helpers (optional power users)
-SLASH_CLNEXPORTLAYOUT1 = "/clnexp"
-SlashCmdList["CLNEXPORTLAYOUT"] = function()
-    local s, err = ReplayFrame:ExportEditModeBundle()
-    if not s then
-        if CLN.Logger then CLN.Logger:error("Export failed: "..tostring(err), false, CLN.Utils.LogCategories.ui) end
+    if not hasAPI or not Persistence then return end
+    if InCombatLockdown and InCombatLockdown() then
+        if self.EditModeIntegration then self.EditModeIntegration._pendingPersist = true end
+        logDebug("Persist deferred (combat)")
         return
     end
-    if CLN.Logger then CLN.Logger:info("Export string (copy from chat):", true, CLN.Utils.LogCategories.ui) end
-    DEFAULT_CHAT_FRAME:AddMessage("|cffffd200Chatty Layout Bundle:|r "..s)
+    Persistence:PersistAll()
+    Persistence:SyncToLegacyProfile()
 end
-
-SLASH_CLNIMPORTLAYOUT1 = "/clnimp"
-SlashCmdList["CLNIMPORTLAYOUT"] = function(msg)
-    local str = msg and msg:match("^%s*(.-)%s*$")
-    if not str or str == "" then
-        DEFAULT_CHAT_FRAME:AddMessage("Usage: /clnimp <bundleString>")
-        return
-    end
-    local ok, err = ReplayFrame:ImportEditModeBundle(str, { saveLayout = true })
-    if not ok then
-        DEFAULT_CHAT_FRAME:AddMessage("|cffff2020Import failed:|r "..tostring(err))
-    else
-        DEFAULT_CHAT_FRAME:AddMessage("|cff20ff20Chatty bundle imported.|r")
-    end
-end
-
--- Layout debug slash command: prints indices and active detection info
-SLASH_CLNLAYOUTDEBUG1 = "/clnlayoutdebug"
-SlashCmdList["CLNLAYOUTDEBUG"] = function()
-    if not hasAPI then return end
-    local layouts = C_EditMode.GetLayouts()
-    if not layouts or not layouts.layouts then
-        if CLN.Logger then CLN.Logger:warn("No layouts available", false, CLN.Utils.LogCategories.ui) end
-        return
-    end
-    local activeName = ReplayFrame.EditModeIntegration:GetActiveLayoutName()
-    if CLN.Logger then
-        CLN.Logger:info("Layout Debug (active="..tostring(activeName)..")", false, CLN.Utils.LogCategories.ui)
-    end
-    for i,l in ipairs(layouts.layouts) do
-        local flags = (l.isActive and " isActive" or "")..(l.active and " active" or "")..(l.isLayoutActive and " isLayoutActive" or "")
-        local bucket = CLN.db.profile.editModeLayouts and CLN.db.profile.editModeLayouts[l.layoutName] and "*" or "-"
-        local displayedIndex = i + HIDDEN_BASE_LAYOUTS -- reflect real underlying index used by API
-        if CLN.Logger then
-            CLN.Logger:debug(string.format("[%d|raw=%d] %s%s bucket=%s", displayedIndex, i, l.layoutName or "?", flags, bucket), false, CLN.Utils.LogCategories.ui)
-        end
-    end
-end
-
--- Click-to-open logic (short click detection) added here
-function Integration:HookFrameClickToOpen()
-    if not ReplayFrame.DisplayFrame then return end
-    if self._clickHooked then return end
-    local f = ReplayFrame.DisplayFrame
-    f:HookScript("OnMouseDown", function(frame, btn)
-        if btn ~= "LeftButton" then return end
-        self._clickStartTime = GetTime and GetTime() or 0
-        local x,y = GetCursorPosition(); self._clickStartX, self._clickStartY = x,y
-    end)
-    f:HookScript("OnMouseUp", function(frame, btn)
-        if btn ~= "LeftButton" then return end
-        local x,y = GetCursorPosition();
-        local dx = (x or 0) - (self._clickStartX or 0)
-        local dy = (y or 0) - (self._clickStartY or 0)
-        local dist2 = dx*dx + dy*dy
-        local elapsed = (GetTime and GetTime() or 0) - (self._clickStartTime or 0)
-        if dist2 < 25*25 and elapsed < 0.75 then
-            if ReplayFrame.ShowEditPanel then ReplayFrame:ShowEditPanel() end
-        end
-    end)
-    self._clickHooked = true
-end
-
--- Simple Import/Export dialog + layout manager UI
-function Integration:EnsureBundleDialog()
-    if self.bundleDialog then return self.bundleDialog end
-    local f = CreateFrame("Frame", "ChattyNpcBundleDialog", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(500, 400)
-    f:SetPoint("CENTER")
-    f:Hide()
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    f.title:SetPoint("TOP", 0, -12)
-    f.title:SetText("Import / Export")
-    local eb = CreateFrame("EditBox", nil, f, "InputBoxMultiLine")
-    eb:SetPoint("TOPLEFT", 16, -40)
-    eb:SetPoint("BOTTOMRIGHT", -16, 60)
-    eb:SetAutoFocus(false)
-    eb:SetFontObject(ChatFontNormal or GameFontHighlightSmall)
-    eb:SetMultiLine(true)
-    eb:SetText("")
-    eb:SetScript("OnEscapePressed", function() f:Hide() end)
-    local scrollbg = f:CreateTexture(nil, "BACKGROUND")
-    scrollbg:SetAllPoints(eb)
-    scrollbg:SetColorTexture(0,0,0,0.25)
-    f.editBox = eb
-    local exportBtn = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
-    exportBtn:SetSize(100,24)
-    exportBtn:SetPoint("BOTTOMLEFT", 16, 24)
-    exportBtn:SetText("Export")
-    exportBtn:SetScript("OnClick", function()
-        local s, err = ReplayFrame:ExportEditModeBundle()
-    if s then eb:SetText(s); if eb.HighlightText then eb:HighlightText() end; if eb.SetFocus then eb:SetFocus() end else
-            if CLN.Logger then CLN.Logger:error("Export failed: "..tostring(err), true, CLN.Utils.LogCategories.ui) end
-        end
-    end)
-    local importBtn = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
-    importBtn:SetSize(100,24)
-    importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
-    importBtn:SetText("Import")
-    importBtn:SetScript("OnClick", function()
-        local txt = eb:GetText() or ""
-        local ok, err = ReplayFrame:ImportEditModeBundle(txt, { saveLayout = true })
-        if ok then
-            if CLN.Logger then CLN.Logger:info("Bundle imported", true, CLN.Utils.LogCategories.ui) end
-        else
-            if CLN.Logger then CLN.Logger:error("Import failed: "..tostring(err), true, CLN.Utils.LogCategories.ui) end
-        end
-    end)
-    local closeBtn = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
-    closeBtn:SetSize(100,24)
-    closeBtn:SetPoint("BOTTOMRIGHT", -16, 24)
-    closeBtn:SetText("Close")
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
-    self.bundleDialog = f
-    return f
-end
-
-function Integration:ShowBundleDialog()
-    local f = self:EnsureBundleDialog(); f:Show(); f:Raise()
-end
-
-function Integration:EnsureLayoutManager()
-    if self.layoutManager then return self.layoutManager end
-    local f = CreateFrame("Frame", "ChattyNpcLayoutManager", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(300, 380)
-    f:SetPoint("CENTER", 80, 40)
-    f:Hide()
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    f.title:SetPoint("TOP", 0, -12)
-    f.title:SetText("Layouts")
-    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-    scroll:SetPoint("TOPLEFT", 12, -40)
-    scroll:SetPoint("BOTTOMRIGHT", -30, 50)
-    local content = CreateFrame("Frame", nil, scroll)
-    content:SetSize(1,1)
-    scroll:SetScrollChild(content)
-    f.content = content
-    local function rebuild()
-        for _, child in ipairs({content:GetChildren()}) do child:Hide(); child:SetParent(nil) end
-        local store = CLN.db.profile.editModeLayouts or {}
-        local y = -4
-        local activeName = self:GetActiveLayoutName()
-        local names = {}
-        for layoutName, _ in pairs(store) do table.insert(names, layoutName) end
-        table.sort(names, function(a,b) return a:lower() < b:lower() end)
-        for i, layoutName in ipairs(names) do
-            local row = CreateFrame("Frame", nil, content)
-            row:SetPoint("TOPLEFT", 0, y)
-            row:SetSize(240, 24)
-            y = y - 26
-            local fs = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            fs:SetPoint("LEFT")
-            local idxShown = i + HIDDEN_BASE_LAYOUTS
-            fs:SetText(string.format("[%d] %s%s", idxShown, (layoutName==activeName and "|cff00ff00*|r " or ""), layoutName))
-            local del = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-            del:SetSize(40,20); del:SetPoint("RIGHT")
-            del:SetText("Del")
-            del:SetScript("OnClick", function()
-                CLN.db.profile.editModeLayouts[layoutName] = nil
-                if CLN.Logger then CLN.Logger:warn("Deleted layout bucket '"..layoutName.."'", false, CLN.Utils.LogCategories.ui) end
-                rebuild()
-            end)
-            local apply = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
-            apply:SetSize(50,20); apply:SetPoint("RIGHT", del, "LEFT", -4, 0)
-            apply:SetText("Apply")
-            apply:SetScript("OnClick", function() Integration:ApplyLayout(layoutName) end)
-        end
-        content:SetHeight(-y + 4)
-    end
-    f.rebuild = rebuild
-    -- Per-setting opt-out toggles
-    local exclude = ensureExcludeConfig()
-    local toggleNames = {
-        { key="frameScale", label="Frame Scale" },
-        { key="queueTextScale", label="Text Scale" },
-        { key="frameSize", label="Size" },
-        { key="npcModelFrameHeight", label="Model Height" },
-        { key="framePos", label="Position" },
-    }
-    local bx = 12; local by = - (scroll:GetBottom() and 0 or 0)
-    local col = 0; local startY = -300
-    local rowY = - (content:GetHeight() or 0)
-    local ckY = -340
-    local prev
-    local anchorFrame = f
-    local yBase = - (f:GetHeight() - 110)
-    local x = 14; local yoff = - (f:GetHeight() - 120)
-    for i, info in ipairs(toggleNames) do
-        local cb = CreateFrame("CheckButton", nil, f, "InterfaceOptionsCheckButtonTemplate")
-        cb:SetPoint("BOTTOMLEFT", x + ((i-1)%2)*140, 60 + math.floor((i-1)/2)*24)
-        cb.Text:SetText(info.label)
-        cb:SetChecked(exclude[info.key])
-        cb:SetScript("OnClick", function(btn)
-            exclude[info.key] = btn:GetChecked() and true or false
-            if CLN.Logger then CLN.Logger:debug("Exclude toggle '.."..info.key.."'="..tostring(exclude[info.key]), false, CLN.Utils.LogCategories.ui) end
-            local name = Integration:GetActiveLayoutName(); if name then Integration:ApplyLayout(name) end
-        end)
-        cb.tooltipText = "Exclude "..info.label.." from per-layout overrides" -- basic tooltip
-    end
-    local close = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
-    close:SetSize(80,24); close:SetPoint("BOTTOMRIGHT", -14, 16); close:SetText("Close")
-    close:SetScript("OnClick", function() f:Hide() end)
-    local reset = CreateFrame("Button", nil, f, "GameMenuButtonTemplate")
-    reset:SetSize(120,24); reset:SetPoint("LEFT", close, "LEFT", -130, 0); reset:SetText("Reset All")
-    reset:SetScript("OnClick", function()
-        CLN.db.profile.editModeLayouts = {}
-        if CLN.Logger then CLN.Logger:warn("Cleared all per-layout settings", true, CLN.Utils.LogCategories.ui) end
-        rebuild()
-    end)
-    f:SetScript("OnShow", rebuild)
-    self.layoutManager = f
-    return f
-end
-
-function Integration:ShowLayoutManager()
-    local f = self:EnsureLayoutManager(); f:Show(); f:Raise()
-end
-
--- ============================================================================
--- CORE EDIT MODE FUNCTIONALITY
--- (ported from EditMode.lua during v3.0.5 → v3.1.0 refactor)
--- ============================================================================
-
--- Central guards/wrappers for Blizzard Edit Mode availability
-function ReplayFrame:_DetectEditModeApis()
-    if self._editModeDetected then return end
-    local fr = type(EditModeManagerFrame) == "table" and EditModeManagerFrame or nil
-    local hasEnter = fr and type(fr.EnterEditMode) == "function" or false
-    local hasExit = fr and type(fr.ExitEditMode) == "function" or false
-    local hasIsIn = fr and type(fr.IsInEditMode) == "function" or false
-    self._editModeApi = { frame = fr, hasEnter = hasEnter, hasExit = hasExit, hasIsIn = hasIsIn }
-    self._editModeDetected = true
-end
-
-function ReplayFrame:HasBlizzardEditMode()
-    self:_DetectEditModeApis()
-    local a = self._editModeApi
-    return a and a.frame and a.hasEnter and a.hasExit or false
-end
-
-function ReplayFrame:IsBlizzardInEditMode()
-    self:_DetectEditModeApis()
-    local a = self._editModeApi
-    if a and a.frame and a.hasIsIn then
-        return a.frame:IsInEditMode()
-    end
-    return false
-end
-
-function ReplayFrame:SafeHook(obj, methodName, handler)
-    if not (hooksecurefunc and type(obj) == "table" and type(obj[methodName]) == "function" and type(handler) == "function") then
-        return false
-    end
-    hooksecurefunc(obj, methodName, handler)
-    return true
-end
-
--- Bind our lightweight edit mode to Blizzard's Edit Mode (Retail)
-function ReplayFrame:BindBlizzardEditMode()
-    if self._editModeBound then return end
-    if type(EditModeManagerFrame) == "table" and hooksecurefunc then
-        if not self:HasBlizzardEditMode() then
-            if self.Debug then self:Debug("Blizzard Edit Mode not available; skipping binding.") end
-            return
-        end
-
-        self:SafeHook(EditModeManagerFrame, "EnterEditMode", function()
-            if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
-            self._forceShow = true
-            if not self.DisplayFrame then self:GetDisplayFrame() end
-            self.userHidden = false
-            if self.MinButton then self.MinButton:Hide() end
-            self:UpdateParent()
-            if self.DisplayFrame then self.DisplayFrame:Show() end
-            self:SetEditMode(true)
-            self:Relayout()
-        end)
-        self:SafeHook(EditModeManagerFrame, "ExitEditMode", function()
-            if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
-            self:SetEditMode(false)
-            self:SaveFramePosition()
-            if self._forceShow and not self._manualEdit then
-                self._forceShow = false
-                if not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty() then
-                    if self.DisplayFrame then self.DisplayFrame:Hide() end
-                end
-            end
-        end)
-        if self:IsBlizzardInEditMode() then
-            if type(InCombatLockdown) == "function" and InCombatLockdown() then return end
-            self._forceShow = true
-            if not self.DisplayFrame then self:GetDisplayFrame() end
-            self.userHidden = false
-            if self.MinButton then self.MinButton:Hide() end
-            self:UpdateParent()
-            if self.DisplayFrame then self.DisplayFrame:Show() end
-            self:SetEditMode(true)
-            self:Relayout()
-        end
-        self._editModeBound = true
-    end
-    if type(EditModeManagerFrame) ~= "table" or not hooksecurefunc then
-        if self.Debug then self:Debug("EditModeManagerFrame or hooksecurefunc missing; skipping binding.") end
-    end
-end
-
--- Create/show an Edit Mode overlay for the model container (drag only, no resize)
-function ReplayFrame:EnsureModelEditOverlay()
-    if not self.ModelContainer then return end
-    if self._modelEditOverlay then return end
-
-    local mc = self.ModelContainer
-    local ov = CreateFrame("Frame", nil, mc, "BackdropTemplate")
-    ov:SetAllPoints(mc)
-    ov:Hide()
-    ov:SetFrameStrata("FULLSCREEN_DIALOG")
-    if mc.GetFrameLevel then
-        ov:SetFrameLevel(mc:GetFrameLevel() + 50)
-    end
-    ov:SetBackdrop({ edgeFile = "Interface/Tooltips/UI-Tooltip-Border", edgeSize = 12, insets = { left=2,right=2,top=2,bottom=2 } })
-    ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-
-    local bgFill = ov:CreateTexture(nil, "BACKGROUND")
-    bgFill:SetAllPoints()
-    bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-    ov._bgFill = bgFill
-
-    local textHolder = CreateFrame("Frame", nil, ov)
-    textHolder:SetAllPoints(ov)
-    textHolder:SetFrameLevel(ov:GetFrameLevel() + 5)
-
-    local label = textHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("CENTER")
-    label:SetText("NPC Model")
-    label:SetTextColor(1.0, 0.82, 0.0, 0.90)
-
-    ov:EnableMouse(true)
-    ov:SetMovable(true)
-    ov:RegisterForDrag("LeftButton")
-
-    ov:SetScript("OnDragStart", function(f)
-        if InCombatLockdown and InCombatLockdown() then return end
-        f._dragging = true
-        mc:StartMoving()
-    end)
-    ov:SetScript("OnDragStop", function(f)
-        mc:StopMovingOrSizing()
-        f._dragging = nil
-        -- Set explicit width when undocking for the first time
-        if not ReplayFrame:IsModelUndocked() and ReplayFrame.DisplayFrame then
-            local w = ReplayFrame.DisplayFrame:GetWidth()
-            mc:SetWidth(w)
-        end
-        if ReplayFrame.SaveModelPosition then ReplayFrame:SaveModelPosition() end
-    end)
-
-    ov:SetScript("OnEnter", function(f)
-        f._bgFill:SetColorTexture(0.30, 0.60, 0.90, 0.20)
-        ov:SetBackdropBorderColor(0.40, 0.70, 1.00, 0.80)
-        if GameTooltip and GameTooltip.SetOwner then
-            GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
-            GameTooltip:ClearLines()
-            GameTooltip:AddLine("NPC Model \226\128\148 Drag to undock & reposition", 0.85, 0.85, 0.85, true)
-            if ReplayFrame:IsModelUndocked() then
-                GameTooltip:AddLine("Reset position to re-dock above conversations.", 0.80, 0.80, 0.80, true)
-            end
-            GameTooltip:Show()
-        end
-    end)
-    ov:SetScript("OnLeave", function(f)
-        if not f._dragging then
-            f._bgFill:SetColorTexture(0.30, 0.30, 0.30, 0.05)
-            ov:SetBackdropBorderColor(0.50, 0.45, 0.35, 0.40)
-        end
-        if GameTooltip_Hide then GameTooltip_Hide() end
-    end)
-
-    self._modelEditOverlay = ov
-end
-
--- Toggle a lightweight Edit Mode to move/resize the replay frame
 function ReplayFrame:SetEditMode(enabled)
     self._editMode = not not enabled
-    if not self.DisplayFrame then return end
-
+    self:GetDisplayFrame()
+    local frame = self.DisplayFrame
+    if not frame then return end
     if self._editMode then
-        self:EnsureEditModeVisuals()
-        if self._editOverlay then self._editOverlay:Show() end
-        if self._hoverOverlay then self._hoverOverlay:Hide() end
-        if self._editBorder then for _, t in ipairs(self._editBorder) do t:Show() end end
-
-        -- Show model edit overlay if model container exists (child auto-hides with parent)
-        if self.ModelContainer then
-            self:EnsureModelEditOverlay()
-            if self._modelEditOverlay then self._modelEditOverlay:Show() end
+        if not self._manualEditHooks then
+            self._manualEditHooks = { onDragStart = frame:GetScript("OnDragStart"), onDragStop = frame:GetScript("OnDragStop") }
         end
-
-    local locked = self.IsFrameLocked and self:IsFrameLocked()
-    self.DisplayFrame:SetResizable(true)
-    if not locked then self.DisplayFrame:RegisterForDrag("LeftButton") end
+        frame:SetMovable(true)
+        if frame.SetResizable then frame:SetResizable(true) end
+        frame:RegisterForDrag("LeftButton")
+        frame:SetScript("OnDragStart", function(f) if not self._isResizing then f:StartMoving() end end)
+        frame:SetScript("OnDragStop", function(f) f:StopMovingOrSizing(); if self.SaveFramePosition then self:SaveFramePosition() end end)
         if self.ResizeGrip then self.ResizeGrip:Show() end
-        if self.PrepareEditControlHighlights then self:PrepareEditControlHighlights() end
-
-        local f = self.DisplayFrame
-        if not locked then
-            f:SetScript("OnDragStart", function(frame)
-                if self._isResizing then return end
-                self._isDragging = true
-                frame:StartMoving()
-            end)
-            f:SetScript("OnDragStop", function(frame)
-                frame:StopMovingOrSizing()
-                self._isDragging = false
-                if self.SaveFramePosition then self:SaveFramePosition() end
-            end)
-        f:SetScript("OnMouseDown", function(frame, button)
-                if button == "LeftButton" then
-            if self._isResizing then return end
-                    self._isDragging = true
-                    frame:StartMoving()
-                end
-            end)
-            f:SetScript("OnMouseUp", function(frame)
-                if self._isDragging then
-                    frame:StopMovingOrSizing()
-                    self._isDragging = false
-                    if self.SaveFramePosition then self:SaveFramePosition() end
-                end
-            end)
-        end
-
-        f:SetScript("OnEnter", function()
-            if self._hoverOverlay then self._hoverOverlay:Show() end
-            if self.HighlightEditControls then self:HighlightEditControls(true) end
-            if self.LockButton then self.LockButton:Show() end
-            if GameTooltip and GameTooltip.SetOwner then
-                GameTooltip:SetOwner(f, "ANCHOR_TOPLEFT")
-                GameTooltip:ClearLines()
-                local title = "Chatty Little Npc \226\128\148 Conversations"
-                GameTooltip:AddLine(title, 1, 1, 1, true)
-                local locked = self.IsFrameLocked and self:IsFrameLocked()
-                if locked then
-                    GameTooltip:AddLine("Locked: click the lock to allow moving.", 0.85, 0.85, 0.85, true)
-                else
-                    GameTooltip:AddLine("Drag anywhere to move the window.", 0.85, 0.85, 0.85, true)
-                end
-                GameTooltip:AddLine("Resize from the bottom-right grip (Edit Mode only).", 0.80, 0.80, 0.80, true)
-                GameTooltip:AddLine("Exit Edit Mode to finish.", 0.80, 0.80, 0.80, true)
-                GameTooltip:Show()
-            end
-        end)
-        f:SetScript("OnLeave", function()
-            if self._hoverOverlay then self._hoverOverlay:Hide() end
-            if self.HighlightEditControls then self:HighlightEditControls(false) end
-            if self.LockButton then self.LockButton:Hide() end
-            if GameTooltip_Hide then GameTooltip_Hide() end
-        end)
-
-        if not locked and self.QueueRows then
-            for _, row in ipairs(self.QueueRows) do
-                if row and row.EnableMouse and row:IsShown() then
-                    if row.IsMouseEnabled and row:IsMouseEnabled() then row._prevMouseEnabled = true end
-                    row:EnableMouse(false)
-                end
-            end
-        end
-
-    if self.ResizeGrip and self.ResizeGrip.texture then
-            if not self._gripPrevEnter then self._gripPrevEnter = self.ResizeGrip:GetScript("OnEnter") end
-            if not self._gripPrevLeave then self._gripPrevLeave = self.ResizeGrip:GetScript("OnLeave") end
-            self.ResizeGrip.texture:SetTexture("Interface/CHATFRAME/UI-ChatIM-SizeGrabber-Highlight")
-            self.ResizeGrip:SetScript("OnEnter", nil)
-            self.ResizeGrip:SetScript("OnLeave", nil)
-        end
-        if self._glowGrip then self._glowGrip:SetAlpha(0.9) end
     else
-        if self._editOverlay then self._editOverlay:Hide() end
-        if self._modelEditOverlay then self._modelEditOverlay:Hide() end
-    if self.ResizeGrip then self.ResizeGrip:Hide() end
-        if self._hoverOverlay then self._hoverOverlay:Hide() end
-        if self._editBorder then for _, t in ipairs(self._editBorder) do t:Hide() end end
-        if self.HighlightEditControls then self:HighlightEditControls(false) end
-
-        if self.QueueRows then
-            for _, row in ipairs(self.QueueRows) do
-                if row and row.EnableMouse and row._prevMouseEnabled then
-                    row:EnableMouse(true)
-                    row._prevMouseEnabled = nil
-                end
-            end
+        frame:StopMovingOrSizing()
+        frame:RegisterForDrag()
+        frame:SetMovable(false)
+        if frame.SetResizable then frame:SetResizable(false) end
+        if self._manualEditHooks then
+            frame:SetScript("OnDragStart", self._manualEditHooks.onDragStart)
+            frame:SetScript("OnDragStop", self._manualEditHooks.onDragStop)
         end
-
-        if self.ResizeGrip and self.ResizeGrip.texture then
-            self.ResizeGrip.texture:SetTexture("Interface/CHATFRAME/UI-ChatIM-SizeGrabber-Up")
-            if self._gripPrevEnter ~= nil then self.ResizeGrip:SetScript("OnEnter", self._gripPrevEnter) end
-            if self._gripPrevLeave ~= nil then self.ResizeGrip:SetScript("OnLeave", self._gripPrevLeave) end
-            self._gripPrevEnter = nil
-            self._gripPrevLeave = nil
-        end
-
-        local f = self.DisplayFrame
-        if f then
-            f:SetScript("OnDragStart", nil)
-            f:SetScript("OnDragStop", nil)
-            f:SetScript("OnMouseDown", nil)
-            f:SetScript("OnMouseUp", nil)
-            f:SetScript("OnEnter", nil)
-            f:SetScript("OnLeave", nil)
-        end
-
-        if self.DisplayFrame and self.DisplayFrame.SetResizable then
-            self.DisplayFrame:SetResizable(false)
-        end
-        if self.LockButton then self.LockButton:Hide() end
+        if self.ResizeGrip then self.ResizeGrip:Hide() end
     end
 end
-
--- Force-show the replay frame for editing even when nothing is playing
 function ReplayFrame:ShowForEdit()
     self._forceShow = true
-    self:GetDisplayFrame()
     self.userHidden = false
-    if self.MinButton then self.MinButton:Hide() end
-    self:UpdateParent()
+    self:GetDisplayFrame()
     if self.DisplayFrame then self.DisplayFrame:Show() end
     self:SetEditMode(true)
-    self:Relayout()
-    if type(InCombatLockdown) == "function" and InCombatLockdown() then
-        if CLN and CLN.Print then
-            CLN:Print("Frame shown for editing. Open Blizzard Edit Mode after combat to adjust with anchors.")
-        end
-    end
 end
-
--- Re-apply size-based layout without user resize
-function ReplayFrame:Relayout()
-    if not self.DisplayFrame then return end
-    local f = self.DisplayFrame
-    local w, h = f:GetSize()
-    local cb = f:GetScript("OnSizeChanged")
-    if cb then cb(f, w, h) end
-end
-
--- Build edit mode visuals: blue overlay, hover overlay, and border
-function ReplayFrame:EnsureEditModeVisuals()
-    if not self.DisplayFrame then return end
-    local f = self.DisplayFrame
-
-    if not self._editOverlay then
-        local ol = f:CreateTexture(nil, "BACKGROUND")
-        ol:SetAllPoints()
-        ol:SetColorTexture(0.447, 0.600, 0.667, 0.20)
-        self._editOverlay = ol
-    else
-        self._editOverlay:SetColorTexture(0.447, 0.600, 0.667, 0.20)
-        self._editOverlay:ClearAllPoints()
-        self._editOverlay:SetAllPoints()
-        self._editOverlay:SetDrawLayer("BACKGROUND")
-    end
-
-    if not self._hoverOverlay then
-        local hov = f:CreateTexture(nil, "BACKGROUND")
-        hov:SetAllPoints()
-        hov:SetColorTexture(0.663, 0.859, 0.929, 0.30)
-        hov:Hide()
-        self._hoverOverlay = hov
-    else
-        self._hoverOverlay:SetColorTexture(0.663, 0.859, 0.929, 0.30)
-        self._hoverOverlay:ClearAllPoints()
-        self._hoverOverlay:SetAllPoints()
-        self._hoverOverlay:SetDrawLayer("BACKGROUND")
-    end
-
-    if not self._editBorder then
-        self._editBorder = {}
-        local edges = { "TOP", "BOTTOM", "LEFT", "RIGHT" }
-        for _, edge in ipairs(edges) do
-            local t = f:CreateTexture(nil, "BORDER")
-            t:SetColorTexture(0.663, 0.859, 0.929, 0.85)
-            if edge == "TOP" then
-                t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-                t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-                t:SetHeight(1)
-            elseif edge == "BOTTOM" then
-                t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-                t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-                t:SetHeight(1)
-            elseif edge == "LEFT" then
-                t:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-                t:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 0, 0)
-                t:SetWidth(1)
-            elseif edge == "RIGHT" then
-                t:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-                t:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", 0, 0)
-                t:SetWidth(1)
-            end
-            table.insert(self._editBorder, t)
-        end
-    else
-        for _, t in ipairs(self._editBorder) do
-            t:SetColorTexture(0.663, 0.859, 0.929, 0.85)
-            t:Show()
-        end
-    end
-end
-
--- Prepare glow overlays for edit-related controls (once)
-function ReplayFrame:PrepareEditControlHighlights()
-    local function ensureGlow(holder, attachTo)
-        if holder or not attachTo then return holder end
-        local g = attachTo:CreateTexture(nil, "OVERLAY")
-        g:SetTexture("Interface/Buttons/UI-ActionButton-Border")
-        g:SetBlendMode("ADD")
-        g:SetAllPoints(attachTo)
-        g:SetAlpha(0.0)
-        return g
-    end
-    self._glowEdit = ensureGlow(self._glowEdit, self.EditModeButton)
-    self._glowOptions = ensureGlow(self._glowOptions, self.OptionsButton)
-    self._glowClear = ensureGlow(self._glowClear, self.ClearButton)
-    self._glowCollapse = ensureGlow(self._glowCollapse, self.CollapseButton)
-    if self.ResizeGrip and not self._glowGrip then
-        local g = self.ResizeGrip:CreateTexture(nil, "OVERLAY")
-        g:SetTexture("Interface/Buttons/UI-ActionButton-Border")
-        g:SetBlendMode("ADD")
-        g:SetPoint("CENTER")
-        g:SetSize(24, 24)
-        g:SetAlpha(0.0)
-        self._glowGrip = g
-    end
-end
-
--- Highlight edit controls with glow effect
-function ReplayFrame:HighlightEditControls(show)
-    local a = show and 0.9 or 0.0
-    if self._glowEdit then self._glowEdit:SetAlpha(a) end
-    if self._glowOptions then self._glowOptions:SetAlpha(a) end
-    if self._glowClear then self._glowClear:SetAlpha(a) end
-    if self._glowCollapse then self._glowCollapse:SetAlpha(a) end
-    if self._glowGrip then self._glowGrip:SetAlpha(a) end
-end
-
--- Manual edit flow keeps window visible until user explicitly ends editing
 function ReplayFrame:BeginManualEdit()
     self._manualEdit = true
     self._forceShow = true
     self.userHidden = false
     self:GetDisplayFrame()
-    if self.MinButton then self.MinButton:Hide() end
-    self:UpdateParent()
     if self.DisplayFrame then self.DisplayFrame:Show() end
     self:SetEditMode(true)
-    self:Relayout()
 end
-
--- End manual edit mode
 function ReplayFrame:EndManualEdit()
     self._manualEdit = false
     self:SetEditMode(false)
-    self:SaveFramePosition()
-    if not self:IsBlizzardInEditMode() then
+    if self.SaveFramePosition then self:SaveFramePosition() end
+    if not (self.IsBlizzardInEditMode and self:IsBlizzardInEditMode()) then
         self._forceShow = false
-        if not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty() then
-            if self.DisplayFrame then self.DisplayFrame:Hide() end
-        end
+        local playing = self.IsVoiceoverCurrenltyPlaying and self:IsVoiceoverCurrenltyPlaying()
+        local empty = self.IsQuestQueueEmpty and self:IsQuestQueueEmpty()
+        if not playing and empty and self.DisplayFrame then self.DisplayFrame:Hide() end
     end
 end
-
--- Layout badge updater
-function Integration:UpdateLayoutBadge()
-    if not self.overlay or not self.overlay._badge or not self.overlay._badgeHolder then return end
-    local n = self:GetActiveLayoutName()
-    if not n or n == "?" then
-        self.overlay._badgeHolder:Hide()
-        return
+C_Timer.After(2, function()
+    if hasAPI and EditModeManagerFrame and EditModeManagerFrame:IsShown() then
+        Integration:ShowOverlay()
+        local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
+        if Registry then Registry:OnEnter() end
     end
-    self.overlay._badge:SetText(n)
-    -- Resize holder to fit text snugly
-    local textWidth = self.overlay._badge:GetStringWidth() + 12
-    self.overlay._badgeHolder:SetWidth(math.max(40, textWidth))
-    self.overlay._badgeHolder:Show()
-end
-
+end)

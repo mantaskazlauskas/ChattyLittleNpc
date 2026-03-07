@@ -22,8 +22,8 @@ function ReplayFrame:CreateEditPanel()
         edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    panel:SetBackdropColor(0.04, 0.06, 0.10, 0.78)
-    panel:SetBackdropBorderColor(0.0, 0.70, 0.82, 0.85)
+    panel:SetBackdropColor(0.05, 0.05, 0.05, 0.85)
+    panel:SetBackdropBorderColor(0.25, 0.22, 0.20, 0.9)
     panel:SetPoint("CENTER")
     panel:SetMovable(true)
     panel:EnableMouse(true)
@@ -74,7 +74,7 @@ function ReplayFrame:CreateEditPanel()
     if panel.title.SetWordWrap then panel.title:SetWordWrap(false) end
 
     local yOffset = -38
-    local spacing = 28
+    local spacing = 34
 
     -- Helper: tooltip attachment
     local function attachTooltip(widget, title, text)
@@ -94,9 +94,9 @@ function ReplayFrame:CreateEditPanel()
     function panel:_SetDirtyColor(fontString, dirty)
         if not fontString then return end
         if dirty then
-            fontString:SetTextColor(1.0, 0.82, 0.0) -- Blizzard gold for changed values
+            fontString:SetTextColor(1.0, 0.82, 0.0) -- brighter gold for changed values
         else
-            fontString:SetTextColor(0.90, 0.90, 0.90)
+            fontString:SetTextColor(0.82, 0.82, 0.82) -- neutral gray for unchanged
         end
     end
 
@@ -145,15 +145,17 @@ function ReplayFrame:CreateEditPanel()
             y = yOffset,
             rowSpacing = opts.rowSpacing or spacing,
             rows = {},
-            sliderWidth = 155, -- slightly wider for precision and readability
+            sliderWidth = 120,
             layout = {
-                labelX = 34,
-                labelWidth = 118,  -- fixed width so subsequent sliders align vertically
-                sliderGap = 12,
-                valueGap = 6,
-                excludeX = 14,
+                labelX = 30,
+                labelWidth = 100,
+                sliderGap = 8,
+                valueGap = 4,
+                excludeX = 12,
                 inputGap = 4,
                 resetRightPad = 20,
+                arrowSize = 12,
+                arrowGap = 2,
             },
         }
         -- Bulk tooltip applier
@@ -169,7 +171,22 @@ function ReplayFrame:CreateEditPanel()
         end
         local function makeExclude(row, key)
             if not key then return end
-            local exclude = CLN.db and CLN.db.profile and CLN.db.profile.editModeExclude
+            local exclude = nil
+            local EditMode = ReplayFrame and ReplayFrame.EditMode
+            if EditMode and EditMode.Persistence then
+                local em = EditMode.Persistence:EnsureExcludeConfig()
+                -- Map v2 per-window exclude to flat keys for FormBuilder compatibility
+                local conv = em.conversation or {}
+                exclude = {
+                    frameScale = conv.scale,
+                    queueTextScale = conv.textScale,
+                    frameSize = conv.size,
+                    npcModelFrameHeight = (em.model or {}).size,
+                    framePos = conv.pos,
+                }
+            else
+                exclude = CLN.db and CLN.db.profile and CLN.db.profile.editModeExclude
+            end
             if not exclude then return end
             local cb = CreateFrame("CheckButton", nil, panelRef, "ChatConfigCheckButtonTemplate")
             cb:SetSize(14,14)
@@ -185,8 +202,19 @@ function ReplayFrame:CreateEditPanel()
             cb:SetScript("OnClick", function(b)
                 exclude[key] = b:GetChecked() and true or false
                 if CLN.Logger then CLN.Logger:debug("FormBuilder exclude '"..key.."'="..tostring(exclude[key]), false, CLN.Utils.LogCategories.ui) end
-                if ReplayFrame.EditModeIntegration then
-                    local name = ReplayFrame.EditModeIntegration:GetActiveLayoutName(); if name then ReplayFrame.EditModeIntegration:ApplyLayout(name) end
+                local EditMode = ReplayFrame and ReplayFrame.EditMode
+                if EditMode and EditMode.Persistence then
+                    -- Write through to v2 exclude config
+                    local emExclude = EditMode.Persistence:EnsureExcludeConfig()
+                    -- Map flat keys back to v2 per-window structure
+                    if key == "frameScale" then (emExclude.conversation or {}).scale = exclude[key]
+                    elseif key == "queueTextScale" then (emExclude.conversation or {}).textScale = exclude[key]
+                    elseif key == "frameSize" then (emExclude.conversation or {}).size = exclude[key]
+                    elseif key == "npcModelFrameHeight" then (emExclude.model or {}).size = exclude[key]
+                    elseif key == "framePos" then (emExclude.conversation or {}).pos = exclude[key]
+                    end
+                    local name = EditMode.Persistence:GetActiveLayoutName()
+                    if name then EditMode.Persistence:ApplyLayout(name) end
                 end
             end)
             if attachTooltip then attachTooltip(cb, "Exclude", "Don't persist/apply this setting per layout.") end
@@ -220,7 +248,9 @@ function ReplayFrame:CreateEditPanel()
             eb:SetAutoFocus(false)
             -- Hide the value FontString and anchor input directly after slider
             if row.value then row.value:Hide() end
-            eb:SetPoint("LEFT", row.slider, "RIGHT", self.layout.valueGap, 0)
+            -- Anchor after right arrow if present, otherwise after slider
+            local anchorFrame = row.rightArrow or row.slider
+            eb:SetPoint("LEFT", anchorFrame, "RIGHT", self.layout.valueGap, 0)
             eb:SetNumeric(true)
             eb:SetMaxLetters(5)
             eb:SetScript("OnEscapePressed", function(s) s:ClearFocus() end)
@@ -262,24 +292,55 @@ function ReplayFrame:CreateEditPanel()
                 label:SetJustifyH("LEFT")
             end
             label:SetText(def.label or def.key)
+
+            -- Left stepper arrow (<)
+            local leftArrow = CreateFrame("Button", nil, panelRef)
+            leftArrow:SetSize(self.layout.arrowSize, self.layout.arrowSize)
+            leftArrow:SetPoint("LEFT", label, "RIGHT", self.layout.sliderGap, 0)
+            leftArrow:SetNormalFontObject("GameFontNormal")
+            leftArrow:SetHighlightFontObject("GameFontHighlight")
+            leftArrow:SetText("<")
+
             local slider = CreateFrame("Slider", nil, panelRef, "OptionsSliderTemplate")
-            slider:SetPoint("LEFT", label, "RIGHT", self.layout.sliderGap, 0)
+            slider:SetPoint("LEFT", leftArrow, "RIGHT", self.layout.arrowGap, 0)
             slider:SetSize(self.sliderWidth, 14)
             slider:SetMinMaxValues(def.min, def.max)
             slider:SetValueStep(def.step or 1)
             slider:SetObeyStepOnDrag(true)
-            if slider.Low then slider.Low:SetText(def.showLowHigh and (def.lowText or "Low") or "") end
-            if slider.High then slider.High:SetText(def.showLowHigh and (def.highText or "High") or "") end
+            if slider.Low then slider.Low:SetText("") end
+            if slider.High then slider.High:SetText("") end
+
+            -- Right stepper arrow (>)
+            local rightArrow = CreateFrame("Button", nil, panelRef)
+            rightArrow:SetSize(self.layout.arrowSize, self.layout.arrowSize)
+            rightArrow:SetPoint("LEFT", slider, "RIGHT", self.layout.arrowGap, 0)
+            rightArrow:SetNormalFontObject("GameFontNormal")
+            rightArrow:SetHighlightFontObject("GameFontHighlight")
+            rightArrow:SetText(">")
+
+            leftArrow:SetScript("OnClick", function()
+                slider:SetValue(slider:GetValue() - (def.step or 1))
+            end)
+            rightArrow:SetScript("OnClick", function()
+                slider:SetValue(slider:GetValue() + (def.step or 1))
+            end)
+
+            -- Gold value text (Blizzard Edit Mode style)
             local valueFS = panelRef:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            valueFS:SetPoint("LEFT", slider, "RIGHT", self.layout.valueGap, 0)
+            valueFS:SetPoint("LEFT", rightArrow, "RIGHT", self.layout.valueGap, 0)
             valueFS:SetJustifyH("RIGHT")
-            local row = { type="slider", key=def.key, origKey=def.origKey or def.key, slider=slider, value=valueFS, label=label, format=def.valueFormat or "%d" }
+            valueFS:SetTextColor(1.0, 0.82, 0.0)
+
+            local row = { type="slider", key=def.key, origKey=def.origKey or def.key,
+                          slider=slider, value=valueFS, label=label,
+                          leftArrow=leftArrow, rightArrow=rightArrow,
+                          format=def.valueFormat or "%d" }
             panelRef[def.key .. "Label"] = label
             panelRef[def.key .. "Slider"] = slider
             panelRef[def.key .. "Value"] = valueFS
             if def.excludeKey then makeExclude(row, def.excludeKey) end
             if def.hasInput then makeInput(row, def.min, def.max) end
-            if def.reset ~= false then makeReset(row) end
+            if def.reset == true then makeReset(row) end
             table.insert(self.rows, row)
             return row
         end
@@ -288,73 +349,49 @@ function ReplayFrame:CreateEditPanel()
     end
     panel._formBuilder = FormBuilder.new(panel, { rowSpacing = spacing })
     -- Scale row
-    panel._formBuilder:AddSlider{ key="scale", label="Frame Scale:", min=0.5, max=2.0, step=0.05, valueFormat="%.2f", excludeKey="frameScale" }
-    local widthRow = panel._formBuilder:AddSlider{ key="width", label="Width:", min=200, max=1000, step=5, hasInput=true, excludeKey="frameSize" }
-    local heightRow = panel._formBuilder:AddSlider{ key="height", label="Height:", min=100, max=600, step=5, hasInput=true } -- inherits exclude visual via width
-    panel._formBuilder:AddSlider{ key="modelHeight", label="Model Height:", min=50, max=300, step=5, hasInput=true, excludeKey="npcModelFrameHeight" }
-    panel._formBuilder:AddSlider{ key="textScale", label="Text Scale:", min=0.75, max=1.5, step=0.05, valueFormat="%.2f", excludeKey="queueTextScale" }
+    panel._formBuilder:AddSlider{ key="scale", label="Frame Scale", min=0.5, max=2.0, step=0.05, valueFormat="%.2f", excludeKey="frameScale" }
+    local widthRow = panel._formBuilder:AddSlider{ key="width", label="Width", min=200, max=1000, step=5, hasInput=true, excludeKey="frameSize" }
+    local heightRow = panel._formBuilder:AddSlider{ key="height", label="Height", min=100, max=600, step=5, hasInput=true }
+    panel._formBuilder:AddSlider{ key="modelHeight", label="Model Height", min=50, max=300, step=5, hasInput=true, excludeKey="npcModelFrameHeight" }
+    panel._formBuilder:AddSlider{ key="textScale", label="Text Scale", min=0.75, max=1.5, step=0.05, valueFormat="%.2f", excludeKey="queueTextScale" }
     yOffset = panel._formBuilder:GetCurrentY()
     
     local function CreateEditModeButton(parent, text, width, height)
-        local btn = CreateFrame("Button", nil, parent, "BackdropTemplate")
+        local btn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
         btn:SetSize(width or 120, height or 26)
-        btn:SetBackdrop({
-            bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-            edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-            tile = true,
-            tileSize = 16,
-            edgeSize = 12,
-            insets = { left = 3, right = 3, top = 3, bottom = 3 },
-        })
-        btn:SetBackdropColor(0.06, 0.08, 0.12, 0.85)
-        btn:SetBackdropBorderColor(0.0, 0.55, 0.65, 0.7)
-        local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fs:SetPoint("CENTER")
-        fs:SetText(text or "")
-        btn.Text = fs
-        btn:SetScript("OnEnter", function(self)
-            self:SetBackdropColor(0.10, 0.14, 0.20, 0.95)
-            self:SetBackdropBorderColor(0.0, 0.75, 0.85, 0.9)
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self:SetBackdropColor(0.06, 0.08, 0.12, 0.85)
-            self:SetBackdropBorderColor(0.0, 0.55, 0.65, 0.7)
-        end)
-        function btn:SetText(t) self.Text:SetText(t) end
-        function btn:GetText() return self.Text:GetText() end
-        local origEnable = btn.Enable
-        local origDisable = btn.Disable
-        function btn:Enable() if origEnable then origEnable(self) end; self:SetAlpha(1.0) end
-        function btn:Disable() if origDisable then origDisable(self) end; self:SetAlpha(0.5) end
+        btn:SetText(text or "")
         return btn
     end
 
-    -- Bottom buttons: primary action row
-    panel.revertButton = CreateEditModeButton(panel, "Revert All Changes", 150, 26)
+    -- Bottom buttons: full-width stacked layout (Blizzard style)
+    panel.revertButton = CreateEditModeButton(panel, "Revert Changes", 304, 26)
     panel.revertButton:SetPoint("BOTTOMLEFT", 14, 14)
+    panel.revertButton:SetPoint("BOTTOMRIGHT", -14, 14)
     panel.revertButton:Disable()
 
-    panel.acceptButton = CreateEditModeButton(panel, "Save", 150, 26)
-    panel.acceptButton:SetPoint("BOTTOMRIGHT", -14, 14)
+    panel.acceptButton = CreateEditModeButton(panel, "Save", 304, 26)
+    panel.acceptButton:SetPoint("BOTTOMLEFT", panel.revertButton, "TOPLEFT", 0, 6)
+    panel.acceptButton:SetPoint("BOTTOMRIGHT", panel.revertButton, "TOPRIGHT", 0, 6)
 
-    -- Secondary buttons row above primary
-    panel.layoutBtn = CreateEditModeButton(panel, "Layouts", 150, 24)
-    panel.layoutBtn:SetPoint("BOTTOMLEFT", panel.revertButton, "TOPLEFT", 0, 6)
-    panel.layoutBtn:SetScript("OnClick", function()
-        if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowLayoutManager() end
-    end)
-
-    panel.bundleBtn = CreateEditModeButton(panel, "Bundle\226\128\166", 150, 24)
+    -- Secondary buttons row
+    panel.bundleBtn = CreateEditModeButton(panel, "Bundle\226\128\166", 148, 24)
     panel.bundleBtn:SetPoint("BOTTOMRIGHT", panel.acceptButton, "TOPRIGHT", 0, 6)
     panel.bundleBtn:SetScript("OnClick", function()
-        if ReplayFrame.EditModeIntegration then ReplayFrame.EditModeIntegration:ShowBundleDialog() end
+        local IE = ReplayFrame.EditMode and ReplayFrame.EditMode.ImportExport; if IE and IE.ShowBundleDialog then IE:ShowBundleDialog() end
+    end)
+
+    panel.layoutBtn = CreateEditModeButton(panel, "Layouts", 148, 24)
+    panel.layoutBtn:SetPoint("BOTTOMLEFT", panel.acceptButton, "TOPLEFT", 0, 6)
+    panel.layoutBtn:SetScript("OnClick", function()
+        local IE = ReplayFrame.EditMode and ReplayFrame.EditMode.ImportExport; if IE and IE.ShowLayoutManager then IE:ShowLayoutManager() elseif IE and IE.ShowBundleDialog then IE:ShowBundleDialog() end
     end)
 
     -- Alias cancelButton to revertButton to satisfy Cancel OnClick handler
     panel.cancelButton = panel.revertButton
 
     panel.resetButton = CreateEditModeButton(panel, "Reset Defaults", 304, 24)
-    panel.resetButton:SetPoint("BOTTOM", 0, 80)
+    panel.resetButton:SetPoint("BOTTOMLEFT", panel.layoutBtn, "TOPLEFT", 0, 6)
+    panel.resetButton:SetPoint("BOTTOMRIGHT", panel.bundleBtn, "TOPRIGHT", 0, 6)
     
     -- Event handlers
     -- Live preview helpers (do not commit to DB until Accept)
@@ -378,8 +415,14 @@ function ReplayFrame:CreateEditPanel()
                 ReplayFrame.DisplayFrame:SetWidth(v); if ReplayFrame.Relayout then ReplayFrame:Relayout() end
             elseif row.key == "height" and ReplayFrame and ReplayFrame.DisplayFrame then
                 ReplayFrame.DisplayFrame:SetHeight(v); if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-            elseif row.key == "modelHeight" and ReplayFrame and ReplayFrame.NpcModelFrame then
-                ReplayFrame.NpcModelFrame:SetHeight(v); if ReplayFrame.Relayout then ReplayFrame:Relayout() end
+            elseif row.key == "modelHeight" and ReplayFrame then
+                if ReplayFrame.ModelContainer then
+                    ReplayFrame.ModelContainer:SetHeight(v)
+                end
+                if ReplayFrame.NpcModelFrame then
+                    ReplayFrame.NpcModelFrame:SetHeight(v)
+                end
+                if ReplayFrame.Relayout then ReplayFrame:Relayout() end
             end
             panel:RefreshDirtyIndicators()
         end)
@@ -427,6 +470,9 @@ function ReplayFrame:CreateEditPanel()
 
     -- OnHide: revert live previews unless Accept was pressed
     panel:HookScript("OnHide", function(self)
+        -- Clear overlay selected state (Blizzard-style visual feedback)
+        local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
+        if Registry then Registry:Select(nil, "panel") end
         if self._accepted then
             self._accepted = nil
             return
@@ -512,6 +558,9 @@ function ReplayFrame:CreateEditPanel()
         end
         if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(475,165) end
         if ReplayFrame and ReplayFrame.NpcModelFrame then ReplayFrame.NpcModelFrame:SetHeight(140) end
+        if ReplayFrame and ReplayFrame.ModelContainer then
+            ReplayFrame.ModelContainer:SetHeight(140)
+        end
         if ReplayFrame and ReplayFrame.Relayout then ReplayFrame:Relayout() end
         panel:RefreshDirtyIndicators()
     end)
@@ -554,8 +603,10 @@ function ReplayFrame:CreateEditPanel()
     function panel:AutoSize()
         if not self._formBuilder then return end
         local lastY = self._formBuilder:GetCurrentY() or -250
-        -- lastY is negative offset from top to top of LAST row; estimate content depth
-        local contentDepth = math.abs(lastY) + 130 -- padding for three button rows at bottom
+        -- lastY is negative offset from top to center of LAST row.
+        -- Button stack from bottom: revert(26)+6+save(26)+6+layouts/bundle(24)+6+reset(24)+14(pad) = 132px
+        -- Add ~28px for half-row height + gap between last slider and first button.
+        local contentDepth = math.abs(lastY) + 160
         local minHeight = 300
         local desired = math.max(minHeight, contentDepth)
         if math.abs(desired - self:GetHeight()) > 1 then
@@ -647,6 +698,12 @@ function ReplayFrame:ShowEditPanel()
     panel._suppressDirty = nil
     panel:Show(); panel:Raise()
 
+    -- Blizzard-style: mark overlay as selected while settings panel is open
+    local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
+    if Registry and not Registry:GetSelected() then
+        Registry:Select("conversation", "panel")
+    end
+
     -- -----------------------------------------------------------------
     -- Dummy queue/text preview population for text scaling adjustments
     -- Only inject if little/no real data and not already active.
@@ -678,9 +735,14 @@ function ReplayFrame:ShowEditPanel()
         local mf = self.NpcModelFrame
         if not mf:IsShown() then
             panel._previewModel = true
+            -- Show ModelContainer (standalone frame) so the model is visible
+            if self.ModelContainer and not self.ModelContainer:IsShown() then
+                panel._previewModelContainer = true
+                self._hasValidModel = true
+                self.ModelContainer:Show()
+            end
             mf:Show()
         end
-        -- Only apply player preview if frame appears empty (heuristic: check for GetModelFileID or GetDisplayInfo not available)
         if panel._previewModel then
             local ok = pcall(function()
                 if mf.SetUnit then mf:SetUnit("player") end
@@ -692,6 +754,7 @@ function ReplayFrame:ShowEditPanel()
         -- Apply current slider-driven height immediately to preview
         if panel.modelHeightSlider then
             mf:SetHeight(panel.modelHeightSlider:GetValue() or (CLN.db.profile.npcModelFrameHeight or 140))
+            if self.ModelContainer then self.ModelContainer:SetHeight(panel.modelHeightSlider:GetValue() or (CLN.db.profile.npcModelFrameHeight or 140)) end
         end
     end
 
@@ -731,6 +794,9 @@ function ReplayFrame:ApplyEditPanelSettings(panel)
     -- Update model frame height
     if self.npcModelFrameHeight ~= modelHeight then
         self.npcModelFrameHeight = modelHeight
+        if self.ModelContainer then
+            self.ModelContainer:SetHeight(modelHeight)
+        end
         if self.NpcModelFrame then
             self.NpcModelFrame:SetSize(self.npcModelFrameWidth or 150, modelHeight)
         end
@@ -743,8 +809,6 @@ function ReplayFrame:ApplyEditPanelSettings(panel)
     -- Persist to active Edit Mode layout (optional)
     if self.PersistToActiveLayout then
         self:PersistToActiveLayout()
-    elseif self.EditModeIntegration and self.EditModeIntegration.PersistCurrentToLayout then
-        self.EditModeIntegration:PersistCurrentToLayout()
     end
 end
 
@@ -759,6 +823,12 @@ function ReplayFrame:HideEditPanel()
             end
             self.NpcModelFrame:Hide()
             panel._previewModel = nil
+        end
+        -- Hide ModelContainer if we showed it just for preview
+        if panel._previewModelContainer and self.ModelContainer then
+            self._hasValidModel = false
+            self.ModelContainer:Hide()
+            panel._previewModelContainer = nil
         end
         -- Restore real queue data if dummy preview active
         if self._dummyPreviewActive then

@@ -73,12 +73,8 @@ ReplayFrame.userHidden = false
 
 -- Defer binding to after addon init to ensure globals exist
 local function CLN_InitEditModeBinding()
-    -- Legacy BindBlizzardEditMode now a thin adapter; prefer direct integration init
     if ReplayFrame and ReplayFrame.InitEditModeIntegration then
         ReplayFrame:InitEditModeIntegration()
-    elseif ReplayFrame and ReplayFrame.BindBlizzardEditMode then
-        -- Fallback (should not be needed after deprecation)
-        ReplayFrame:BindBlizzardEditMode()
     end
 end
 

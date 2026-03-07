@@ -165,6 +165,12 @@ function Persistence:MigrateIfNeeded()
 
     p.editMode = migrated
     logInfo("Migration complete — " .. self:CountLayouts() .. " layout(s) migrated")
+
+    -- HARD MIGRATION: Remove old v1 keys (no backward compatibility)
+    p.editModeLayouts = nil
+    p.editModeExclude = nil
+    p.layoutPositions = nil
+    p.layoutSizes = nil
 end
 
 --- Count layouts in the v2 store.
