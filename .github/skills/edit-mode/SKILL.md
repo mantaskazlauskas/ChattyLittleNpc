@@ -14,6 +14,7 @@ description: "Complete WoW Edit Mode API reference and integration guide for Mid
 | [01-api-reference.md](./01-api-reference.md) | C_EditMode functions, event, data structures, enums |
 | [02-integration-patterns.md](./02-integration-patterns.md) | Hooks, custom frames, overlays, per-layout persistence, taint |
 | [03-interactions-addon-support.md](./03-interactions-addon-support.md) | EditModeManagerFrame methods, EditModeSystemMixin lifecycle, grid/snap/magnet, LibEditModeOverride full API, EditModeExpanded registration, settings dialog, macros, addon support matrix |
+| [04-blizzard-source-reference.md](./04-blizzard-source-reference.md) | **200+ function signatures** extracted from Blizzard's official FrameXML source — EditModeSystemMixin, EditModeManagerFrameMixin, EditModeMagnetismManager, all system-specific mixins, settings metadata for every UI system |
 
 ---
 
