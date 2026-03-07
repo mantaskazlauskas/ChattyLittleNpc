@@ -344,8 +344,10 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     -- PlayQuestSound removes the item from the queue at play-start (line 197),
     -- so the currently-playing sound is almost never in questsQueue when it stops.
     if CLN.VoiceoverPlayer._paused then
-        -- Queue is frozen while paused; don't advance
+        -- Queue is frozen while paused; don't advance but still refresh UI
+        -- so the stopped sound updates its visual state
         if CLN and CLN.Logger then CLN.Logger:debug("Queue paused, skipping advancement.", false, CLN.Utils.LogCategories.loader) end
+        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty(false) end
     elseif #CLN.questsQueue > 0 then
         -- Deduplicate before advancing to avoid playing the same thing twice
         CLN.VoiceoverPlayer:DeduplicateQueue()
