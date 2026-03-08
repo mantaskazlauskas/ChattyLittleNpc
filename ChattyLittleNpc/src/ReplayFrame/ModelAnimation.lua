@@ -40,6 +40,8 @@ function ReplayFrame:BreathingCameraUpdate(elapsed)
     if #self._anims > 0 then
         self._breathBaseZoom = nil
         self._breathBaseZ = nil
+        self._breathLastAppliedZoom = nil
+        self._breathLastAppliedZ = nil
         return
     end
 
@@ -54,16 +56,26 @@ function ReplayFrame:BreathingCameraUpdate(elapsed)
     period = math.max(4, math.min(6, period))
     local omega = (math.pi * 2) / period
 
-    if self._breathBaseZoom == nil then
-        local baseZoom = self._currentZoom or 0.65
-        if m.GetPortraitZoom then
-            local ok, z = pcall(m.GetPortraitZoom, m)
-            if ok and type(z) == "number" then baseZoom = z end
-        end
-        self._breathBaseZoom = baseZoom
+    local liveZoom
+    if m.GetPortraitZoom then
+        local ok, z = pcall(m.GetPortraitZoom, m)
+        if ok and type(z) == "number" then liveZoom = z end
     end
+    if self._breathBaseZoom == nil then
+        self._breathBaseZoom = liveZoom or self._currentZoom or 0.65
+    elseif liveZoom ~= nil and self._breathLastAppliedZoom ~= nil and not approxEqual(liveZoom, self._breathLastAppliedZoom) then
+        self._breathBaseZoom = liveZoom
+    end
+
+    local snap = m._lastCamSnapshot
+    local liveTz = (snap and type(snap.tz) == "number") and snap.tz or nil
     if self._breathBaseZ == nil then
-        self._breathBaseZ = (self._currentZOffset ~= nil) and self._currentZOffset or (self.modelZOffset or 0)
+        self._breathBaseZ = liveTz
+        if self._breathBaseZ == nil then
+            self._breathBaseZ = (self._currentZOffset ~= nil) and self._currentZOffset or (self.modelZOffset or 0)
+        end
+    elseif liveTz ~= nil and self._breathLastAppliedZ ~= nil and not approxEqual(liveTz, self._breathLastAppliedZ) then
+        self._breathBaseZ = liveTz
     end
 
     local phase = self._breathPhase
@@ -74,6 +86,8 @@ function ReplayFrame:BreathingCameraUpdate(elapsed)
 
     if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, targetZoom) end
     if m.SetPosition then pcall(m.SetPosition, m, 0, 0, targetZ) end
+    self._breathLastAppliedZoom = targetZoom
+    self._breathLastAppliedZ = targetZ
     self._currentZoom = targetZoom
     self._currentZOffset = targetZ
 end

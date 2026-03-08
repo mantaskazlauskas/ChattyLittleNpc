@@ -52,119 +52,89 @@ end
 -- Place camera using our look-at orbit while preserving actor yaw
 local function placeCamera(host, dist, cx, cy, cz)
     if not host then return end
-    local yaw, pitch = host._yaw or 0, host._pitch or 0
     host._distance = math.max(0.1, tonumber(dist) or (host._distance or 10))
     host._targetX, host._targetY, host._targetZ = tonumber(cx) or 0, tonumber(cy) or 0, tonumber(cz) or 0
     if host._ApplyCamera then host:_ApplyCamera() end
 end
 
+local function solveWorldRegionForDisplay(host, displayID, regionName)
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    if not (MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion) then return nil, nil end
+    local canonEntry = MS.CanonicalBbox and MS.CanonicalBbox.GetCached and displayID and MS.CanonicalBbox.GetCached(displayID)
+    if canonEntry and canonEntry.bbox then
+        local world, class = MS.BodyRegions.SolveWorldRegion(canonEntry.bbox, regionName, canonEntry.class)
+        return world, class
+    end
+    local b = host and host.GetBounds and host:GetBounds() or nil
+    if not b then return nil, nil end
+    return MS.BodyRegions.SolveWorldRegion(b, regionName)
+end
+
+local function computeDistanceForWorld(host, world, padding)
+    if not (host and world) then return nil end
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local vfov = host.GetFovV and host:GetFovV() or 0.8
+    local aspect = host.GetAspect and host:GetAspect() or 1.0
+    local pad = math.max(0, tonumber(padding) or 0.10)
+    if MS and MS.BodyRegions and MS.BodyRegions.SolveDistance then
+        local dist, details = MS.BodyRegions.SolveDistance(world, vfov, aspect, pad, pad + 0.03)
+        return dist, details
+    end
+    local t = math.tan(vfov * 0.5)
+    local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
+    local halfH = math.max(1e-3, (world.visibleH * 0.5) * (1 + pad))
+    local halfW = math.max(1e-3, (world.fitWidth * 0.5) * (1 + (pad + 0.03)))
+    local dH = halfH / math.tan(vfov * 0.5)
+    local dW = halfW / math.tan(hfov * 0.5)
+    return math.max(dH, dW), nil
+end
+
 -- Public: FitDefault with projector-based tweaks
 function FS.FitDefault(host, displayID, padding)
     if not host then return end
-    -- Prefer canonical bbox for animation-resistant framing
-    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
-    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
-        and displayID and MS.CanonicalBbox.GetCached(displayID)
-    if canonEntry and MS.BodyRegions then
-        local cbox = canonEntry.bbox
-        local class = canonEntry.class or MS.BodyRegions.Classify(cbox)
-        local region = MS.BodyRegions.GetRegion(class, "bust")
-        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
-        local vfov = host.GetFovV and host:GetFovV() or 0.8
-        local aspect = host.GetAspect and host:GetAspect() or 1.0
-        local t = math.tan(vfov * 0.5)
-        local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
-        local pad = math.max(0, tonumber(padding) or 0.10)
-        local halfH = math.max(1e-3, (world.visibleH * 0.5) * (1 + pad))
-        local halfW = math.max(1e-3, (world.fitWidth * 0.5) * (1 + (pad + 0.03)))
-        local dH = halfH / math.tan(vfov * 0.5)
-        local dW = halfW / math.tan(hfov * 0.5)
-        local dist = math.max(dH, dW)
-        placeCamera(host, dist, world.targetX, world.targetY, world.targetZ)
-        if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
-        debugf("framing", "FramerScene.FitDefault(canonical): class=%s dist=%.3f targetZ=%.3f", class, dist or -1, world.targetZ or -1)
+    if host.FrameRegion then
+        host:FrameRegion("bust", padding)
+        debugf("framing", "FramerScene.FitDefault(host.FrameRegion)")
         return
     end
-    -- Fallback: live bbox path
-    local b = host.GetBounds and host:GetBounds() or nil
-    if not b then return end
-    local min,max = b.min,b.max
-    local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
-    local sz = math.abs((max.z or 0) - (min.z or 0))
-    -- Focus on face area: target ~92% up the model height
-    local faceZ = (min.z or 0) + sz * 0.92
-    -- Compute distance to fit the upper ~32% of the model (bust portrait)
-    local upperFrac = 0.32
-    local visibleHeight = sz * upperFrac
-    local pad = math.max(0, tonumber(padding) or 0.10)
-    local vfov = host.GetFovV and host:GetFovV() or 0.8
-    local aspect = host.GetAspect and host:GetAspect() or 1.0
-    local t = math.tan((vfov) * 0.5)
-    local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
-    local halfH = math.max(1e-3, (visibleHeight * 0.5) * (1 + pad))
-    -- Shoulder-width heuristic: 60% of bbox width for bust portrait framing
-    local fullW = (max.x-min.x) > 0 and (max.x-min.x) or 1
-    local halfW = math.max(1e-3, (fullW * 0.60 * 0.5) * (1 + (pad + 0.03)))
-    local dH = halfH / math.tan(vfov * 0.5)
-    local dW = halfW / math.tan(hfov * 0.5)
-    local dist = math.max(dH, dW)
-    placeCamera(host, dist, cx, cy, faceZ)
-    -- Ensure actor faces the camera
+
+    local world, class = solveWorldRegionForDisplay(host, displayID, "bust")
+    if not world then
+        local dist = computeDistanceFromBounds(host, padding)
+        local b = host.GetBounds and host:GetBounds() or nil
+        if not (dist and b and b.center) then return end
+        placeCamera(host, dist, b.center.x or 0, b.center.y or 0, b.center.z or 0)
+        if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
+        debugf("framing", "FramerScene.FitDefault(bounds-fallback): dist=%.3f", dist or -1)
+        return
+    end
+
+    local dist, solveDetails = computeDistanceForWorld(host, world, padding)
+    local aimZ = (solveDetails and solveDetails.aimTargetZ) or world.targetZ or world.focusZ
+    placeCamera(host, dist, world.targetX, world.targetY, aimZ)
     if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
-    debugf("framing", "FramerScene.FitDefault: dist=%.3f targetZ=%.3f", dist or -1, faceZ or -1)
+    debugf("framing", "FramerScene.FitDefault: class=%s dist=%.3f focusZ=%.3f targetZ=%.3f", tostring(class), dist or -1, world.focusZ or -1, aimZ or -1)
 end
 
 -- Public: Show upper portion (head/shoulders)
 function FS.ShowUpper(host, displayID, frac, padding)
     if not host then return end
-    -- Prefer canonical bbox for animation-resistant framing
-    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
-    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
-        and displayID and MS.CanonicalBbox.GetCached(displayID)
-    if canonEntry and MS.BodyRegions then
-        local cbox = canonEntry.bbox
-        local class = canonEntry.class or MS.BodyRegions.Classify(cbox)
-        local region = MS.BodyRegions.GetRegion(class, "upper_body")
-        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
-        local vfov = host.GetFovV and host:GetFovV() or 0.8
-        local aspect = host.GetAspect and host:GetAspect() or 1.0
-        local t = math.tan(vfov * 0.5)
-        local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
-        local pad = math.max(0, tonumber(padding) or 0.10)
-        local halfH = math.max(1e-3, (world.visibleH * 0.5) * (1 + pad))
-        local halfW = math.max(1e-3, (world.fitWidth * 0.5) * (1 + (pad + 0.03)))
-        local dH = halfH / math.tan(vfov * 0.5)
-        local dW = halfW / math.tan(hfov * 0.5)
-        local dist = math.max(dH, dW)
-        placeCamera(host, dist, world.targetX, world.targetY, world.targetZ)
-        if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
-        debugf("framing", "FramerScene.ShowUpper(canonical): class=%s dist=%.3f", class, dist or -1)
+    if host.FrameRegion then
+        host:FrameRegion("upper_body", padding)
+        debugf("framing", "FramerScene.ShowUpper(host.FrameRegion)")
         return
     end
-    -- Fallback: live bbox path
-    local b = host.GetBounds and host:GetBounds() or nil
-    if not b then return end
-    local min,max = b.min,b.max
-    local cx, cy = (min.x+max.x)*0.5, (min.y+max.y)*0.5
-    local sz = math.abs((max.z or 0) - (min.z or 0))
-    -- Target ~92% up the model height for bust portrait
-    local headZ = (min.z or 0) + sz * 0.92
-    local useFrac = tonumber(frac) or 0.32
-    local vfov = host.GetFovV and host:GetFovV() or 0.8
-    local aspect = host.GetAspect and host:GetAspect() or 1.0
-    local t = math.tan((vfov) * 0.5)
-    local hfov = 2 * math.atan(t * math.max(1e-3, aspect))
-    local pad = math.max(0, tonumber(padding) or 0.10)
-    local halfH = math.max(1e-3, (sz * useFrac * 0.5) * (1 + pad))
-    -- Shoulder-width heuristic: 60% of bbox width for bust portrait framing
-    local fullW = (max.x-min.x) > 0 and (max.x-min.x) or 1
-    local halfW = math.max(1e-3, (fullW * 0.60 * 0.5) * (1 + (pad + 0.03)))
-    local dH = halfH / math.tan(vfov * 0.5)
-    local dW = halfW / math.tan(hfov * 0.5)
-    local dist = math.max(dH, dW)
-    placeCamera(host, dist, cx, cy, headZ)
+
+    local world, class = solveWorldRegionForDisplay(host, displayID, "upper_body")
+    if not world then
+        return FS.FitDefault(host, displayID, padding)
+    end
+
+    local dist, solveDetails = computeDistanceForWorld(host, world, padding)
+    local aimZ = (solveDetails and solveDetails.aimTargetZ) or world.targetZ or world.focusZ
+    placeCamera(host, dist, world.targetX, world.targetY, aimZ)
     if host.SetActorYaw then pcall(host.SetActorYaw, host, math.pi) end
-    debugf("framing", "FramerScene.ShowUpper: frac=%.2f dist=%.3f", useFrac, dist or -1)
+    debugf("framing", "FramerScene.ShowUpper: class=%s dist=%.3f focusZ=%.3f targetZ=%.3f frac=%s", tostring(class), dist or -1, world.focusZ or -1, aimZ or -1, tostring(frac))
 end
 
 -- Public: Zoom by a height factor (inverse relationship with distance)

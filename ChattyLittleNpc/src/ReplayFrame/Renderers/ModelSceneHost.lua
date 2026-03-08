@@ -564,23 +564,27 @@ function M.Attach(host, backend)
     function host:PointCameraAtHead()
         if backend.kind ~= "scene" or not backend.frame then return end
         local b = self:GetBounds()
-        local baseX = (b and b.center and b.center.x) or 0
-        local baseY = (b and b.center and b.center.y) or 0
-        -- Target head area: ~92% up the bounding box height
-        local baseZ
-        if b and b.min and b.max then
-            baseZ = b.min.z + (b.max.z - b.min.z) * 0.92
+        local baseX, baseY, baseZ
+        if b and MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
+            local world = MS.BodyRegions.SolveWorldRegion(b, "head")
+            baseX, baseY, baseZ = world.targetX, world.targetY, world.targetZ
         else
-            local s = self._lastCamSnapshot or {}
-            baseZ = s.tz or (self._camBaseZ or 1.0)
+            baseX = (b and b.center and b.center.x) or 0
+            baseY = (b and b.center and b.center.y) or 0
+            if b and b.min and b.max then
+                baseZ = b.min.z + ((b.max.z - b.min.z) * 0.92)
+            else
+                local s = self._lastCamSnapshot or {}
+                baseZ = s.tz or (self._camBaseZ or 1.0)
+            end
         end
         self._camBaseZ = baseZ
         local d = self._camDist or 2.5
         local px, py, pz = baseX, baseY + d, baseZ
         local tx, ty, tz = baseX, baseY, baseZ
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-    -- Persist snapshot for subsequent operations (zoom/pan)
-    self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
+        -- Persist snapshot for subsequent operations (zoom/pan)
+        self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
     end
 
     -- Apply camera from explicit _distance/_targetX/Y/Z (used by FramerScene)
@@ -643,10 +647,10 @@ function M.Attach(host, backend)
         px, py, pz = px + dx, py + dy, pz + dz
         self._camBaseZ = tz
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-    -- Update clip planes to avoid clipping during close pans
-    if self._lastBounds then self:_UpdateClipPlanesForFit(self._camDist or 2.5, self._lastBounds, 0.12) end
-    -- Persist snapshot
-    self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
+        -- Update clip planes to avoid clipping during close pans
+        if self._lastBounds then self:_UpdateClipPlanesForFit(self._camDist or 2.5, self._lastBounds, 0.12) end
+        -- Persist snapshot
+        self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
     end
     
     function host:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
@@ -717,23 +721,34 @@ function M.Attach(host, backend)
         if not b then return end
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
-        -- Use bust-portrait visible height consistent with FrameFullBodyFront_Immediate
-        local totalHeight = b.size.z or 0
-        local visibleHeight = totalHeight * 0.32
-        local padZ = visibleHeight * (tonumber(paddingFrac) or 0.12)
-        local padX = (b.size.x or 0) * (tonumber(paddingFrac) or 0.12)
-        local tanHalfV = math.tan((fov / 2))
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
-        local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
-        -- Shoulder-width heuristic: 60% of full bbox width for bust portrait
-        local shoulderWidth = (b.size.x or 0) * 0.60
-        local needDistH = ((shoulderWidth + 2 * padX) * 0.5)
-        if aspect and aspect > 0.01 then
-            needDistH = needDistH / (tanHalfV * aspect)
-        else
-            needDistH = 0
+        local usePad = tonumber(paddingFrac) or 0.12
+        local regionName = self._lastRegionName or "bust"
+        local world
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
+            world = MS.BodyRegions.SolveWorldRegion(b, regionName)
         end
-        local d = math.max(needDistV, needDistH)
+        world = world or {
+            visibleH = (b.size.z or 1),
+            fitWidth = (b.size.x or 1),
+        }
+        local d
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveDistance then
+            d = MS.BodyRegions.SolveDistance(world, fov, aspect, usePad, usePad)
+        else
+            local padZ = world.visibleH * usePad
+            local padX = world.fitWidth * usePad
+            local tanHalfV = math.tan((fov / 2))
+            if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
+            local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
+            local needDistH = ((world.fitWidth + 2 * padX) * 0.5)
+            if aspect and aspect > 0.01 then
+                needDistH = needDistH / (tanHalfV * aspect)
+            else
+                needDistH = 0
+            end
+            d = math.max(needDistV, needDistH)
+        end
+        d = d or math.max(tonumber(self._camDist) or 1.0, 1.0)
         d = math.max(d, 1.0)
         self._camDist = d
         -- Keep _zoom consistent so GetPortraitZoom won't desync AnimZoomTo
@@ -758,117 +773,98 @@ function M.Attach(host, backend)
     -- Immediate framing implementation (called by coordinator)
     function host:FrameFullBodyFront_Immediate(paddingFrac)
         paddingFrac = tonumber(paddingFrac) or 0.12
-
-        -- Prefer canonical bbox (animation-resistant) when available
-        local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
-            and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
-        if canonEntry and MS.BodyRegions and MS.BodyRegions.GetRegion and MS.BodyRegions.ToWorldCoords then
-            return self:FrameRegion("bust", paddingFrac)
-        end
-
-        -- Fallback: live bbox path (pre-canonical or uncached models)
-        local b = self:GetBounds()
-    self._lastBounds = b or self._lastBounds
-        if not b then
-            self:_DebugLog("framing", "No bounds yet; falling back to head framing")
-            return self:PointCameraAtHead()
-        end
-        local fov = self:GetFovV()
-        local aspect = self:GetAspect()
-    self:_DebugLog("framing", "Bounds c=(%.2f,%.2f,%.2f) min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f)", b.center.x or 0, b.center.y or 0, b.center.z or 0, b.min.x or 0, b.min.y or 0, b.min.z or 0, b.max.x or 0, b.max.y or 0, b.max.z or 0)
-        -- Focus on the upper body (head/shoulders) rather than framing the full body.
-        -- Target ~92% up the model height (face area) and fit the top ~32%.
-        local totalHeight = b.size.z or 0
-        local upperFrac = 0.32
-        local visibleHeight = totalHeight * upperFrac
-        local faceZ = b.min.z + totalHeight * 0.92
-        local padZ = visibleHeight * paddingFrac
-        local padX = (b.size.x or 0) * paddingFrac
-        local tanHalfV = math.tan((fov / 2))
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end -- ~23 degrees fallback if FOV is tiny/invalid
-        local needDistV = ((visibleHeight + 2 * padZ) * 0.5) / tanHalfV
-        -- For bust portrait, use shoulder-width heuristic (60% of full bbox width)
-        -- to prevent arms/robes/wings from pushing camera too far back
-        local shoulderWidth = (b.size.x or 0) * 0.60
-        local needDistH = ((shoulderWidth + 2 * padX) * 0.5)
-        if aspect and aspect > 0.01 then
-            needDistH = needDistH / (tanHalfV * aspect)
-        else
-            needDistH = 0
-        end
-        local d = math.max(needDistV, needDistH)
-        d = math.max(d, 1.0)
-        self._camDist = d
-        -- Sync _zoom from geometry distance so AnimZoomTo reads correct baseline
-        self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
-        -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
-        self._distance = nil
-        self._camBaseZ = faceZ
-        local px, py, pz = (b.center.x or 0), (b.center.y or 0) + d, faceZ
-        local tx, ty, tz = (b.center.x or 0), (b.center.y or 0), faceZ
-    self:_DebugLog("framing", "Fit dist=%.2f zoom=%.3f fov=%.2f aspect=%.2f size=(%.2f,%.2f,%.2f)", d, self._zoom or -1, fov, aspect, b.size.x or 0, b.size.y or 0, b.size.z or 0)
-        self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-    self:_UpdateClipPlanesForFit(d, b, paddingFrac)
-        if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
-        end
-    -- Persist snapshot so subsequent head-point/zoom keep this base
-    self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
-    if self._DumpState then self:_DumpState("after-framing") end
+        self:FrameRegion("bust", paddingFrac)
+        if self._DumpState then self:_DumpState("after-framing") end
     end
 
     -- Frame a named body region using the canonical (idle-pose) bounding box.
-    -- Deterministic: does not read the live animated bbox.
+    -- Uses canonical bbox when available and seamlessly falls back to live bbox.
     function host:FrameRegion(regionName, paddingFrac)
         paddingFrac = tonumber(paddingFrac) or 0.12
         regionName = regionName or "bust"
+        self._lastRegionName = regionName
         local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
             and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
-        if not (canonEntry and MS.BodyRegions) then
-            self:_DebugLog("framing", "FrameRegion: no canonical data, fallback for %s", regionName)
-            -- Fall through to live-bbox framing below
-            local b = self:GetBounds()
-            self._lastBounds = b or self._lastBounds
-            if not b then return self:PointCameraAtHead() end
-            -- Use the live-bbox inline math (same as fallback in FrameFullBodyFront_Immediate)
-            -- by setting the canonical entry to nil and recursing would loop; just return.
-            return
+        local bbox = canonEntry and canonEntry.bbox or self:GetBounds()
+        local source = canonEntry and "canonical" or "live"
+        self._lastBounds = bbox or self._lastBounds
+        if not bbox then
+            self:_DebugLog("framing", "FrameRegion(%s): no bbox available, fallback to head", regionName)
+            return self:PointCameraAtHead()
         end
 
-        local cbox = canonEntry.bbox
-        local class = canonEntry.class or (MS.BodyRegions.Classify and MS.BodyRegions.Classify(cbox) or "tall_humanoid")
-        local region = MS.BodyRegions.GetRegion(class, regionName)
-        local world = MS.BodyRegions.ToWorldCoords(cbox, region)
+        local classHint = canonEntry and canonEntry.class or nil
+        local world, class, region
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
+            world, class, region = MS.BodyRegions.SolveWorldRegion(bbox, regionName, classHint)
+        elseif MS and MS.BodyRegions and MS.BodyRegions.GetRegion and MS.BodyRegions.ToWorldCoords then
+            class = classHint or (MS.BodyRegions.Classify and MS.BodyRegions.Classify(bbox) or "tall_humanoid")
+            region = MS.BodyRegions.GetRegion(class, regionName)
+            world = MS.BodyRegions.ToWorldCoords(bbox, region)
+        else
+            world = {
+                targetX = (bbox.center and bbox.center.x) or 0,
+                targetY = (bbox.center and bbox.center.y) or 0,
+                targetZ = (bbox.center and bbox.center.z) or 0,
+                visibleH = (bbox.size and bbox.size.z) or 1,
+                fitWidth = (bbox.size and bbox.size.x) or 1,
+                visibleLo = (bbox.min and bbox.min.z) or 0,
+                visibleHi = (bbox.max and bbox.max.z) or 1,
+            }
+            class = "fallback"
+        end
 
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
-        local tanHalfV = math.tan(fov * 0.5)
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
-        local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
-
-        local padZ = world.visibleH * paddingFrac
-        local padX = world.fitWidth * paddingFrac
-        local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
-        local d = math.max(needDistV, needDistH)
+        local d
+        local solveDetails
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveDistance then
+            d, solveDetails = MS.BodyRegions.SolveDistance(world, fov, aspect, paddingFrac, paddingFrac)
+        else
+            local tanHalfV = math.tan(fov * 0.5)
+            if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
+            local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
+            local padZ = world.visibleH * paddingFrac
+            local padX = world.fitWidth * paddingFrac
+            local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
+            local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
+            d = math.max(needDistV, needDistH)
+        end
         d = math.max(d, 1.0)
+        if solveDetails and solveDetails.aimTargetZ ~= nil then
+            world.targetZ = solveDetails.aimTargetZ
+            world.targetToTop = solveDetails.targetToTop
+            world.targetToBottom = solveDetails.targetToBottom
+        elseif world.targetZ == nil then
+            world.targetZ = world.focusZ or ((world.visibleLo or 0) + (world.visibleHi or 0)) * 0.5
+        end
+
+        local fw, fh = 0, 0
+        if self.GetSize then fw, fh = self:GetSize() end
+        if MS and MS.ProjectionVerifier and MS.ProjectionVerifier.AdjustHeadroom and backend.frame
+            and (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
+            local corrected, changed = MS.ProjectionVerifier.AdjustHeadroom(backend.frame, self, world, d, fw, fh, { topMarginPct = 0.08 })
+            if changed and corrected then
+                world = corrected
+            end
+        end
 
         self._camDist = d
         -- Sync _zoom from geometry distance so AnimZoomTo reads correct baseline
         self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
         -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
         self._distance = nil
-        self._camBaseZ = world.targetZ
-        self._lastBounds = cbox
+        local aimTargetZ = world.targetZ or world.focusZ or 0
+        self._camBaseZ = aimTargetZ
 
-        local px, py, pz = world.targetX, world.targetY + d, world.targetZ
-        local tx, ty, tz = world.targetX, world.targetY, world.targetZ
+        local px, py, pz = world.targetX, world.targetY + d, aimTargetZ
+        local tx, ty, tz = world.targetX, world.targetY, aimTargetZ
 
-        self:_DebugLog("framing", "FrameRegion(%s) class=%s dist=%.2f zoom=%.3f targetZ=%.2f visH=%.2f fitW=%.2f",
-            regionName, class, d, self._zoom or -1, world.targetZ, world.visibleH, world.fitWidth)
+        self:_DebugLog("framing", "FrameRegion(%s) source=%s class=%s dist=%.2f zoom=%.3f focusZ=%.2f targetZ=%.2f visH=%.2f fitW=%.2f",
+            regionName, source, class, d, self._zoom or -1, world.focusZ or -1, aimTargetZ, world.visibleH, world.fitWidth)
 
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-        self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
+        self:_UpdateClipPlanesForFit(d, bbox, paddingFrac)
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
             pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
         end
@@ -876,8 +872,6 @@ function M.Attach(host, backend)
 
         -- Optional: projection verification for ModelScene (refine distance)
         if MS.ProjectionVerifier and MS.ProjectionVerifier.RefineDistance and backend.frame then
-            local fw, fh = 0, 0
-            if self.GetSize then fw, fh = self:GetSize() end
             if (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
                 local refined = MS.ProjectionVerifier.RefineDistance(backend.frame, self, world, d, fw, fh)
                 if refined and math.abs(refined - d) > 0.05 then
@@ -887,7 +881,7 @@ function M.Attach(host, backend)
                     self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
                     px, py, pz = tx, ty + d, tz
                     self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
-                    self:_UpdateClipPlanesForFit(d, cbox, paddingFrac)
+                    self:_UpdateClipPlanesForFit(d, bbox, paddingFrac)
                     self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
                 end
             end
@@ -898,6 +892,8 @@ function M.Attach(host, backend)
 
     -- Smooth transition to a named body region (delegates to AnimPanTo/AnimZoomTo)
     function host:TransitionToRegion(regionName, duration)
+        regionName = regionName or "bust"
+        self._lastRegionName = regionName
         local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
             and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
         if not (canonEntry and MS.BodyRegions) then
@@ -906,29 +902,37 @@ function M.Attach(host, backend)
 
         local cbox = canonEntry.bbox
         local class = canonEntry.class or "tall_humanoid"
-        local region = MS.BodyRegions.GetRegion(class, regionName or "bust")
+        local region = MS.BodyRegions.GetRegion(class, regionName)
         local world = MS.BodyRegions.ToWorldCoords(cbox, region)
 
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
-        local tanHalfV = math.tan(fov * 0.5)
-        if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
-        local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
-        local padZ = world.visibleH * 0.12
-        local padX = world.fitWidth * 0.12
-        local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
-        local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
-        local d = math.max(math.max(needDistV, needDistH), 1.0)
+        local d
+        local solveDetails
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveDistance then
+            d, solveDetails = MS.BodyRegions.SolveDistance(world, fov, aspect, 0.12, 0.12)
+        else
+            local tanHalfV = math.tan(fov * 0.5)
+            if tanHalfV < 1e-4 then tanHalfV = math.tan(0.4) end
+            local hfov = 2 * math.atan(tanHalfV * math.max(1e-3, aspect))
+            local padZ = world.visibleH * 0.12
+            local padX = world.fitWidth * 0.12
+            local needDistV = ((world.visibleH + 2 * padZ) * 0.5) / tanHalfV
+            local needDistH = ((world.fitWidth + 2 * padX) * 0.5) / math.max(1e-6, math.tan(hfov * 0.5))
+            d = math.max(needDistV, needDistH)
+        end
+        d = math.max(d, 1.0)
+        local aimTargetZ = (solveDetails and solveDetails.aimTargetZ) or world.targetZ or world.focusZ or 0
 
         local dur = tonumber(duration) or 0.3
         local r = CLN and CLN.ReplayFrame
         if r then
-            if r.AnimPanTo then r:AnimPanTo(world.targetZ, dur) end
+            if r.AnimPanTo then r:AnimPanTo(aimTargetZ, dur) end
             -- Convert geometry distance to zoom-space for AnimZoomTo
             local zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
             if r.AnimZoomTo then r:AnimZoomTo(zoom, dur) end
         end
-        self:_DebugLog("framing", "TransitionToRegion(%s) dist=%.2f targetZ=%.2f dur=%.2f", regionName or "bust", d, world.targetZ, dur)
+        self:_DebugLog("framing", "TransitionToRegion(%s) dist=%.2f focusZ=%.2f targetZ=%.2f dur=%.2f", regionName, d, world.focusZ or -1, aimTargetZ, dur)
     end
 
     -- Public entry point routed through coordinator
