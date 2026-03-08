@@ -502,7 +502,7 @@ function ReplayFrame:BuildQueueEntries()
         local stillPlaying = CLN.VoiceoverPlayer.IsEffectivelyPlaying
             and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
             or (now.isPlaying and now:isPlaying())
-        local isPaused = CLN.VoiceoverPlayer._paused or (now._pausedForNativeVO)
+        local isPaused = CLN.VoiceoverPlayer._paused or now._pausedForNativeVO or now._textContinuation
         isActive = stillPlaying or isPaused
     end
 
@@ -523,11 +523,16 @@ function ReplayFrame:BuildQueueEntries()
 
     if CLN.questsQueue then
         for i, q in ipairs(CLN.questsQueue) do
-            local npcName = self:GetNpcNameById(q.npcId)
-            local questTitle = q.title
-            local label = ReplayFrame.Pure.FormatEntryLabel(npcName, questTitle, true)
-            local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, questTitle)
-            table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip, entryType = q.entryType or "quest" })
+            local isCurrentDuplicate = isActive and now and now.questId
+                and q.questId == now.questId
+                and q.phase == now.phase
+            if not isCurrentDuplicate then
+                local npcName = self:GetNpcNameById(q.npcId)
+                local questTitle = q.title
+                local label = ReplayFrame.Pure.FormatEntryLabel(npcName, questTitle, true)
+                local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, questTitle)
+                table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip, entryType = q.entryType or "quest" })
+            end
         end
     end
 
@@ -843,7 +848,7 @@ end
 
 -- Update display frame state
 function ReplayFrame:UpdateDisplayFrameState()
-    if self._editMode or self._isDragging then return end
+    if self._editMode or self._blizzardEditMode or self._isDragging then return end
     if self.GetDisplayFrame then self:GetDisplayFrame() end
     self:UpdateDisplayFrame()
 end

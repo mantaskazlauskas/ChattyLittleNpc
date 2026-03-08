@@ -381,3 +381,39 @@ function Utils.EstimateVODuration(text, minDuration, maxDuration)
     end
     return math.max(floor, raw)
 end
+
+--- Estimate how long a sentence takes to READ (not hear).
+--- ~200 WPM ≈ 20 chars/sec for English — roughly 3x faster than speech.
+---@param sentence string|nil  The sentence to estimate reading duration for.
+---@return number seconds
+function Utils.EstimateReadDuration(sentence)
+    if not sentence or #sentence == 0 then return 1.5 end
+    return math.max(1.5, #sentence / 20)
+end
+
+--- Given an array of sentences and a 0-1 progress value, estimate which
+--- sentence was being spoken at that point using character-count proportions.
+---@param sentences string[]  Array of sentence strings.
+---@param progress number     0-1 progress through the total text.
+---@return number index       1-based index of the estimated current sentence.
+function Utils.EstimateSentenceAtPosition(sentences, progress)
+    if not sentences or #sentences == 0 then return 1 end
+    if progress <= 0 then return 1 end
+    if progress >= 1 then return #sentences end
+
+    local totalChars = 0
+    for i = 1, #sentences do
+        totalChars = totalChars + #sentences[i]
+    end
+    if totalChars == 0 then return 1 end
+
+    local targetChars = totalChars * progress
+    local cumulative = 0
+    for i = 1, #sentences do
+        cumulative = cumulative + #sentences[i]
+        if cumulative >= targetChars then
+            return i
+        end
+    end
+    return #sentences
+end

@@ -180,10 +180,10 @@ function ReplayFrame:InitializeModelContainer()
             self:LayoutModelArea(self.DisplayFrame)
         end
     elseif not (self.ModelContainer or self.NpcModelFrame) then
-        -- Fallback defaults if module hasn't loaded yet
-        local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
-        modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
-        modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
+        -- Fallback: standalone model container above DisplayFrame
+        local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", UIParent)
+        modelContainer:SetPoint("BOTTOMLEFT", self.DisplayFrame, "TOPLEFT", 0, 2)
+        modelContainer:SetPoint("BOTTOMRIGHT", self.DisplayFrame, "TOPRIGHT", 0, 2)
         modelContainer:SetHeight(self.npcModelFrameHeight)
         modelContainer:SetClipsChildren(true)
         modelContainer:Hide()
@@ -356,6 +356,10 @@ function ReplayFrame:HideSubtitle()
     self._subtitleTimer = nil
     self._subtitleSentences = nil
     self._subtitleIndex = nil
+    self._textContinuationActive = false
+    self._tcSentences = nil
+    self._tcStartIndex = nil
+    self._tcOnComplete = nil
     if self.SubtitleFrame then self.SubtitleFrame:Hide() end
     -- Restore header to original position
     if self.HeaderText and self.ContentFrame then
@@ -363,6 +367,280 @@ function ReplayFrame:HideSubtitle()
         self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
     end
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+end
+
+--- Show remaining sentences as timed subtitles for text continuation mode.
+--- Displays a dimmed recap of the last-heard sentence, then reveals
+--- unheard sentences one at a time at reading speed (~200 WPM).
+---@param sentences string[]    Full sentence array from SplitTooltipIntoSentences.
+---@param startIndex number     1-based index of the first UNHEARD sentence.
+---@param onComplete function   Called when all sentences have been displayed.
+function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
+    if not self.SubtitleFrame or not self.SubtitleText then
+        if onComplete then onComplete() end
+        return
+    end
+    -- Cancel any existing subtitle sequence
+    self:HideSubtitle()
+    if not sentences or #sentences == 0 then
+        if onComplete then onComplete() end
+        return
+    end
+
+    startIndex = math.max(1, math.min(startIndex, #sentences))
+
+    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+
+    self._subtitleSentences = sentences
+    self._subtitleIndex = 0
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    local token = self._subtitleToken
+
+    self.SubtitleFrame:Show()
+    self.SubtitleFrame:SetAlpha(0)
+    -- Push header below subtitle to avoid overlap
+    if self.HeaderText then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+
+    -- "Show All" escape: click subtitle to instantly reveal remaining text
+    -- Store current state on self so the click handler always reads fresh values
+    self._tcSentences = sentences
+    self._tcStartIndex = startIndex
+    self._tcOnComplete = onComplete
+    if not self._subtitleClickHooked then
+        self.SubtitleFrame:EnableMouse(true)
+        self.SubtitleFrame:SetScript("OnMouseDown", function()
+            if not self._textContinuationActive then return end
+            local curToken = self._subtitleToken
+            local curSentences = self._tcSentences
+            local curOnComplete = self._tcOnComplete
+            if not curSentences then return end
+            -- Show all remaining sentences at once
+            local remaining = {}
+            local idx = self._subtitleIndex or 1
+            for i = idx, #curSentences do
+                remaining[#remaining + 1] = curSentences[i]
+            end
+            if #remaining > 0 then
+                self.SubtitleText:SetText(table.concat(remaining, " "))
+                self.SubtitleFrame:SetAlpha(1)
+            end
+            -- Cancel auto-advance timer and complete after a brief pause
+            self._subtitleTimer = nil
+            -- Adaptive pace: user clicked "Show All" → they read faster, nudge coefficient down
+            if CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient then
+                local coeff = CLN.db.profile.readingPaceCoefficient
+                CLN.db.profile.readingPaceCoefficient = math.max(0.5, coeff - 0.05)
+            end
+            -- Reset model to idle
+            local m = self.NpcModelFrame
+            if m and m.IsShown and m:IsShown() and m.SetAnimation then
+                pcall(m.SetAnimation, m, 0)
+            end
+            self._subtitleTimer = C_Timer and C_Timer.After(2.0, function()
+                if curToken ~= self._subtitleToken then return end
+                self._textContinuationActive = false
+                self:HideSubtitle()
+                if curOnComplete then curOnComplete() end
+            end)
+        end)
+        self._subtitleClickHooked = true
+    end
+
+    self._textContinuationActive = true
+
+    -- Build focus-mode context text: previous (grey) + current (yellow) + next (dim white)
+    local function buildFocusText(idx)
+        local parts = {}
+        -- Show previous sentence dimmed for context
+        if idx > 1 and sentences[idx - 1] then
+            parts[#parts + 1] = "|cFF666666" .. sentences[idx - 1] .. "|r"
+        end
+        -- Current sentence highlighted
+        if sentences[idx] then
+            parts[#parts + 1] = "|cFFFFFF00" .. sentences[idx] .. "|r"
+        end
+        -- Show next sentence dimmed for preview
+        if idx < #sentences and sentences[idx + 1] then
+            parts[#parts + 1] = "|cFF999999" .. sentences[idx + 1] .. "|r"
+        end
+        return table.concat(parts, " ")
+    end
+
+    -- Trigger NPC model talk animation for current sentence (lip-read mode)
+    local function triggerLipRead(sentence)
+        local m = self.NpcModelFrame
+        if not (m and m.IsShown and m:IsShown()) then return end
+        local animId = self.ChooseTalkAnimIdForText
+            and self:ChooseTalkAnimIdForText(sentence) or 60
+        if m.SetAnimation then
+            pcall(m.SetAnimation, m, animId)
+        end
+    end
+
+    -- Calculate reading duration with combat multiplier and adaptive pace
+    local function getReadDuration(sentence)
+        local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
+            and CLN.Utils.EstimateReadDuration(sentence)
+            or math.max(1.5, #sentence / 20)
+        -- Adaptive pace coefficient from SavedVariables
+        local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+        dur = dur * coeff
+        -- Combat multiplier: show text faster during combat (less distraction)
+        if UnitAffectingCombat and UnitAffectingCombat("player") then
+            dur = dur * 0.7
+        end
+        return math.max(1.0, dur)
+    end
+
+    -- Inner function to advance through sentences
+    local function showNext()
+        if token ~= self._subtitleToken then return end
+        if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
+        self._subtitleIndex = (self._subtitleIndex or 0) + 1
+        local idx = self._subtitleIndex
+
+        if idx > #sentences then
+            -- Reset model to idle
+            local m = self.NpcModelFrame
+            if m and m.IsShown and m:IsShown() and m.SetAnimation then
+                pcall(m.SetAnimation, m, 0)
+            end
+            -- All sentences shown; complete after a brief pause
+            self._subtitleTimer = C_Timer and C_Timer.After(2.0, function()
+                if token ~= self._subtitleToken then return end
+                self._textContinuationActive = false
+                self._subtitleTimer = nil
+                if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+                if self.HeaderText and self.ContentFrame then
+                    self.HeaderText:ClearAllPoints()
+                    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                end
+                if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+                if onComplete then onComplete() end
+            end)
+            return
+        end
+
+        -- Skip already-heard sentences (before startIndex)
+        if idx < startIndex then
+            showNext()
+            return
+        end
+
+        -- Focus mode: show context window (previous + current + next)
+        self.SubtitleText:SetText(buildFocusText(idx))
+        self.SubtitleFrame:SetAlpha(1)
+        -- Lip-read: trigger talk animation on model
+        triggerLipRead(sentences[idx])
+        -- Reading-speed timing with combat + adaptive multipliers
+        local dur = getReadDuration(sentences[idx])
+        self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
+    end
+
+    -- Phase 1: Show recap of last-heard sentence (dimmed) if available
+    local recapIndex = startIndex - 1
+    if recapIndex >= 1 and sentences[recapIndex] then
+        self.SubtitleText:SetText("|cFF666666" .. sentences[recapIndex] .. "|r")
+        self.SubtitleFrame:SetAlpha(1)
+        self._subtitleIndex = startIndex - 1
+        self._subtitleTimer = C_Timer and C_Timer.After(1.5, function()
+            if token ~= self._subtitleToken then return end
+            self._subtitleIndex = startIndex - 1
+            showNext()
+        end)
+    else
+        -- No recap available; start directly
+        self._subtitleIndex = startIndex - 1
+        self._subtitleTimer = C_Timer and C_Timer.After(0.3, showNext)
+    end
+end
+
+--- Jump to a sentence by delta during text continuation (micro-scrub).
+--- delta: -1 to go back one sentence, +1 to go forward.
+---@param delta number  -1 or +1
+function ReplayFrame:ScrubSentence(delta)
+    if not self._textContinuationActive then return end
+    local sentences = self._tcSentences
+    local startIdx = self._tcStartIndex or 1
+    if not sentences or #sentences == 0 then return end
+
+    -- Cancel current auto-advance timer
+    self._subtitleTimer = nil
+
+    local curIdx = self._subtitleIndex or startIdx
+    local newIdx = curIdx + delta
+    -- Clamp to valid range (startIndex to #sentences)
+    newIdx = math.max(startIdx, math.min(newIdx, #sentences))
+    self._subtitleIndex = newIdx
+
+    -- Build focus text for the new position
+    local parts = {}
+    if newIdx > 1 and sentences[newIdx - 1] then
+        parts[#parts + 1] = "|cFF666666" .. sentences[newIdx - 1] .. "|r"
+    end
+    if sentences[newIdx] then
+        parts[#parts + 1] = "|cFFFFFF00" .. sentences[newIdx] .. "|r"
+    end
+    if newIdx < #sentences and sentences[newIdx + 1] then
+        parts[#parts + 1] = "|cFF999999" .. sentences[newIdx + 1] .. "|r"
+    end
+    if self.SubtitleText then
+        self.SubtitleText:SetText(table.concat(parts, " "))
+        self.SubtitleFrame:SetAlpha(1)
+    end
+
+    -- Trigger lip-read animation
+    local m = self.NpcModelFrame
+    if m and m.IsShown and m:IsShown() and m.SetAnimation and sentences[newIdx] then
+        local animId = self.ChooseTalkAnimIdForText
+            and self:ChooseTalkAnimIdForText(sentences[newIdx]) or 60
+        pcall(m.SetAnimation, m, animId)
+    end
+
+    -- Restart auto-advance timer from this sentence
+    local token = self._subtitleToken
+    local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
+        and CLN.Utils.EstimateReadDuration(sentences[newIdx])
+        or math.max(1.5, #sentences[newIdx] / 20)
+    local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+    dur = dur * coeff
+    if UnitAffectingCombat and UnitAffectingCombat("player") then dur = dur * 0.7 end
+    dur = math.max(1.0, dur)
+
+    self._subtitleTimer = C_Timer and C_Timer.After(dur, function()
+        if token ~= self._subtitleToken then return end
+        -- Continue auto-advancing from newIdx
+        -- Increment and show next, or complete if at end
+        self._subtitleIndex = newIdx
+        local nextIdx = newIdx + 1
+        if nextIdx > #sentences then
+            -- Complete
+            self._textContinuationActive = false
+            self._subtitleTimer = nil
+            if m and m.IsShown and m:IsShown() and m.SetAnimation then pcall(m.SetAnimation, m, 0) end
+            C_Timer.After(2.0, function()
+                if token ~= self._subtitleToken then return end
+                if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+                if self.HeaderText and self.ContentFrame then
+                    self.HeaderText:ClearAllPoints()
+                    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                end
+                if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+                local cb = self._tcOnComplete
+                if cb then cb() end
+            end)
+        else
+            -- Auto-advance to next
+            self._subtitleIndex = newIdx
+            -- Re-trigger the next sentence via a recursive-like pattern
+            self:ScrubSentence(1)
+        end
+    end)
 end
 
 -- Return the real available width (in pixels) that a row's text can use
@@ -685,43 +963,14 @@ function ReplayFrame:SetupFrameResize()
             return
         end
 
-        -- Layout the model area via extracted module
+        -- Layout the model area via extracted module (separate frame above DisplayFrame)
         if this.LayoutModelArea then this:LayoutModelArea(frame) end
 
-        -- Recompute hasModel AFTER LayoutModelArea which may show/hide the container.
-        -- Using IsShown() ensures ContentFrame anchors match actual visibility.
-        hasModel = this.ModelContainer and this.ModelContainer:IsShown() and not compact
-
-        -- Ensure minimum content space when model is visible
-        -- Header (~24px) + divider (5px) + at least 1 row (24px) + padding = ~60px
-        local MIN_CONTENT_HEIGHT = 60
-        if hasModel and this.ModelContainer then
-            local modelH = this.ModelContainer:GetHeight() or 0
-            local availContent = height - modelH - 8 - 6 - 5 -- top margin + gap + bottom margin
-            if availContent < MIN_CONTENT_HEIGHT then
-                -- Shrink model to fit, keeping minimum content area
-                local newModelH = math.max(40, height - MIN_CONTENT_HEIGHT - 8 - 6 - 5)
-                this.ModelContainer:SetHeight(newModelH)
-                if this.NpcModelFrame then
-                    this.NpcModelFrame:SetHeight(newModelH)
-                    -- Refit camera for the smaller viewport
-                    if this.NpcModelFrame.FitDistanceForCurrentTarget then
-                        pcall(this.NpcModelFrame.FitDistanceForCurrentTarget, this.NpcModelFrame, 0.12)
-                    end
-                end
-            end
-        end
-
+        -- ContentFrame always fills DisplayFrame (model is a separate frame above)
         if this.ContentFrame then
             this.ContentFrame:ClearAllPoints()
-            if hasModel and this.ModelContainer then
-                -- content directly below full-width model container
-                this.ContentFrame:SetPoint("TOPLEFT", this.ModelContainer, "BOTTOMLEFT", 0, -6)
-                this.ContentFrame:SetPoint("TOPRIGHT", this.ModelContainer, "BOTTOMRIGHT", 0, -6)
-            else
-                this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
-                this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-            end
+            this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
+            this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
             this.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
         end
 

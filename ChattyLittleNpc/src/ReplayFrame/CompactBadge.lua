@@ -103,6 +103,25 @@ function ReplayFrame:EnsureCompactBadge()
     end)
     badge.PauseBtn = pauseBtn
 
+    -- Micro-scrub buttons: ◀ ▶ for sentence navigation during text continuation
+    local scrubBack = makeBtn(badge, 18, "Interface/Buttons/UI-SpellbookIcon-PrevPage-Up", "Previous sentence", function()
+        if CLN.ReplayFrame and CLN.ReplayFrame.ScrubSentence then
+            CLN.ReplayFrame:ScrubSentence(-1)
+        end
+    end)
+    scrubBack:SetPoint("RIGHT", pauseBtn, "LEFT", -2, 0)
+    scrubBack:Hide()
+    badge.ScrubBackBtn = scrubBack
+
+    local scrubFwd = makeBtn(badge, 18, "Interface/Buttons/UI-SpellbookIcon-NextPage-Up", "Next sentence", function()
+        if CLN.ReplayFrame and CLN.ReplayFrame.ScrubSentence then
+            CLN.ReplayFrame:ScrubSentence(1)
+        end
+    end)
+    scrubFwd:SetPoint("RIGHT", scrubBack, "LEFT", -2, 0)
+    scrubFwd:Hide()
+    badge.ScrubFwdBtn = scrubFwd
+
     -- Expand button
     local expandBtn = makeBtn(badge, 22, "Interface/Buttons/UI-Panel-ExpandButton-Up", "Expand", function()
         if self.CollapseButton then self.CollapseButton:Click() end
@@ -129,7 +148,24 @@ function ReplayFrame:EnsureCompactBadge()
     -- Progress updater: animate ProgressLine width per-frame while playing
     badge._progressOnUpdate = function(_, _)
         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        if not (cp and cp.startTime and cp.title and GetTime) then return end
+        if not (cp and GetTime) then return end
+
+        -- Text continuation mode: progress based on reading time
+        if cp._textContinuation and cp._textContinuationStartTime and cp._textContinuationDuration then
+            -- Freeze progress bar while paused
+            local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+            if paused then return end
+            local elapsed = GetTime() - cp._textContinuationStartTime
+            local duration = cp._textContinuationDuration
+            if duration <= 0 then return end
+            local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
+            local progress = math.min(1, math.max(0, elapsed / duration))
+            progressLine:SetWidth(math.max(1, maxW * progress))
+            return
+        end
+
+        -- Normal audio mode: progress based on audio duration
+        if not (cp.startTime and cp.title) then return end
         local elapsed = GetTime() - cp.startTime
         local estimated = CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title) or 0
         if estimated <= 0 then return end
@@ -169,7 +205,22 @@ function ReplayFrame:UpdatePauseButton()
         local tex = badge.PauseBtn.tex
         if tex then
             if paused then
-                tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+                -- Check if we're past the text continuation threshold (Smart Resume)
+                local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                local showReadIcon = false
+                if cp and cp._elapsedAtPause and cp.title and CLN.Utils then
+                    local estimated = CLN.Utils.EstimateVODuration(cp.title) or 0
+                    local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
+                    local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
+                    if enabled and estimated > 0 and (cp._elapsedAtPause / estimated) >= threshold then
+                        showReadIcon = true
+                    end
+                end
+                if showReadIcon then
+                    tex:SetTexture("Interface/Icons/INV_Misc_Book_09")
+                else
+                    tex:SetTexture("Interface/Buttons/UI-SpellbookIcon-NextPage-Up")
+                end
             else
                 tex:SetTexture("Interface/TimeManager/PauseButton")
             end
@@ -186,6 +237,7 @@ function ReplayFrame:UpdateCompactBadge(force)
     local badge = self.CompactBadge
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
     local playing = cur and cur.isPlaying and cur:isPlaying() or false
+    local textContinuation = cur and cur._textContinuation or false
     local title = cur and cur.title or nil
     if (not title or title == "") and CLN.questsQueue and #CLN.questsQueue > 0 then
         local q = CLN.questsQueue[1]
@@ -211,12 +263,24 @@ function ReplayFrame:UpdateCompactBadge(force)
     end
 
     -- Speaker icon and glow state
-    if playing then
-        badge.Icon:SetVertexColor(1.0, 0.82, 0.0, 1)
+    if playing or textContinuation then
+        if textContinuation then
+            -- Text continuation: use a distinct icon color (softer white)
+            badge.Icon:SetVertexColor(0.9, 0.9, 1.0, 1)
+        else
+            badge.Icon:SetVertexColor(1.0, 0.82, 0.0, 1)
+        end
         badge.Title:SetTextColor(1.0, 1.0, 1.0, 0.95)
         if badge.IconGlow then
-            badge.IconGlow:Show()
-            if badge.GlowAnim and not badge.GlowAnim:IsPlaying() then badge.GlowAnim:Play() end
+            if textContinuation then
+                -- Steady glow during text continuation (no pulsing)
+                badge.IconGlow:Show()
+                badge.IconGlow:SetAlpha(0.4)
+                if badge.GlowAnim and badge.GlowAnim:IsPlaying() then badge.GlowAnim:Stop() end
+            else
+                badge.IconGlow:Show()
+                if badge.GlowAnim and not badge.GlowAnim:IsPlaying() then badge.GlowAnim:Play() end
+            end
         end
         -- Show animated progress line
         if badge.ProgressLine then
@@ -225,12 +289,22 @@ function ReplayFrame:UpdateCompactBadge(force)
                 badge:SetScript("OnUpdate", badge._progressOnUpdate)
             end
         end
+        -- Show micro-scrub buttons during text continuation
+        if textContinuation then
+            if badge.ScrubBackBtn then badge.ScrubBackBtn:Show() end
+            if badge.ScrubFwdBtn then badge.ScrubFwdBtn:Show() end
+        else
+            if badge.ScrubBackBtn then badge.ScrubBackBtn:Hide() end
+            if badge.ScrubFwdBtn then badge.ScrubFwdBtn:Hide() end
+        end
     else
         badge.Icon:SetVertexColor(0.5, 0.5, 0.5, 0.6)
         badge.Title:SetTextColor(0.7, 0.7, 0.7, 0.8)
         if badge.GlowAnim and badge.GlowAnim:IsPlaying() then badge.GlowAnim:Stop() end
         if badge.IconGlow then badge.IconGlow:Hide() end
         if badge.ProgressLine then badge.ProgressLine:Hide() end
+        if badge.ScrubBackBtn then badge.ScrubBackBtn:Hide() end
+        if badge.ScrubFwdBtn then badge.ScrubFwdBtn:Hide() end
         badge:SetScript("OnUpdate", nil)
     end
 end

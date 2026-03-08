@@ -83,8 +83,25 @@ local options = {
                         if CLN._SyncLegacyQuestPlaybackFlags then CLN:_SyncLegacyQuestPlaybackFlags() end
                     end,
                 },
-                playVoiceoverAfterDelay = {
+                gossipPlaybackMode = {
                     order = 3,
+                    type = 'select',
+                    width = 'double',
+                    name = 'Gossip Playback Mode',
+                    desc = 'Controls how gossip/greeting voiceovers are handled (independent from quests):\n\n'
+                        .. '• Queue — gossip continues playing after the dialog closes\n'
+                        .. '• Stop On Close — gossip stops when you close the gossip window\n'
+                        .. '• Manual — only plays when you click the play button',
+                    values = {
+                        queue = 'Queue (continue after close)',
+                        stopOnClose = 'Stop when dialog closes',
+                        manual = 'Manual (play button only)',
+                    },
+                    get = function() return CLN.db.profile.gossipPlaybackMode or 'queue' end,
+                    set = function(_, value) CLN.db.profile.gossipPlaybackMode = value end,
+                },
+                playVoiceoverAfterDelay = {
+                    order = 4,
                     type = 'range',
                     width = 'double',
                     name = 'Playback Delay (seconds)',
@@ -96,7 +113,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.playVoiceoverAfterDelay = value end,
                 },
                 audioChannel = {
-                    order = 4,
+                    order = 5,
                     type = 'select',
                     width = 'double',
                     name = 'Audio Channel',
@@ -112,7 +129,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.audioChannel = value end,
                 },
                 showSpeakButton = {
-                    order = 5,
+                    order = 6,
                     type = 'toggle',
                     width = 'full',
                     name = 'Show Play Button on Dialogs',
@@ -121,7 +138,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.showSpeakButton = value end,
                 },
                 gossipCooldownEnabled = {
-                    order = 6,
+                    order = 7,
                     type = 'toggle',
                     width = 'full',
                     name = 'Gossip Cooldown',
@@ -130,7 +147,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.gossipCooldownEnabled = value end,
                 },
                 gossipCooldownMinutes = {
-                    order = 7,
+                    order = 8,
                     type = 'range',
                     width = 'double',
                     name = 'Gossip Cooldown (minutes)',
@@ -143,7 +160,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.gossipCooldownMinutes = value end,
                 },
                 gossipQueueMode = {
-                    order = 7,
+                    order = 9,
                     type = 'select',
                     width = 'full',
                     name = 'Gossip Queueing',
@@ -157,7 +174,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.gossipQueueMode = value end,
                 },
                 nativeVOMode = {
-                    order = 8,
+                    order = 10,
                     type = 'toggle',
                     width = 'full',
                     name = 'Pause for Voiced NPCs',
@@ -199,16 +216,19 @@ local options = {
                     order = 12,
                     type = 'multiselect',
                     name = '',
-                    desc = 'Uncheck an NPC to stop auto-pausing for them.',
+                    desc = 'Uncheck to move NPC to Never Ask.',
                     width = 'full',
                     values = function()
                         local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        local result = {}
+                        local sorted = {}
                         for k, v in pairs(wl) do
                             if v and type(k) == "string" then
-                                result[k] = k
+                                sorted[#sorted + 1] = k
                             end
                         end
+                        table.sort(sorted)
+                        local result = {}
+                        for _, name in ipairs(sorted) do result[name] = name end
                         return result
                     end,
                     get = function(info, key)
@@ -218,37 +238,9 @@ local options = {
                     set = function(info, key, value)
                         if not value then
                             removeNpcFromTable(CLN.db.profile.nativeVOWhitelist, key)
+                            if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
+                            addNpcToTable(CLN.db.profile.nativeVODismissed, key)
                         end
-                    end,
-                    hidden = function()
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        for k, v in pairs(wl) do
-                            if v and type(k) == "string" then return false end
-                        end
-                        return true
-                    end,
-                },
-                pauseForMoveToNeverAsk = {
-                    order = 13,
-                    type = 'select',
-                    name = 'Move to Never Ask',
-                    desc = "Pick an NPC to dismiss — they won't trigger prompts or auto-pausing.",
-                    values = function()
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        local result = { [""] = "\226\128\148 Select NPC \226\128\148" }
-                        for k, v in pairs(wl) do
-                            if v and type(k) == "string" then
-                                result[k] = k
-                            end
-                        end
-                        return result
-                    end,
-                    get = function() return "" end,
-                    set = function(info, value)
-                        if not value or value == "" then return end
-                        removeNpcFromTable(CLN.db.profile.nativeVOWhitelist, value)
-                        if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
-                        addNpcToTable(CLN.db.profile.nativeVODismissed, value)
                     end,
                     hidden = function()
                         local wl = CLN.db.profile.nativeVOWhitelist or {}
@@ -286,16 +278,19 @@ local options = {
                     order = 22,
                     type = 'multiselect',
                     name = '',
-                    desc = 'Uncheck an NPC to allow the popup to ask about them again.',
+                    desc = 'Uncheck to move NPC back to Pause For.',
                     width = 'full',
                     values = function()
                         local dismissed = CLN.db.profile.nativeVODismissed or {}
-                        local result = {}
+                        local sorted = {}
                         for k, v in pairs(dismissed) do
                             if v and type(k) == "string" then
-                                result[k] = k
+                                sorted[#sorted + 1] = k
                             end
                         end
+                        table.sort(sorted)
+                        local result = {}
+                        for _, name in ipairs(sorted) do result[name] = name end
                         return result
                     end,
                     get = function(info, key)
@@ -305,37 +300,9 @@ local options = {
                     set = function(info, key, value)
                         if not value then
                             removeNpcFromTable(CLN.db.profile.nativeVODismissed, key)
+                            if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
+                            addNpcToTable(CLN.db.profile.nativeVOWhitelist, key)
                         end
-                    end,
-                    hidden = function()
-                        local dismissed = CLN.db.profile.nativeVODismissed or {}
-                        for k, v in pairs(dismissed) do
-                            if v and type(k) == "string" then return false end
-                        end
-                        return true
-                    end,
-                },
-                neverAskMoveToPauseFor = {
-                    order = 23,
-                    type = 'select',
-                    name = 'Move to Pause For',
-                    desc = 'Pick a dismissed NPC to move to the Pause For list.',
-                    values = function()
-                        local dismissed = CLN.db.profile.nativeVODismissed or {}
-                        local result = { [""] = "\226\128\148 Select NPC \226\128\148" }
-                        for k, v in pairs(dismissed) do
-                            if v and type(k) == "string" then
-                                result[k] = k
-                            end
-                        end
-                        return result
-                    end,
-                    get = function() return "" end,
-                    set = function(info, value)
-                        if not value or value == "" then return end
-                        removeNpcFromTable(CLN.db.profile.nativeVODismissed, value)
-                        if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
-                        addNpcToTable(CLN.db.profile.nativeVOWhitelist, value)
                     end,
                     hidden = function()
                         local dismissed = CLN.db.profile.nativeVODismissed or {}

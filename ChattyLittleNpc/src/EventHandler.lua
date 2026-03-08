@@ -185,18 +185,19 @@ function EventHandler:GOSSIP_SHOW()
 
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
 
+    local soundType = (unitType == "GameObject") and "GameObject" or "Gossip"
+
     CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.GossipButton ,function()
-        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, "Gossip", text, gender, displayID)
+        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, soundType, text, gender, displayID)
     end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
-        local type = "Gossip"
-
-        if (unitType == "GameObject") then
-            type = "GameObject"
+        local gossipMode = CLN.db.profile.gossipPlaybackMode or "queue"
+        if gossipMode == "manual" then
+            if CLN and CLN.Logger then CLN.Logger:debug("Gossip auto-play skipped (manual mode).", false, CLN.Utils.LogCategories.loader) end
+        else
+            CLN:HandleGossipPlaybackStart(unitId, text, soundType, gender)
         end
-
-        CLN:HandleGossipPlaybackStart(unitId, text, type, gender)
     end
 end
 
@@ -327,6 +328,15 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         CLN.VoiceoverPlayer:PushToHistory(stoppedVoiceover)
     end
 
+    -- Record gossip cooldown only when the sound finishes naturally.
+    -- Interrupted gossip (paused, skipped, force-stopped) never reaches here
+    -- because those paths clear currentlyPlaying before the watcher fires.
+    if stoppedVoiceover and stoppedVoiceover.entryType == "Gossip"
+        and stoppedVoiceover.npcId and stoppedVoiceover.title then
+        local hashes = CLN.Utils:GetHashes(stoppedVoiceover.npcId, stoppedVoiceover.title)
+        CLN.VoiceoverPlayer:RecordGossipCooldown(hashes)
+    end
+
     -- Try to remove the stopped voiceover from the queue (it may already have
     -- been removed at play-start by PlayQuestSound, which is the normal case).
     if stoppedVoiceover.questId then
@@ -418,10 +428,15 @@ function EventHandler:GOSSIP_CLOSED()
     if CLN and CLN.Logger then CLN.Logger:debug("GOSSIP_CLOSED", false, CLN.Utils.LogCategories.loader) end
     CLN.PlayButton:ClearButtons()
 
-    local mode = CLN.db.profile.questPlaybackMode or "queue"
-    if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
-        if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
+    local mode = CLN.db.profile.gossipPlaybackMode or "queue"
+    if mode == "stopOnClose" or mode == "manual" then
+        -- Only stop gossip/non-quest VO; leave quest playback untouched.
+        -- Don't clear the queue — quest items should survive gossip close.
+        local cp = CLN.VoiceoverPlayer.currentlyPlaying
+        if cp and cp.entryType ~= "quest" then
+            if CLN and CLN.Logger then CLN.Logger:debug("Stopping gossip voiceover on gossip closed.", false, CLN.Utils.LogCategories.loader) end
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
+        end
     end
     -- In queue mode, refresh UI so frame/model recover after dialog close
     if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
