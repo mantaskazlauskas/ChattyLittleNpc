@@ -220,6 +220,384 @@ class TestEstimateVODuration(unittest.TestCase):
         self.assertGreater(result, 5.0)
 
 
+class TestBodyRegions(unittest.TestCase):
+    """Test ModelScene BodyRegions semantic helpers."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/ReplayFrame/Renderers/ModelScene/BodyRegions.lua")
+
+    def test_semantic_region_values_tall_humanoid(self):
+        values = lua_call(self.lua, '''
+            local BR = _G.ChattyLittleNpc.ReplayFrame.ModelScene.BodyRegions
+            local bust = BR.GetRegion("tall_humanoid", "bust")
+            local head = BR.GetRegion("tall_humanoid", "head")
+            local upper = BR.GetRegion("tall_humanoid", "upper_body")
+            return
+                bust.targetPct, bust.rangeLo, bust.rangeHi, bust.shoulderW,
+                head.targetPct, head.rangeLo, head.rangeHi, head.shoulderW,
+                upper.targetPct, upper.rangeLo, upper.rangeHi, upper.shoulderW
+        ''')
+        (
+            bust_target, bust_lo, bust_hi, bust_w,
+            head_target, head_lo, head_hi, head_w,
+            upper_target, upper_lo, upper_hi, upper_w,
+        ) = values
+
+        self.assertAlmostEqual(bust_target, 0.90, places=5)
+        self.assertAlmostEqual(bust_lo, 0.78, places=5)
+        self.assertAlmostEqual(bust_hi, 1.00, places=5)
+        self.assertAlmostEqual(bust_w, 0.60, places=5)
+
+        self.assertAlmostEqual(head_target, 0.92, places=5)
+        self.assertAlmostEqual(head_lo, 0.84, places=5)
+        self.assertAlmostEqual(head_hi, 1.00, places=5)
+        self.assertAlmostEqual(head_w, 0.40, places=5)
+
+        self.assertAlmostEqual(upper_target, 0.68, places=5)
+        self.assertAlmostEqual(upper_lo, 0.45, places=5)
+        self.assertAlmostEqual(upper_hi, 1.00, places=5)
+        self.assertAlmostEqual(upper_w, 0.65, places=5)
+
+    def test_solve_world_region_synthetic_bbox_values_and_consistency(self):
+        result = lua_call(self.lua, '''
+            local BR = _G.ChattyLittleNpc.ReplayFrame.ModelScene.BodyRegions
+            local bbox = {
+                min = { x = -3.0, y = -1.0, z = 10.0 },
+                size = { x = 8.0, y = 4.0, z = 20.0 },
+                center = { x = 1.0, y = 2.0, z = 20.0 },
+            }
+            local world, class, region = BR.SolveWorldRegion(bbox, "bust")
+            return
+                class, world.targetZ, world.visibleLo, world.visibleHi, world.visibleH, world.fitWidth, region.shoulderW,
+                world.focusZ, world.bottomZ, world.topZ, world.desiredFocusY, world.focusToTop, world.focusToBottom
+        ''')
+        (
+            klass, target_z, visible_lo, visible_hi, visible_h, fit_width, shoulder_w,
+            focus_z, bottom_z, top_z, desired_focus_y, focus_to_top, focus_to_bottom
+        ) = result
+
+        self.assertEqual(klass, "tall_humanoid")
+        self.assertAlmostEqual(target_z, 28.0, places=5)
+        self.assertAlmostEqual(visible_lo, 25.6, places=5)
+        self.assertAlmostEqual(visible_hi, 30.0, places=5)
+        self.assertAlmostEqual(visible_h, 4.4, places=5)
+        self.assertAlmostEqual(fit_width, 4.8, places=5)
+        self.assertAlmostEqual(visible_h, visible_hi - visible_lo, places=5)
+        self.assertAlmostEqual(fit_width, 8.0 * shoulder_w, places=5)
+        self.assertAlmostEqual(focus_z, target_z, places=5)
+        self.assertAlmostEqual(bottom_z, visible_lo, places=5)
+        self.assertAlmostEqual(top_z, visible_hi, places=5)
+        self.assertAlmostEqual(desired_focus_y, 0.56, places=5)
+        self.assertAlmostEqual(focus_to_top, visible_hi - target_z, places=5)
+        self.assertAlmostEqual(focus_to_bottom, target_z - visible_lo, places=5)
+
+    def test_solve_world_region_honors_class_hint(self):
+        result = lua_call(self.lua, '''
+            local BR = _G.ChattyLittleNpc.ReplayFrame.ModelScene.BodyRegions
+            local bbox = {
+                min = { x = -3.0, y = -1.0, z = 10.0 },
+                size = { x = 8.0, y = 4.0, z = 20.0 },
+                center = { x = 1.0, y = 2.0, z = 20.0 },
+            }
+            local world, class, region = BR.SolveWorldRegion(bbox, "bust", "stocky_humanoid")
+            return class, world.targetZ, world.visibleLo, world.visibleHi, world.fitWidth, region.targetPct, region.rangeLo, region.shoulderW
+        ''')
+        klass, target_z, visible_lo, visible_hi, fit_width, region_target, region_lo, region_w = result
+
+        self.assertEqual(klass, "stocky_humanoid")
+        self.assertAlmostEqual(region_target, 0.88, places=5)
+        self.assertAlmostEqual(region_lo, 0.74, places=5)
+        self.assertAlmostEqual(region_w, 0.65, places=5)
+        self.assertAlmostEqual(target_z, 27.6, places=5)
+        self.assertAlmostEqual(visible_lo, 24.8, places=5)
+        self.assertAlmostEqual(visible_hi, 30.0, places=5)
+        self.assertAlmostEqual(fit_width, 5.2, places=5)
+
+    def test_region_exposes_composition_fields(self):
+        result = lua_call(self.lua, '''
+            local BR = _G.ChattyLittleNpc.ReplayFrame.ModelScene.BodyRegions
+            local region = BR.GetRegion("tall_humanoid", "bust")
+            return
+                region.focusAnchor, region.bottomAnchor, region.topAnchor,
+                region.focusAnchorPct, region.bottomAnchorPct, region.topAnchorPct,
+                region.focusScreenY, region.widthFitPct
+        ''')
+        (
+            focus_anchor, bottom_anchor, top_anchor,
+            focus_pct, bottom_pct, top_pct,
+            focus_screen_y, width_fit_pct
+        ) = result
+
+        self.assertEqual(focus_anchor, "talkFocus")
+        self.assertEqual(bottom_anchor, "shoulders")
+        self.assertEqual(top_anchor, "headTop")
+        self.assertAlmostEqual(focus_pct, 0.90, places=5)
+        self.assertAlmostEqual(bottom_pct, 0.78, places=5)
+        self.assertAlmostEqual(top_pct, 1.00, places=5)
+        self.assertAlmostEqual(focus_screen_y, 0.56, places=5)
+        self.assertAlmostEqual(width_fit_pct, 0.60, places=5)
+
+    def test_solve_distance_uses_asymmetric_focus_composition(self):
+        result = lua_call(self.lua, '''
+            local BR = _G.ChattyLittleNpc.ReplayFrame.ModelScene.BodyRegions
+            local world = {
+                focusZ = 9.0,
+                bottomZ = 7.0,
+                topZ = 10.0,
+                fitWidth = 2.0,
+                desiredFocusY = 0.56,
+            }
+            local dA, detailsA = BR.SolveDistance(world, 0.8, 1.0, 0.00, 0.00)
+            world.desiredFocusY = 0.50
+            local dB, detailsB = BR.SolveDistance(world, 0.8, 1.0, 0.00, 0.00)
+            return dA, dB, detailsA.needDistBottom, detailsA.needDistTop, detailsA.needDistH, detailsA.focusY,
+                detailsA.aimTargetZ, detailsA.focusZ, detailsB.aimTargetZ, detailsB.focusZ
+        ''')
+        d_a, d_b, need_bottom, need_top, need_h, focus_y, aim_a, focus_a, aim_b, focus_b = result
+
+        self.assertGreater(d_a, d_b)  # lower-screen focus leaves less room below, needs more distance
+        self.assertGreater(need_bottom, need_top)
+        self.assertGreater(d_a, need_h)
+        self.assertAlmostEqual(focus_y, 0.56, places=5)
+        self.assertNotAlmostEqual(aim_a, focus_a, places=5)
+        self.assertAlmostEqual(aim_b, focus_b, places=5)
+        self.assertGreater(aim_a, focus_a)
+
+
+class TestProjectionVerifier(unittest.TestCase):
+    """Lightweight projection math checks with mocked scene projection."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/ReplayFrame/Renderers/ModelScene/ProjectionVerifier.lua")
+
+    def test_measure_returns_projected_bounds_and_coverage(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local scene = {
+                Project3DPointTo2D = function(_, x, _, z)
+                    return 100 + x * 10, 50 + z * 20
+                end
+            }
+            local world = {
+                fitWidth = 4,
+                visibleLo = 1,
+                visibleHi = 3,
+                targetX = 10,
+                targetY = 0,
+                targetZ = 2,
+                focusZ = 1.5,
+                desiredFocusY = 0.2,
+            }
+            local ok, m = PV.Measure(scene, world, 200, 100)
+            return ok, m.minPX, m.maxPX, m.minPY, m.maxPY, m.coverageW, m.coverageH, m.targetPY, m.focusPY, m.topPY, m.focusErrorPY
+        ''')
+        ok, min_px, max_px, min_py, max_py, cov_w, cov_h, target_py, focus_py, top_py, focus_error_py = result
+        self.assertTrue(ok)
+        self.assertAlmostEqual(min_px, 180.0, places=5)
+        self.assertAlmostEqual(max_px, 220.0, places=5)
+        self.assertAlmostEqual(min_py, 70.0, places=5)
+        self.assertAlmostEqual(max_py, 110.0, places=5)
+        self.assertAlmostEqual(cov_w, 0.2, places=5)
+        self.assertAlmostEqual(cov_h, 0.4, places=5)
+        self.assertAlmostEqual(target_py, 90.0, places=5)
+        self.assertAlmostEqual(focus_py, 80.0, places=5)
+        self.assertAlmostEqual(top_py, 110.0, places=5)
+        self.assertAlmostEqual(focus_error_py, 60.0, places=5)
+
+    def test_adjust_headroom_preserves_focus_and_only_shifts_aim(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local scene = {
+                Project3DPointTo2D = function(_, _, _, z)
+                    return 0, z * 2
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function() end
+            }
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 2,
+                focusZ = 1.5,
+                visibleLo = 1,
+                visibleHi = 3,
+                fitWidth = 4,
+                focusToTop = 1.5,
+                focusToBottom = 0.5,
+                targetToTop = 1,
+                targetToBottom = 1,
+            }
+            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, 100, { topMarginPct = 0.08 })
+            return changed, corrected.focusZ, corrected.targetZ, corrected.focusToTop, corrected.focusToBottom, corrected.targetToTop, corrected.targetToBottom
+        ''')
+        changed, focus_z, target_z, focus_to_top, focus_to_bottom, target_to_top, target_to_bottom = result
+        self.assertTrue(changed)
+        self.assertNotAlmostEqual(focus_z, target_z, places=5)
+        self.assertAlmostEqual(focus_z, 1.5, places=5)
+        self.assertAlmostEqual(focus_to_top, 1.5, places=5)
+        self.assertAlmostEqual(focus_to_bottom, 0.5, places=5)
+        self.assertNotAlmostEqual(target_to_top, focus_to_top, places=5)
+        self.assertNotAlmostEqual(target_to_bottom, focus_to_bottom, places=5)
+
+    def test_adjust_headroom_focus_tuning_changes_target_when_top_headroom_already_ok(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local frameH = 100
+            local topMarginPct = 0.08
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 2,
+                focusZ = 3.5,
+                visibleLo = 1,
+                visibleHi = 4,
+                fitWidth = 4,
+                desiredFocusY = 0.60,
+                focusToTop = 0.5,
+                focusToBottom = 2.5,
+            }
+            local scene = {
+                Project3DPointTo2D = function(_, _, _, z)
+                    return 0, 100 - z * 20
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function() end
+            }
+            local ok, metrics = PV.Measure(scene, world, 100, frameH)
+            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, frameH, { topMarginPct = topMarginPct })
+            local desiredTopPx = topMarginPct * frameH
+            return ok, metrics.minPY, desiredTopPx, metrics.focusErrorPY, changed, corrected.targetZ, corrected.focusZ, corrected.focusToTop, corrected.focusToBottom
+        ''')
+        (
+            ok,
+            current_top_px,
+            desired_top_px,
+            focus_error_px,
+            changed,
+            corrected_target_z,
+            corrected_focus_z,
+            corrected_focus_to_top,
+            corrected_focus_to_bottom,
+        ) = result
+        self.assertTrue(ok)
+        self.assertGreaterEqual(current_top_px, desired_top_px)
+        self.assertLess(focus_error_px, -1.0)
+        self.assertTrue(changed)
+        self.assertNotAlmostEqual(corrected_target_z, 2.0, places=5)
+        self.assertAlmostEqual(corrected_focus_z, 3.5, places=5)
+        self.assertAlmostEqual(corrected_focus_to_top, 0.5, places=5)
+        self.assertAlmostEqual(corrected_focus_to_bottom, 2.5, places=5)
+
+    def test_adjust_headroom_focus_too_high_moves_target_to_push_composition_down(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 2,
+                focusZ = 3.5,
+                visibleLo = 1,
+                visibleHi = 4,
+                fitWidth = 4,
+                desiredFocusY = 0.60,
+            }
+            local scene = {
+                Project3DPointTo2D = function(_, _, _, z)
+                    return 0, 100 - z * 20
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function() end
+            }
+            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, 100, { topMarginPct = 0.08 })
+            return changed, corrected.targetZ, corrected.targetToTop, corrected.targetToBottom
+        ''')
+        changed, corrected_target_z, corrected_target_to_top, corrected_target_to_bottom = result
+        self.assertTrue(changed)
+        self.assertGreater(corrected_target_z, 2.0)
+        self.assertLess(corrected_target_to_top, 2.0)
+        self.assertGreater(corrected_target_to_bottom, 1.0)
+
+    def test_refine_distance_does_not_zoom_in_when_roomy(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local currentDist = 8
+            local minDist = currentDist
+            local maxDist = currentDist
+            local calls = 0
+            local scene = {
+                Project3DPointTo2D = function(_, x, _, z)
+                    local scale = 100 / currentDist
+                    return x * scale, z * scale
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function(_, _, camY, _, _, targetY)
+                    currentDist = camY - targetY
+                    calls = calls + 1
+                    if currentDist < minDist then minDist = currentDist end
+                    if currentDist > maxDist then maxDist = currentDist end
+                end
+            }
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 1,
+                visibleLo = 0,
+                visibleHi = 2,
+                fitWidth = 4,
+            }
+            local refined = PV.RefineDistance(scene, host, world, 8, 100, 100)
+            return refined, calls, minDist, maxDist
+        ''')
+        refined, calls, min_dist, max_dist = result
+        self.assertAlmostEqual(refined, 8.0, places=5)
+        self.assertGreaterEqual(calls, 2)
+        self.assertAlmostEqual(min_dist, 8.0, places=5)
+        self.assertAlmostEqual(max_dist, 8.0, places=5)
+
+    def test_refine_distance_zooms_out_when_too_close(self):
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local currentDist = 2
+            local minDist = currentDist
+            local maxDist = currentDist
+            local scene = {
+                Project3DPointTo2D = function(_, x, _, z)
+                    local scale = 100 / currentDist
+                    return x * scale, z * scale
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function(_, _, camY, _, _, targetY)
+                    currentDist = camY - targetY
+                    if currentDist < minDist then minDist = currentDist end
+                    if currentDist > maxDist then maxDist = currentDist end
+                end
+            }
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 1,
+                visibleLo = 0,
+                visibleHi = 2,
+                fitWidth = 4,
+            }
+            local refined = PV.RefineDistance(scene, host, world, 2, 100, 100)
+            return refined, minDist, maxDist
+        ''')
+        refined, min_dist, max_dist = result
+        self.assertGreater(refined, 2.0)
+        self.assertAlmostEqual(min_dist, 2.0, places=5)
+        self.assertGreater(max_dist, 2.0)
+
+
 class TestContainsString(unittest.TestCase):
     """Test Utils:ContainsString."""
 
@@ -348,8 +726,27 @@ class TestIsQuestPhaseQueued(unittest.TestCase):
             CLN.VoiceoverPlayer = {}
             local VP = CLN.VoiceoverPlayer
 
+            VP._paused = false
+            VP.currentlyPlaying = {}
+
+            function VP:IsCurrentQuestPhaseActive(questId, phase)
+                if not (questId and phase) then return false end
+                local cp = VP.currentlyPlaying
+                if not cp or cp.questId ~= questId or cp.phase ~= phase then
+                    return false
+                end
+                return cp.soundHandle
+                    or VP._paused
+                    or cp._pausedByUser
+                    or cp._pausedForNativeVO
+                    or cp._textContinuation
+            end
+
             function VP:IsQuestPhaseQueued(questId, phase)
                 if not (questId and phase) then return false end
+                if VP:IsCurrentQuestPhaseActive(questId, phase) then
+                    return true, 0
+                end
                 for i, q in ipairs(CLN.questsQueue) do
                     if q.questId == questId and q.phase == phase then
                         return true, i
@@ -365,6 +762,16 @@ class TestIsQuestPhaseQueued(unittest.TestCase):
                 { questId = 100, phase = "Desc" },
                 { questId = 200, phase = "Prog" },
                 { questId = 300, phase = "Comp" },
+            }
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP._paused = false
+            VP.currentlyPlaying = {
+                questId = nil,
+                phase = nil,
+                soundHandle = nil,
+                _pausedByUser = nil,
+                _pausedForNativeVO = nil,
+                _textContinuation = nil,
             }
         """)
 
@@ -400,7 +807,257 @@ class TestIsQuestPhaseQueued(unittest.TestCase):
         ''')
         self.assertFalse(found)
 
-
+    def test_current_paused_by_user_counts_as_queued(self):
+        found, idx = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP._paused = true
+            VP.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = nil,
+                _pausedByUser = true,
+            }
+            return VP:IsQuestPhaseQueued(100, "Desc")
+        ''')
+        self.assertTrue(found)
+        self.assertEqual(idx, 0)
+
+    def test_current_paused_for_native_vo_counts_as_queued(self):
+        found, idx = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = nil,
+                _pausedForNativeVO = true,
+            }
+            return VP:IsQuestPhaseQueued(100, "Desc")
+        ''')
+        self.assertTrue(found)
+        self.assertEqual(idx, 0)
+
+    def test_current_text_continuation_counts_as_queued(self):
+        found, idx = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = nil,
+                _textContinuation = true,
+            }
+            return VP:IsQuestPhaseQueued(100, "Desc")
+        ''')
+        self.assertTrue(found)
+        self.assertEqual(idx, 0)
+
+    def test_current_with_soundhandle_counts_as_queued(self):
+        found, idx = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = 12345,
+            }
+            return VP:IsQuestPhaseQueued(100, "Desc")
+        ''')
+        self.assertTrue(found)
+        self.assertEqual(idx, 0)
+
+    def test_current_without_handle_or_pause_flags_not_queued(self):
+        found = lua_call(self.lua, '''
+            _G.ChattyLittleNpc.questsQueue = {}
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = nil,
+                _pausedByUser = nil,
+                _pausedForNativeVO = nil,
+                _textContinuation = nil,
+            }
+            VP._paused = false
+            return VP:IsQuestPhaseQueued(100, "Desc")
+        ''')
+        self.assertFalse(found)
+
+
+class TestNativeVOPausePlaybackGating(unittest.TestCase):
+    """Regression tests for native VO pause playback deferral decisions."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.db.profile.gossipQueueMode = "all"
+            CLN.questsQueue = {}
+            CLN.VoiceoverPlayer = {}
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = {}
+
+            function VP:IsCurrentQuestPhaseActive(questId, phase)
+                if not (questId and phase) then return false end
+                local cp = VP.currentlyPlaying
+                if not cp or cp.questId ~= questId or cp.phase ~= phase then
+                    return false
+                end
+                return cp.soundHandle
+                    or VP._paused
+                    or cp._pausedByUser
+                    or cp._pausedForNativeVO
+                    or cp._textContinuation
+            end
+
+            function VP:IsQuestPhaseQueued(questId, phase)
+                if not (questId and phase) then return false end
+                if VP:IsCurrentQuestPhaseActive(questId, phase) then
+                    return true, 0
+                end
+                for i, q in ipairs(CLN.questsQueue) do
+                    if q.questId == questId and q.phase == phase then
+                        return true, i
+                    end
+                end
+                return false
+            end
+
+            function VP:IsNativeVOPauseActive()
+                local cp = self.currentlyPlaying
+                return not not ((cp and cp._pausedForNativeVO) or self._nativeVOResumeTimer)
+            end
+
+            function VP:PlayQuestSound(questId, phase, npcId, displayID)
+                if self:IsNativeVOPauseActive() then
+                    if CLN.db.profile.questPlaybackMode == "queue" then
+                        local alreadyQueued = self:IsQuestPhaseQueued(questId, phase)
+                        if not alreadyQueued then
+                            table.insert(CLN.questsQueue, {
+                                questId = questId,
+                                phase = phase,
+                                npcId = npcId,
+                                displayID = displayID,
+                                entryType = "quest",
+                            })
+                        end
+                    end
+                    return "deferred"
+                end
+                return "played"
+            end
+
+            function VP:PlayNonQuestSound(npcId, soundType, text, gender, displayID)
+                if self:IsNativeVOPauseActive() then
+                    local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
+                    if gossipQueue ~= "none" then
+                        table.insert(CLN.questsQueue, {
+                            npcId = npcId,
+                            title = text,
+                            entryType = soundType,
+                            gender = gender,
+                            displayID = displayID,
+                            cantBeInterrupted = false,
+                        })
+                        return "queued"
+                    end
+                    return "skipped"
+                end
+                return "played"
+            end
+        """)
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.questsQueue = {}
+            CLN.db.profile.questPlaybackMode = "queue"
+            CLN.db.profile.gossipQueueMode = "all"
+            CLN.VoiceoverPlayer._nativeVOResumeTimer = nil
+            CLN.VoiceoverPlayer.currentlyPlaying = {
+                questId = 100,
+                phase = "Desc",
+                soundHandle = nil,
+                _pausedForNativeVO = true,
+                _pausedByUser = nil,
+                _textContinuation = nil,
+            }
+        """)
+
+    def test_native_vo_helper_true_from_pause_flag(self):
+        result = lua_call(self.lua, '''
+            return _G.ChattyLittleNpc.VoiceoverPlayer:IsNativeVOPauseActive()
+        ''')
+        self.assertTrue(result)
+
+    def test_native_vo_helper_true_from_resume_timer(self):
+        result = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying._pausedForNativeVO = nil
+            VP._nativeVOResumeTimer = {}
+            return VP:IsNativeVOPauseActive()
+        ''')
+        self.assertTrue(result)
+
+    def test_native_vo_helper_false_when_not_paused(self):
+        result = lua_call(self.lua, '''
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying._pausedForNativeVO = nil
+            VP._nativeVOResumeTimer = nil
+            return VP:IsNativeVOPauseActive()
+        ''')
+        self.assertFalse(result)
+
+    def test_play_quest_deferred_and_queued_during_native_vo(self):
+        result, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local action = VP:PlayQuestSound(200, "Prog", 7, 8)
+            return action, #CLN.questsQueue
+        ''')
+        self.assertEqual(result, "deferred")
+        self.assertEqual(qlen, 1)
+
+    def test_play_quest_dedupes_current_phase_during_native_vo(self):
+        qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            VP:PlayQuestSound(100, "Desc", 7, 8)
+            return #CLN.questsQueue
+        ''')
+        self.assertEqual(qlen, 0)
+
+    def test_play_quest_skips_in_interrupt_mode_during_native_vo(self):
+        result, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            CLN.db.profile.questPlaybackMode = "interrupt"
+            local action = VP:PlayQuestSound(200, "Prog", 7, 8)
+            return action, #CLN.questsQueue
+        ''')
+        self.assertEqual(result, "deferred")
+        self.assertEqual(qlen, 0)
+
+    def test_play_nonquest_queues_when_gossip_queue_enabled(self):
+        result, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local action = VP:PlayNonQuestSound(5, "Gossip", "Hello", "Male", 88)
+            return action, #CLN.questsQueue
+        ''')
+        self.assertEqual(result, "queued")
+        self.assertEqual(qlen, 1)
+
+    def test_play_nonquest_skips_when_gossip_queue_disabled(self):
+        result, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            CLN.db.profile.gossipQueueMode = "none"
+            local action = VP:PlayNonQuestSound(5, "Gossip", "Hello", "Male", 88)
+            return action, #CLN.questsQueue
+        ''')
+        self.assertEqual(result, "skipped")
+        self.assertEqual(qlen, 0)
+
+
 @unittest.skip("Md5.lua uses WoW bit library that hangs in Lua 5.4")
 class TestMD5(unittest.TestCase):
     """Test MD5:GenerateHash against known vectors."""
@@ -765,7 +1422,83 @@ class TestReplayFramePure(unittest.TestCase):
         ''')
         self.assertIn("Innkeeper", result)
 
-
+class TestModelAnimationBreathing(unittest.TestCase):
+    """Regression tests for BreathingCameraUpdate camera anchoring."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/ReplayFrame/ModelAnimation.lua")
+
+    def test_breathing_first_tick_anchors_to_snapshot_tz(self):
+        """First breathing tick should anchor to snapshot tz, not stale setup offsets."""
+        base_z, applied_z = lua_call(self.lua, '''
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            local m = { _lastCamSnapshot = { tz = 1.25 }, zoom = 0.70 }
+            function m:GetPortraitZoom() return self.zoom end
+            function m:SetPortraitZoom(v) self.zoom = v end
+            function m:SetPosition(_, _, z)
+                self.lastZ = z
+                self._lastCamSnapshot.tz = z
+            end
+            local frame = {
+                NpcModelFrame = m,
+                _anims = {},
+                _currentZOffset = -0.08,
+                modelZOffset = -0.08,
+            }
+            RF.BreathingCameraUpdate(frame, 0.016)
+            return frame._breathBaseZ, m.lastZ
+        ''')
+        self.assertAlmostEqual(base_z, 1.25, places=4)
+        self.assertLess(abs(applied_z - 1.25), 0.01)
+
+    def test_breathing_resyncs_when_snapshot_changes(self):
+        """Breathing should re-anchor if external framing changes snapshot tz."""
+        base_z, applied_z = lua_call(self.lua, '''
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            local m = { _lastCamSnapshot = { tz = 1.0 }, zoom = 0.65 }
+            function m:GetPortraitZoom() return self.zoom end
+            function m:SetPortraitZoom(v) self.zoom = v end
+            function m:SetPosition(_, _, z)
+                self.lastZ = z
+                self._lastCamSnapshot.tz = z
+            end
+            local frame = {
+                NpcModelFrame = m,
+                _anims = {},
+                _currentZOffset = -0.08,
+                modelZOffset = -0.08,
+            }
+            RF.BreathingCameraUpdate(frame, 0.016)
+            m._lastCamSnapshot.tz = 1.6
+            RF.BreathingCameraUpdate(frame, 0.016)
+            return frame._breathBaseZ, m.lastZ
+        ''')
+        self.assertAlmostEqual(base_z, 1.6, places=4)
+        self.assertLess(abs(applied_z - 1.6), 0.01)
+
+    def test_breathing_zoom_resyncs_when_zoom_changes_externally(self):
+        """Breathing should re-anchor zoom when live zoom is externally reframed."""
+        base_zoom, applied_zoom = lua_call(self.lua, '''
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            local m = { _lastCamSnapshot = { tz = 1.0 }, zoom = 0.70 }
+            function m:GetPortraitZoom() return self.zoom end
+            function m:SetPortraitZoom(v) self.zoom = v end
+            function m:SetPosition(_, _, z)
+                self.lastZ = z
+                self._lastCamSnapshot.tz = z
+            end
+            local frame = { NpcModelFrame = m, _anims = {} }
+            RF.BreathingCameraUpdate(frame, 0.016)
+            m.zoom = 1.1
+            RF.BreathingCameraUpdate(frame, 0.016)
+            return frame._breathBaseZoom, m.zoom
+        ''')
+        self.assertAlmostEqual(base_zoom, 1.1, places=4)
+        self.assertLess(abs(applied_zoom - 1.1), 0.02)
+
+
 class TestAccessibility(unittest.TestCase):
     """Test accessibility helpers: high-contrast colors, badges, row color selection."""
 
