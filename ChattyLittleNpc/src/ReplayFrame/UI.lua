@@ -752,14 +752,15 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     clearTex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.clear) or "Interface/Buttons/UI-GroupLoot-Pass-Up")
     clearBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Clear all queued voiceovers")
+        GameTooltip:SetText("Stop playback and clear all queued voiceovers")
         GameTooltip:Show()
     end)
     clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     clearBtn:SetScript("OnClick", function()
-        CLN.questsQueue = {}
-        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
-        ReplayFrame:UpdateDisplayFrame()
+        -- Stop current sound and clear the entire queue
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+        ReplayFrame.userHidden = false
+        ReplayFrame:UpdateDisplayFrameState()
     end)
     self.ClearButton = clearBtn
 
@@ -902,7 +903,7 @@ function ReplayFrame:UpdateLockUI()
     end
 end
 
--- Smoothly animate collapse/expand of the display frame
+-- Setup CVar watcher for accessibility text scaling
 function ReplayFrame:SetupCVarWatcher()
     if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
 
