@@ -1,4 +1,4 @@
--- Timer.lua - Timer utility to replace AceTimer
+-- Timer.lua - Timer utility
 -- Provides C_Timer wrappers for delayed and repeating timers
 
 ---@class TimerUtil

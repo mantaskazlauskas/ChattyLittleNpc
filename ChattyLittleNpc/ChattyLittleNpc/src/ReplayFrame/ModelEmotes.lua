@@ -6,12 +6,12 @@ local ReplayFrame = CLN.ReplayFrame
 -- Emote registry and helpers
 
 -- Lightweight emote lifecycle events (optional):
--- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via AceEvent if available.
+-- Emits CLN_EMOTE_STARTED, CLN_EMOTE_COMPLETE, CLN_EMOTE_CANCELLED via SendMessage.
 -- Also supports local listeners via ReplayFrame:OnEmote(event, fn).
 function ReplayFrame:_EmitEmoteEvent(event, payload)
     local ev = tostring(event or "")
     if ev == "" then return end
-    -- AceEvent broadcast (addon-wide)
+    -- Event broadcast (addon-wide)
     if CLN and CLN.SendMessage then
         pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
     end

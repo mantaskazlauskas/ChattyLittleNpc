@@ -583,7 +583,7 @@ function CLN:Print(...)
     return ChattyLittleNpc.PrintUtil:Print(...)
 end
 
--- Shared event bus for cross-module messaging (replaces AceEvent)
+-- Shared event bus for cross-module messaging
 CLN._sharedEvents = ChattyLittleNpc.EventSystem:New()
 
 --- Send a message on the shared addon event bus

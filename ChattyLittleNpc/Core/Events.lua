@@ -1,4 +1,4 @@
--- Events.lua - Event handling system to replace AceEvent
+-- Events.lua - Event handling system
 -- Provides RegisterEvent, UnregisterEvent, and a message bus for custom events (SendMessage/RegisterMessage)
 
 ---@class EventSystem

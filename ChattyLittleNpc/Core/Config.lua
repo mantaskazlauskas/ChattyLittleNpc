@@ -1,4 +1,4 @@
--- Config.lua - Configuration UI system to replace AceConfig/AceConfigDialog
+-- Config.lua - Configuration UI system
 -- Provides a simplified options panel builder for WoW's Settings API
 
 ---@class ConfigSystem

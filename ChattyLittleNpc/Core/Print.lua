@@ -1,4 +1,4 @@
--- Print.lua - Simple print utility to replace AceConsole
+-- Print.lua - Simple print utility
 -- Provides a Print function that outputs to the chat frame with addon prefix
 
 local ADDON_PREFIX = "|cff00ff00[Chatty Little NPC]|r "

@@ -1,4 +1,4 @@
--- Database.lua - Saved variables system to replace AceDB-3.0
+-- Database.lua - Saved variables system
 -- Provides profile management and change callbacks
 
 ---@class Database
