@@ -431,7 +431,8 @@ function ReplayFrame:FSM_Tick()
         or (cur and cur.isPlaying and cur:isPlaying() or false)
 
     -- Late hide if nothing resumed
-    if (not playing) and fsm.hideAt and now() >= fsm.hideAt then
+    local editPreviewActive = self._editMode or self._blizzardEditMode
+    if (not editPreviewActive) and (not playing) and fsm.hideAt and now() >= fsm.hideAt then
         fsm.hideAt = nil
         if self.ModelContainer then self.ModelContainer:Hide() end
         if self.NpcModelFrame then self.NpcModelFrame:Hide() end

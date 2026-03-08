@@ -4,24 +4,27 @@ local CLN = _G.ChattyLittleNpc
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
--- Creates a full-width container for the NPC model and a PlayerModel that spans the full width (fixed height).
--- The model itself isn't changed; we just give it more horizontal space for animations.
+-- Creates a full-width container for the NPC model as a standalone frame above the conversations.
+-- Anchored above DisplayFrame by default; moves with it via anchoring.
 function ReplayFrame:CreateModelUI()
     if self.ModelContainer or self.NpcModelFrame then return end
     self.npcModelFrameWidth = self.npcModelFrameWidth or 220
     self.npcModelFrameHeight = self.npcModelFrameHeight or math.floor(140 * 1.15)
 
-    -- Container is a child of DisplayFrame, anchored INSIDE the top
-    local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
-    modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
-    modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
-    modelContainer:SetHeight(self.npcModelFrameHeight)
+    -- Standalone frame anchored above DisplayFrame (or independently positioned)
+    local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", UIParent)
     modelContainer:SetClipsChildren(true)
+    modelContainer:SetHeight(self.npcModelFrameHeight)
+    modelContainer:SetMovable(true)
+    modelContainer:SetClampedToScreen(true)
     modelContainer:Hide()
     self.ModelContainer = modelContainer
-    -- Keep model at a moderate frame level within MEDIUM strata (no HIGH strata)
-    if modelContainer.SetFrameLevel then
-        modelContainer:SetFrameLevel((self.DisplayFrame and self.DisplayFrame.GetFrameLevel and self.DisplayFrame:GetFrameLevel() or 0) + 2)
+    -- Match strata and level near DisplayFrame
+    if self.DisplayFrame then
+        modelContainer:SetFrameStrata(self.DisplayFrame:GetFrameStrata() or "MEDIUM")
+        if modelContainer.SetFrameLevel and self.DisplayFrame.GetFrameLevel then
+            modelContainer:SetFrameLevel(self.DisplayFrame:GetFrameLevel() + 2)
+        end
     end
 
     -- Model host: prefers ModelScene+Actor, falls back to PlayerModel
@@ -52,17 +55,16 @@ function ReplayFrame:_NoAnimDebugEnabled()
     return (prof and prof.debugNoAnim) and true or false
 end
 
--- Position the full-width model container and fixed-size model; show/hide based on state
+-- Position the standalone model container above DisplayFrame; show/hide based on state
 function ReplayFrame:LayoutModelArea(frame)
     local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
     local hasModel = self._hasValidModel and not compact
 
-    -- Ensure we react to the display frame visibility to stop model rendering off-screen
+    -- Sync visibility with DisplayFrame
     if frame and not self._hookedDisplayFrame then
         if frame.HookScript then
             frame:HookScript("OnHide", function()
-                -- Hide model frame while window is hidden; keep model loaded in GPU
-                -- to avoid expensive async reload on re-show
+                if self._editMode or self._blizzardEditMode then return end
                 if self.NpcModelFrame then
                     self.NpcModelFrame:Hide()
                 end
@@ -71,7 +73,6 @@ function ReplayFrame:LayoutModelArea(frame)
                 if self.ResetAnimationState then self:ResetAnimationState() end
             end)
             frame:HookScript("OnShow", function()
-                -- Re-evaluate model only when window becomes visible
                 if self.CheckAndShowModel then self:CheckAndShowModel() end
             end)
         end
@@ -80,9 +81,15 @@ function ReplayFrame:LayoutModelArea(frame)
 
     if self.ModelContainer then
         self.ModelContainer:ClearAllPoints()
-        -- Anchor INSIDE the frame top (not above)
-        self.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
-        self.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
+        local undocked = self:IsModelUndocked()
+        if undocked then
+            -- Independent mode: anchor to UIParent using saved position
+            self:LoadModelPosition()
+        else
+            -- Docked mode: anchor above DisplayFrame (default)
+            self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+            self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+        end
         self.ModelContainer:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
@@ -97,10 +104,6 @@ function ReplayFrame:LayoutModelArea(frame)
         end
         if hasModel then
             self.NpcModelFrame:Show()
-            -- For ModelScene, refit camera for current viewport on resize.
-            -- Use FitDistanceForCurrentTarget (preserves target Z, adjusts distance
-            -- for new aspect ratio) if a proper framing snapshot exists.
-            -- Fall back to PointCameraAtHead only for the very first frame.
             local backend = self.NpcModelFrame._backend
             if backend and backend.kind == "scene" and backend.frame and backend.frame.SetCameraPosition then
                 if self.NpcModelFrame._lastCamSnapshot then
@@ -384,6 +387,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
 end
 
 function ReplayFrame:CheckAndShowModel()
+    if self._editMode or self._blizzardEditMode then return end
     local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
     -- Do nothing if the window is hidden
     if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
@@ -429,33 +433,14 @@ function ReplayFrame:CheckAndShowModel()
 end
 
 -- Auto-expand frame height when model is visible so content has enough room
+-- Legacy expand/contract: no-op since model is now a separate frame above DisplayFrame
 function ReplayFrame:ExpandForNpcModel()
-    if not self.DisplayFrame then return end
-    local modelH = self.npcModelFrameHeight or math.floor(140 * 1.15)
-    -- minimum: model + margins(8+6+5) + header(30) + at least 2 rows(48)
-    local minExpanded = modelH + 19 + 30 + 48
-    local curH = self.DisplayFrame:GetHeight() or 0
-    if curH < minExpanded then
-        -- Only snapshot if we haven't already (avoid capturing expanded height)
-        if not self._preModelHeight then
-            self._preModelHeight = curH
-        end
-        self.DisplayFrame:SetHeight(minExpanded)
-    end
+    -- Model container is no longer inside DisplayFrame, no expansion needed
 end
 
 function ReplayFrame:ContractForNpcModel()
-    if not self.DisplayFrame then return end
-    if self._preModelHeight and self._preModelHeight > 0 then
-        -- Only contract if the current height matches or exceeds what we expanded to
-        local curH = self.DisplayFrame:GetHeight() or 0
-        local modelH = self.npcModelFrameHeight or math.floor(140 * 1.15)
-        local minExpanded = modelH + 19 + 30 + 48
-        if curH >= minExpanded then
-            self.DisplayFrame:SetHeight(self._preModelHeight)
-        end
-        self._preModelHeight = nil
-    end
+    -- Model container is no longer inside DisplayFrame, no contraction needed
+    self._preModelHeight = nil
 end
 
 -- =========================

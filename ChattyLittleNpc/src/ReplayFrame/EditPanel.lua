@@ -659,12 +659,36 @@ function ReplayFrame:CreateEditPanel()
     function panel:AutoSize()
         if not self._formBuilder then return end
         local lastY = self._formBuilder:GetCurrentY() or -250
-        -- lastY is negative offset from top to center of LAST row.
-        -- Button stack from bottom: revert(26)+6+save(26)+6+layouts/bundle(24)+6+reset(24)+14(pad) = 132px
-        -- Add ~28px for half-row height + gap between last slider and first button.
-        local contentDepth = math.abs(lastY) + 160
+        -- lastY is the negative offset from panel top to the CENTRE of
+        -- the last form row.  Add half a row height to reach the true
+        -- bottom edge of content.
+        local halfLastRowHeight = 16
+        local contentFromTop = math.abs(lastY) + halfLastRowHeight
+
+        -- Keep the stack height derived from the current button rows so this
+        -- remains correct if row count or button heights change later.
+        local buttonGap = 6
+        local bottomInset = 14
+        local interSectionGap = 16 -- extra breathing room above button stack
+
+        local rowHeights = {
+            (self.revertButton and self.revertButton:GetHeight()) or 26,
+            (self.acceptButton and self.acceptButton:GetHeight()) or 26,
+            math.max(
+                (self.layoutBtn and self.layoutBtn:GetHeight()) or 24,
+                (self.bundleBtn and self.bundleBtn:GetHeight()) or 24
+            ),
+            (self.resetButton and self.resetButton:GetHeight()) or 24,
+            (self.resetPosButton and self.resetPosButton:GetHeight()) or 24,
+        }
+        local buttonStackFromBottom = bottomInset
+        for _, h in ipairs(rowHeights) do
+            buttonStackFromBottom = buttonStackFromBottom + h
+        end
+        buttonStackFromBottom = buttonStackFromBottom + (buttonGap * (#rowHeights - 1))
+
         local minHeight = 300
-        local desired = math.max(minHeight, contentDepth)
+        local desired = math.max(minHeight, contentFromTop + interSectionGap + buttonStackFromBottom)
         if math.abs(desired - self:GetHeight()) > 1 then
             self:SetHeight(desired)
             if CLN and CLN.Logger then

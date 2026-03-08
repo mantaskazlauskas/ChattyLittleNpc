@@ -79,9 +79,53 @@ function ReplayFrame:ResetFramePosition()
     CLN.db.profile.frameSize = { width = 310 + 165, height = 165 }
     CLN.db.profile.compactWidth = nil
     CLN.db.profile.expandedWidth = nil
+    -- Reset model frame to docked mode
+    CLN.db.profile.modelFramePos = nil
     if (ReplayFrame.DisplayFrame) then
         ReplayFrame:LoadFramePosition()
     end
+    -- Re-dock model container above DisplayFrame
+    if ReplayFrame.DisplayFrame and ReplayFrame.LayoutModelArea then
+        ReplayFrame:LayoutModelArea(ReplayFrame.DisplayFrame)
+    end
+end
+
+-- Save the current model frame position to the database
+function ReplayFrame:SaveModelPosition()
+    if not self.ModelContainer then return end
+    local cx, cy = self.ModelContainer:GetCenter()
+    if cx and cy then
+        local s = self.ModelContainer:GetEffectiveScale() or 1
+        local uiS = UIParent:GetEffectiveScale() or 1
+        local relX = (cx * s) / uiS
+        local relY = (cy * s) / uiS
+        local w = self.ModelContainer:GetWidth()
+        CLN.db.profile.modelFramePos = {
+            point = "CENTER",
+            relativePoint = "BOTTOMLEFT",
+            xOfs = relX,
+            yOfs = relY,
+            width = w and math.floor(w + 0.5) or nil
+        }
+    end
+end
+
+-- Load saved model frame position from the database
+function ReplayFrame:LoadModelPosition()
+    if not self.ModelContainer then return end
+    local pos = CLN.db.profile.modelFramePos
+    if pos then
+        self.ModelContainer:ClearAllPoints()
+        self.ModelContainer:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+        if pos.width then
+            self.ModelContainer:SetWidth(pos.width)
+        end
+    end
+end
+
+-- Check if the model frame is in independent (undocked) mode
+function ReplayFrame:IsModelUndocked()
+    return CLN.db.profile.modelFramePos ~= nil
 end
 
 -- Reparent while preserving the on-screen position regardless of scale/parent
@@ -131,7 +175,7 @@ end
 -- Update parent frame based on current state
 function ReplayFrame:UpdateParent()
     if not self.DisplayFrame then return end
-    if self._editMode or self._isDragging then return end
+    if self._editMode or self._blizzardEditMode or self._isDragging then return end
     -- Always parent to UIParent to avoid cascading hide when dialog frames close
     if self.DisplayFrame:GetParent() ~= UIParent then
         self:ReparentPreservingScreenPosition(UIParent)
@@ -167,16 +211,9 @@ function ReplayFrame:ApplyCompactMode()
             -- visibility controlled by current NPC state
         end
         self.ContentFrame:ClearAllPoints()
-        if self._hasValidModel and self.ModelContainer then
-            -- Content sits below the embedded model
-            self.ContentFrame:SetPoint("TOPLEFT", self.ModelContainer, "BOTTOMLEFT", 0, -6)
-            self.ContentFrame:SetPoint("TOPRIGHT", self.ModelContainer, "BOTTOMRIGHT", 0, -6)
-            self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
-        else
-            self.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
-            self.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-            self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
-        end
+        self.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
+        self.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
+        self.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
         self:CheckAndShowModel()
     end
     -- Persist updated size after mode change
