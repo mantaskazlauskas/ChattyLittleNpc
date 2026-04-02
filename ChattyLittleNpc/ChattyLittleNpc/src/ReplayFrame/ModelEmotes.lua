@@ -586,6 +586,7 @@ end
 
 -- Conversation emote loop: 80% talk / 20% idle by RNG
 function ReplayFrame:StartEmoteLoop(opts)
+    if self._npcIsDead then return end
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     if not (cur and cur.soundHandle and cur.isPlaying and cur:isPlaying()) then return end
     -- Guard: don't start another loop if already active for this handle
@@ -649,6 +650,7 @@ end
 
 function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     if not self:_EmoteLoop_StillValid() then return end
+    if self._npcIsDead then return end
     local talkChance = self._loopTalkChance or 0.95
     local talkMin, talkMax = self._loopTalkMin or 3.5, self._loopTalkMax or 6.5
     local idleMin, idleMax = self._loopIdleMin or 0.2, self._loopIdleMax or 0.5

@@ -254,31 +254,60 @@ end
 -- Create all header buttons (collapse, clear, options, edit)
 function ReplayFrame:CreateHeaderButtons(contentFrame)
     local this = self
-    
-    -- Chevron expand/collapse toggle like Objectives tracker
-    local collapseBtn = CreateFrame("Button", nil, contentFrame)
-    collapseBtn:SetSize(18, 18)
-    collapseBtn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -6, -6)
-    collapseBtn.tex = collapseBtn:CreateTexture(nil, "ARTWORK")
-    collapseBtn.tex:SetAllPoints()
-    
-    local function SetChevron(expanded)
-        if expanded then
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-ExpandButton-Up") -- down chevron (expanded)
-        else
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-CollapseButton-Up") -- right chevron (collapsed)
-        end
+
+    -- ========================================================================
+    -- Unified Tracker-Style Icon Helper
+    -- ========================================================================
+    local ICON_NORMAL_ALPHA = 0.7
+    local ICON_HOVER_ALPHA  = 1.0
+    local ICON_GOLD_R, ICON_GOLD_G, ICON_GOLD_B = 1.0, 0.82, 0.0
+
+    local function applyRest(tex)
+        tex:SetDesaturated(true)
+        tex:SetVertexColor(ICON_GOLD_R, ICON_GOLD_G, ICON_GOLD_B, ICON_NORMAL_ALPHA)
     end
-    
-    collapseBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(self._collapsed and "Expand" or "Collapse")
-        GameTooltip:Show()
-    end)
-    collapseBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
+    local function applyHover(tex)
+        tex:SetDesaturated(false)
+        tex:SetVertexColor(1, 1, 1, ICON_HOVER_ALPHA)
+    end
+
+    local function makeIcon(parent, size, texturePath, tooltip, onClick)
+        local btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(size, size)
+        local tex = btn:CreateTexture(nil, "ARTWORK")
+        tex:SetPoint("CENTER")
+        tex:SetSize(size - 2, size - 2)
+        tex:SetTexture(texturePath)
+        applyRest(tex)
+        btn.tex = tex
+        btn:SetScript("OnEnter", function(self)
+            applyHover(self.tex)
+            if GameTooltip and GameTooltip.SetOwner then
+                GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+                local tip = type(tooltip) == "function" and tooltip() or tooltip
+                GameTooltip:SetText(tip)
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            applyRest(self.tex)
+            if GameTooltip_Hide then GameTooltip_Hide() end
+        end)
+        if onClick then btn:SetScript("OnClick", onClick) end
+        return btn
+    end
+
+    -- Chevron expand/collapse toggle (tracker style)
+    local collapseBtn = makeIcon(contentFrame, 18, "Interface/Buttons/UI-Panel-ExpandButton-Up",
+        function() return collapseBtn._collapsed and "Expand" or "Collapse" end)
+    collapseBtn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -6, -6)
     collapseBtn._collapsed = false
-    SetChevron(true)
-    
+
+    local function SetChevron(expanded)
+        collapseBtn.tex:SetTexture(expanded and "Interface/Buttons/UI-Panel-ExpandButton-Up" or "Interface/Buttons/UI-Panel-CollapseButton-Up")
+        applyRest(collapseBtn.tex)
+    end
+
     collapseBtn:SetScript("OnClick", function(self)
         local targetCollapsed = not self._collapsed
         self._collapsed = targetCollapsed
@@ -286,7 +315,6 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
         if ReplayFrame.AnimateCollapse then
             ReplayFrame:AnimateCollapse(targetCollapsed, 0.2)
         else
-            -- Instant fallback
             local frame = this.DisplayFrame
             if targetCollapsed then
                 if frame and frame.GetHeight then this._preCollapseHeight = frame:GetHeight() end
@@ -311,92 +339,58 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     end)
     self.CollapseButton = collapseBtn
 
-    -- Clear button
-    local clearBtn = CreateFrame("Button", nil, contentFrame)
-    clearBtn:SetSize(18, 18)
+    -- Clear button (clean X mark)
+    local clearBtn = makeIcon(contentFrame, 18, "Interface/RAIDFRAME/ReadyCheck-NotReady",
+        "Stop playback and clear all queued voiceovers",
+        function()
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+            ReplayFrame.userHidden = false
+            ReplayFrame:UpdateDisplayFrameState()
+        end)
     clearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -6, 0)
-    local clearTex = clearBtn:CreateTexture(nil, "ARTWORK")
-    clearTex:SetAllPoints()
-    clearTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
-    clearBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Stop playback and clear all queued voiceovers")
-        GameTooltip:Show()
-    end)
-    clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    clearBtn:SetScript("OnClick", function()
-        -- Stop current sound and clear the entire queue
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
-        ReplayFrame.userHidden = false
-        ReplayFrame:UpdateDisplayFrameState()
-    end)
     self.ClearButton = clearBtn
 
     -- Options button
-    local optionsBtn = CreateFrame("Button", nil, contentFrame)
-    optionsBtn:SetSize(18, 18)
+    local optionsBtn = makeIcon(contentFrame, 18, "Interface/Buttons/UI-OptionsButton",
+        "Open Chatty Little Npc options",
+        function()
+            if CLN.Options and CLN.Options.OpenSettings then
+                CLN.Options:OpenSettings()
+            end
+        end)
     optionsBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
-    local optionsTex = optionsBtn:CreateTexture(nil, "ARTWORK")
-    optionsTex:SetAllPoints()
-    optionsTex:SetTexture("Interface/Buttons/UI-OptionsButton")
-    optionsBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Open Chatty Little Npc options")
-        GameTooltip:Show()
-    end)
-    optionsBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    optionsBtn:SetScript("OnClick", function()
-        -- Use the new Options module
-        if CLN.Options and CLN.Options.OpenSettings then
-            CLN.Options:OpenSettings()
-        end
-    end)
     self.OptionsButton = optionsBtn
 
     -- Edit Mode toggle button
-    local editBtn = CreateFrame("Button", nil, contentFrame)
-    editBtn:SetSize(18, 18)
+    local editBtn = makeIcon(contentFrame, 18, "Interface/CURSOR/UI-Cursor-Move",
+        function() return ReplayFrame._editMode and "Exit Edit Mode" or "Enter Edit Mode (move/resize)" end,
+        function()
+            if not ReplayFrame._editMode then
+                if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
+            else
+                if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
+            end
+        end)
     editBtn:SetPoint("RIGHT", optionsBtn, "LEFT", -6, 0)
-    local editTex = editBtn:CreateTexture(nil, "ARTWORK")
-    editTex:SetAllPoints()
-    editTex:SetTexture("Interface/CURSOR/UI-Cursor-Move")
-    editBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Toggle Edit Mode (move/resize)")
-        GameTooltip:Show()
-    end)
-    editBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    editBtn:SetScript("OnClick", function()
-        if not ReplayFrame._editMode then
-            if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
-        else
-            if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
-        end
-    end)
     self.EditModeButton = editBtn
 
     -- Lock toggle button (visible in Edit Mode; appears on hover)
-    local lockBtn = CreateFrame("Button", nil, contentFrame)
-    lockBtn:SetSize(18, 18)
+    local lockBtn = makeIcon(contentFrame, 18, "Interface/Buttons/LockButton-Locked",
+        function()
+            if ReplayFrame:IsFrameLocked() then
+                return "Unlock window (allow moving)"
+            else
+                return "Lock window (prevent moving)"
+            end
+        end,
+        function()
+            ReplayFrame:SetFrameLocked(not ReplayFrame:IsFrameLocked())
+            ReplayFrame:UpdateLockUI()
+        end)
     lockBtn:SetPoint("RIGHT", editBtn, "LEFT", -6, 0)
-    local lockTex = lockBtn:CreateTexture(nil, "ARTWORK")
-    lockTex:SetAllPoints()
-    lockBtn._tex = lockTex
     lockBtn:Hide()
-    lockBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        if ReplayFrame:IsFrameLocked() then
-            GameTooltip:SetText("Unlock window (allow moving)")
-        else
-            GameTooltip:SetText("Lock window (prevent moving)")
-        end
-        GameTooltip:Show()
-    end)
-    lockBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    lockBtn:SetScript("OnClick", function()
-        ReplayFrame:SetFrameLocked(not ReplayFrame:IsFrameLocked())
-        ReplayFrame:UpdateLockUI()
-    end)
+    lockBtn._tex = lockBtn.tex
+    lockBtn._applyRest = applyRest
     self.LockButton = lockBtn
     if self.UpdateLockUI then self:UpdateLockUI() end
 
@@ -491,6 +485,8 @@ function ReplayFrame:UpdateLockUI()
     else
         self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Unlocked")
     end
+    -- Re-apply tracker-style tint after texture swap
+    if self.LockButton._applyRest then self.LockButton._applyRest(self.LockButton._tex) end
 end
 
 -- Smoothly animate collapse/expand of the display frame

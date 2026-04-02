@@ -118,6 +118,35 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         return
     end
 
+    -- Detect whether the NPC is dead
+    self._npcIsDead = false
+    if UnitIsDead then
+        if UnitExists and UnitExists("npc") and UnitIsDead("npc") then
+            -- Verify the "npc" token matches our expected npcId via GUID
+            local ok, npcGUID = pcall(UnitGUID, "npc")
+            if ok and npcGUID then
+                local guidType = npcGUID:match("^(%a+)%-")
+                if guidType == "Creature" or guidType == "Vehicle" then
+                    local id = select(6, strsplit("-", npcGUID))
+                    if tonumber(id) == tonumber(npcId) then
+                        self._npcIsDead = true
+                    end
+                end
+            end
+        elseif UnitExists and UnitExists("target") and UnitIsDead("target") then
+            local ok, targetGUID = pcall(UnitGUID, "target")
+            if ok and targetGUID then
+                local guidType = targetGUID:match("^(%a+)%-")
+                if guidType == "Creature" or guidType == "Vehicle" then
+                    local id = select(6, strsplit("-", targetGUID))
+                    if tonumber(id) == tonumber(npcId) then
+                        self._npcIsDead = true
+                    end
+                end
+            end
+        end
+    end
+
     local displayID = NpcDisplayIdDB[npcId]
     if (displayID) then
         -- If model changed, reset animation state to avoid stale loops from previous model
@@ -226,10 +255,11 @@ function ReplayFrame:SetupModelAnimations()
             -- Conversation emote loop is now external and timer-driven; no per-frame checks
 
             -- Some models stop animating after loads; poke idle periodically only when idling
-            if frame.SetAnimation and ((r._lastAppliedAnimId == 0) or not sameHandle) then
+            local pokeAnim = (r._npcIsDead and r._ResolveDeadAnim and r:_ResolveDeadAnim()) or 0
+            if frame.SetAnimation and ((r._lastAppliedAnimId == pokeAnim) or not sameHandle) then
                 frame._poke = (frame._poke or 0) + (elapsed or 0)
                 if frame._poke > 4.0 then
-                    pcall(frame.SetAnimation, frame, 0)
+                    pcall(frame.SetAnimation, frame, pokeAnim)
                     frame._poke = 0
                 end
             end
@@ -504,11 +534,26 @@ function ReplayFrame:ResetAnimationState()
     end
 end
 
+-- Dead NPC animation constants
+local ANIM_DEAD = 6
+local ANIM_STAND = 0
+
+function ReplayFrame:_ResolveDeadAnim()
+    if self.ModelHasAnimation then
+        if self:ModelHasAnimation(ANIM_DEAD) then return ANIM_DEAD end
+    end
+    return ANIM_STAND
+end
+
 -- Centralized model animation setter; prevents redundant sets and ensures sheathed
 function ReplayFrame:SetModelAnim(animId)
     local m = self.NpcModelFrame
     if not (m and m.SetAnimation) then return end
     if animId == nil then return end
+    -- Dead NPC gate: force dead animation regardless of what callers request
+    if self._npcIsDead then
+        animId = self:_ResolveDeadAnim()
+    end
     -- Query current animation if available to avoid false "already applied" when it didn't take
     local curAnim
     if m.GetAnimation then
