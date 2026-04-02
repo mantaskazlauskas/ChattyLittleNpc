@@ -57,12 +57,9 @@ local defaults = {
         -- Mirror addon logs to the chat frame (the Logs window always captures). Off by default to keep chat clean.
         logToChat = false,
         overwriteExistingGossipValues = false,
-        showGossipEditor = false,
         showReplayFrame = true,
         alwaysShowReplayFrame = false,
         showSpeakButton = true,
-        lockInEditMode = false,
-        hideInEditMode = false,
         compactMode = false,
         queueTextScale = 1.0,
         frameScale = 1.0,
@@ -89,6 +86,7 @@ local defaults = {
         advancedCameraFitting = false,
         debugMode = false,
         debugAnimations = false,
+        debugAnimCategories = "all",
         debugNoAnim = false,
         disableCameraAnimations = false,
         -- Per Edit Mode layout overrides (keyed by layoutName)
@@ -109,7 +107,7 @@ local defaults = {
         highContrastMode = false,
         -- Gossip cooldown: don't replay the same gossip line within a session
         gossipCooldownEnabled = false,
-        gossipCooldownMinutes = 0,
+        gossipCooldownMinutes = 5,
         -- Gossip queue mode: "none" (override, default), "medium" (queue if >5s playing), "long" (queue if >10s playing), "all" (always queue)
         gossipQueueMode = "none",
         -- Native VO handling: "off" (ignore), "all" (pause on any), "whitelist" (user-curated)
@@ -413,32 +411,47 @@ end
     @return number|nil unitId: The numeric ID of the unit (for creatures, vehicles, game objects), nil if unavailable
 ]]
 function CLN:GetUnitInfo(unit)
-    local unitName = select(1, UnitName(unit)) or ""
-    local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
-    local gender = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
-    local race = UnitRace(unit) or ""
+    -- pcall wraps all unit API calls whose return values undergo comparison,
+    -- boolean tests, or string operations — guarding against secret values
+    -- that Blizzard may introduce for identity APIs in future patches (WoW 12.0+).
+    local ok, unitName, gender, race, unitGuid, unitType, unitId, creatureType = pcall(function()
+        local uName = select(1, UnitName(unit)) or ""
+        local sex = UnitSex(unit) -- 1 = neutral, 2 = male, 3 = female
+        local gen = (sex == 1 and "Neutral") or (sex == 2 and "Male") or (sex == 3 and "Female") or ""
+        local uRace = UnitRace(unit) or ""
+        local cType = nil
+        if UnitCreatureType then
+            -- Since patch 11.1.5, UnitCreatureType returns (localized, unlocalizedID).
+            -- Prefer the unlocalized ID for locale-independent classification.
+            -- Desecret each value individually via type() + concatenation to prevent
+            -- a secret from silently escaping the pcall through `nil or secret`.
+            local localized, unlocalizedID = UnitCreatureType(unit)
+            if type(unlocalizedID) == "string" then
+                cType = "" .. unlocalizedID
+            elseif type(localized) == "string" then
+                cType = "" .. localized
+            end
+        end
 
-    local unitGuid = UnitGUID(unit)
-    local unitType = nil
-    local unitId = nil
+        local uGuid = UnitGUID(unit)
+        local uType = nil
+        local uId = nil
 
-    if (unitGuid) then
-        local success, uType, uId = pcall(function()
-            local t = select(1, strsplit("-", unitGuid))
+        if (uGuid) then
+            local t = select(1, strsplit("-", uGuid))
             local id = nil
             if (t == "Creature" or t == "Vehicle" or t == "GameObject") then
-                local idString = select(6, strsplit("-", unitGuid))
+                local idString = select(6, strsplit("-", uGuid))
                 id = tonumber(idString)
             end
-            return t, id
-        end)
-        if success then
-            unitType = uType
-            unitId = uId
+            uType = t
+            uId = id
         end
-    end
 
-    return unitName, gender, race, unitGuid, unitType, unitId
+        return uName, gen, uRace, uGuid, uType, uId, cType
+    end)
+    if not ok then return nil end
+    return unitName, gender, race, unitGuid, unitType, unitId, creatureType
 end
 
 --[[
@@ -448,11 +461,20 @@ end
     @return string: The title of the quest.
 ]]
 function CLN:GetTitleForQuestID(questID)
+    local title
     if (self.useNamespaces) then
-        return C_QuestLog.GetTitleForQuestID(questID)
+        title = C_QuestLog.GetTitleForQuestID(questID)
     elseif (QuestUtils_GetQuestName) then
-        return QuestUtils_GetQuestName(questID)
+        title = QuestUtils_GetQuestName(questID)
     end
+    -- Fallback: if the quest isn't in the log yet, try the open dialog window
+    if not title and GetTitleText then
+        local dialogTitle = GetTitleText()
+        if dialogTitle and dialogTitle ~= "" then
+            title = dialogTitle
+        end
+    end
+    return title
 end
 
 --[[
@@ -506,10 +528,15 @@ end
 ]]
 function CLN:HandlePlaybackStart(questPhase)
     local questId = GetQuestID()
-    local _, gender, _, _, _, npcId = self:GetUnitInfo("npc")
+    local _, gender, _, _, _, npcId, creatureType = self:GetUnitInfo("npc")
     -- Capture display ID now while the NPC unit is available (for queued playback later)
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc"))
         and UnitCreatureDisplayID("npc") or nil
+
+    -- Persist NPC metadata for future replays
+    if npcId and self.NpcMetadataCache then
+        self.NpcMetadataCache:CaptureFromUnit()
+    end
     
     if self.db.profile.debugMode and self.Logger then
         self.Logger:debug("HandlePlaybackStart phase=" .. tostring(questPhase)
@@ -521,6 +548,9 @@ function CLN:HandlePlaybackStart(questPhase)
     end
 
     if (questId > 0) then
+        -- Signal that playback is about to start so UpdateVisibility
+        -- doesn't fade out the frame during the deferred-timer gap.
+        self._playbackPendingAt = GetTime and GetTime() or nil
         self._questTimerGen = (self._questTimerGen or 0) + 1
         local gen = self._questTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
@@ -531,7 +561,7 @@ function CLN:HandlePlaybackStart(questPhase)
                 end
                 return
             end
-            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, displayID)
+            self.VoiceoverPlayer:PlayQuestSound(questId, questPhase, npcId, displayID, gender, creatureType)
         end)
     end
 end
@@ -545,17 +575,25 @@ end
     @param type string: The type of sound associated with the gossip. Possible values include "Gossip", "GameObject".
     @param gender number: The gender associated with the gossip.
 ]]
-function CLN:HandleGossipPlaybackStart(id, text, type, gender)
+function CLN:HandleGossipPlaybackStart(id, text, type, gender, creatureType)
     if (id > 0 and text) then
         -- Capture display ID immediately while the gossip unit is valid
         local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc"))
             and UnitCreatureDisplayID("npc") or nil
+
+        -- Persist NPC metadata for future replays
+        if self.NpcMetadataCache then
+            self.NpcMetadataCache:CaptureFromUnit()
+        end
             
+        -- Signal that playback is about to start so UpdateVisibility
+        -- doesn't fade out the frame during the deferred-timer gap.
+        self._playbackPendingAt = GetTime and GetTime() or nil
         self._gossipTimerGen = (self._gossipTimerGen or 0) + 1
         local gen = self._gossipTimerGen
         C_Timer.After(self.db.profile.playVoiceoverAfterDelay, function()
             if self._gossipTimerGen ~= gen then return end
-            self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender, displayID)
+            self.VoiceoverPlayer:PlayNonQuestSound(id, type, text, gender, displayID, creatureType)
         end)
     end
 end

@@ -295,7 +295,16 @@ function EventHandler:ITEM_TEXT_READY()
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
     local itemId = C_Item.GetItemInfoInstant(itemName)
-    local unitGuid = UnitGUID('npc')
+    -- pcall-protect UnitGUID against potential secret values (WoW 12.0+).
+    -- type() is safe on secrets; concatenation extracts the plain string.
+    local unitGuid
+    do
+        local raw = UnitGUID('npc')
+        if type(raw) == "string" then
+            local gOk, plain = pcall(function() return "" .. raw end)
+            unitGuid = gOk and plain or nil
+        end
+    end
     local unitType = "Item"
 
     if (CLN.db.profile.debugMode) then
@@ -486,7 +495,39 @@ end
 --- Pauses addon voiceover when a whitelisted NPC speaks (or all NPCs in "all" mode).
 --- Note: EventSystem dispatches (event, ...) so the first arg here is the event name.
 function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
-    -- Extract NPC ID from GUID when available (format: "Creature-0-...-NPCID-...")
+    -- Secret value handling (Patch 12.0+):
+    -- CHAT_MSG_MONSTER_* args can be "secret" values that error on comparison,
+    -- length (#), string methods, table-key use, and even tostring().
+    -- type() IS safe on secrets.  Concatenation is nominally allowed but can
+    -- still fail for some secret values, so we wrap everything in pcall.
+    local function desecret(val)
+        -- type() is documented as safe on secret values (returns real type)
+        local t = type(val)
+        if t ~= "string" and t ~= "number" then return val end
+        -- Attempt concatenation (allowed on secret strings/numbers per Blizzard docs)
+        local ok, plain = pcall(function() return "" .. val end)
+        if ok and plain then return plain end
+        -- Concatenation failed — try string.format which is also listed as allowed
+        ok, plain = pcall(string.format, "%s", val)
+        if ok and plain then return plain end
+        -- Value is truly inaccessible; return nil
+        return nil
+    end
+    text = desecret(text)
+    npcName = desecret(npcName)
+    guid = desecret(guid)
+
+    -- If critical args are still inaccessible, bail early rather than error downstream
+    -- (npcName nil is okay — we can still work with guid/npcId)
+    local ok, err = pcall(self._OnNpcChatMessageInner, self, event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID)
+    if not ok and CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.Logger then
+        CLN.Logger:debug("OnNpcChatMessage inner error: " .. tostring(err), false, CLN.Utils.LogCategories.loader)
+    end
+end
+
+--- Inner implementation of OnNpcChatMessage, called via pcall for safety.
+--- All secret values should be desecret'd before reaching here.
+function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID)
     local npcId = nil
     -- Try the event guid first, then fall back to nearby unit GUIDs
     local resolvedGuid = guid
@@ -495,9 +536,9 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         local npcGuid = UnitGUID("npc")
         local targetGuid = UnitGUID("target")
         -- Match by name to avoid attributing to the wrong unit
-        if npcGuid and UnitName and UnitName("npc") == npcName then
+        if npcGuid and UnitName and npcName and UnitName("npc") == npcName then
             resolvedGuid = npcGuid
-        elseif targetGuid and UnitName and UnitName("target") == npcName then
+        elseif targetGuid and UnitName and npcName and UnitName("target") == npcName then
             resolvedGuid = targetGuid
         end
     end
@@ -510,13 +551,13 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug(
             "NPC_MSG event=" .. tostring(event)
-            .. " npc=" .. tostring(npcName)
+            .. " npc=" .. tostring(npcName or "nil")
             .. " npcId=" .. tostring(npcId)
-            .. " text=" .. tostring(text and text:sub(1, 60) or "nil")
+            .. " text=" .. (text and string.sub(text, 1, 60) or "nil")
             .. " isSubtitle=" .. tostring(isSubtitle)
             .. " hideSender=" .. tostring(hideSenderInLetterbox)
             .. " lineID=" .. tostring(lineID)
-            .. " guid=" .. tostring(guid),
+            .. " guid=" .. tostring(guid or "nil"),
             false, CLN.Utils.LogCategories.loader)
     end
 
@@ -563,12 +604,13 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
     end
 
     -- Whitelist check: only pause for NPCs the user has explicitly confirmed
+    -- Use npcId (numeric) for lookup first; fall back to npcName (string key)
     local wl = CLN.db.profile.nativeVOWhitelist
     if not wl then return end
     local matched = (npcId and wl[npcId]) or (npcName and wl[npcName])
     if not matched then
         if CLN.db.profile.debugMode and CLN.Logger then
-            CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:debug("NPC not whitelisted, skipping pause: " .. tostring(npcName or "nil") .. " (id=" .. tostring(npcId) .. ")", false, CLN.Utils.LogCategories.loader)
         end
         return
     end
@@ -587,7 +629,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
         local dur = EstimateVODuration(text) + NATIVE_VO_SETTLE_SEC
         CLN.VoiceoverPlayer:ExtendNativeVOPause(dur)
         if CLN.db.profile.debugMode and CLN.Logger then
-            CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName) .. " (+" .. string.format("%.1f", dur) .. "s)", false, CLN.Utils.LogCategories.loader)
+            CLN.Logger:debug("Extended native VO pause for " .. tostring(npcName or "nil") .. " (+" .. string.format("%.1f", dur) .. "s)", false, CLN.Utils.LogCategories.loader)
         end
         -- Surface any new (unknown) NPCs detected during extended pause
         self:ScheduleWhitelistPopup()
@@ -596,7 +638,7 @@ function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, chann
 
     local duration = EstimateVODuration(text) + NATIVE_VO_SETTLE_SEC
     if CLN.db.profile.debugMode and CLN.Logger then
-        CLN.Logger:debug("Native VO detected from " .. tostring(npcName) .. " (id=" .. tostring(npcId) .. ", " .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
+        CLN.Logger:debug("Native VO detected from " .. tostring(npcName or "nil") .. " (id=" .. tostring(npcId) .. ", " .. tostring(event) .. ") — pausing for ~" .. string.format("%.1f", duration) .. "s",
             false, CLN.Utils.LogCategories.loader)
     end
     CLN.VoiceoverPlayer:PauseForNativeVO(duration)
