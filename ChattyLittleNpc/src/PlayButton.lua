@@ -50,26 +50,26 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
 
     local questID = PlayButton:GetSelectedQuest()
     if (questID) then
+        local questFileName = questID .. "_Desc.ogg"
+        local fileNameFound = false
         for packName, packData in pairs(CLN.VoiceoverPacks) do
-            local questFileName =  questID .. "_Desc.ogg"
-            local fileNameFound = packData._voiceoverIndex and packData._voiceoverIndex[questFileName]
-            if (CLN.isElvuiAddonLoaded) then
-                    PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
-                        CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
-                    end)
-                if not fileNameFound then
-                    _G[buttonName]:Hide()
-                end
-                return
-            else
-                PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
-                        CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
-                end)
-                if not fileNameFound then
-                    _G[buttonName]:Hide()
-                end
-                return
+            if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
+                fileNameFound = true
+                break
             end
+        end
+
+        if (CLN.isElvuiAddonLoaded) then
+            PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
+            end)
+        else
+            PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
+                CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
+            end)
+        end
+        if not fileNameFound then
+            _G[buttonName]:Hide()
         end
     end
 end
@@ -125,6 +125,7 @@ function PlayButton:AttachQuestLogAndDetailsButtons()
     local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
     if (DetailsFrame) then
         PlayButton:AttachPlayButtonForQuestLog(DetailsFrame, -10, -10, PlayButton.DetailFrameButton)
+        PlayButton:CreateQuestDetailPlayStopButton()
     end
 
     if (_G["QuestLogFrame"]) then
@@ -151,6 +152,7 @@ function PlayButton:UpdatePlayButton()
             if (questID) then btn:Show() else btn:Hide() end
         end
     end
+    PlayButton:UpdateQuestDetailPlayStopState()
 end
 
 function PlayButton:HidePlayButton()
@@ -164,6 +166,7 @@ function PlayButton:HidePlayButton()
     for _, name in ipairs(PlayButton.QuestLogButtons) do
         if _G[name] then _G[name]:Hide() end
     end
+    PlayButton:HideQuestDetailPlayStopButton()
 end
 
 function PlayButton:GetSelectedQuest()
@@ -186,16 +189,15 @@ function PlayButton:UpdateButtonPositions()
     local x = CLN.db.profile.buttonPosX or 0
     local y = CLN.db.profile.buttonPosY or 0
 
-    local buttonsToUpdate = {"GossipFramePlayButton", "QuestFramePlayButton"}
-    for _, buttonName in pairs(buttonsToUpdate) do
-        local button = _G[buttonName] -- Fetch the button by name
-        if (button) then
+    local buttonsToUpdate = {
+        {name = PlayButton.GossipButton, parent = GossipFrame},
+        {name = PlayButton.QuestButton, parent = QuestFrame},
+    }
+    for _, entry in pairs(buttonsToUpdate) do
+        local button = _G[entry.name]
+        if (button and entry.parent) then
             button:ClearAllPoints()
-            if (buttonName == "GossipFramePlayButton") then
-                button:SetPoint("TOPRIGHT", GossipFrame, "TOPRIGHT", x, y)
-            elseif (buttonName == "QuestFramePlayButton") then
-                button:SetPoint("TOPRIGHT", QuestFrame, "TOPRIGHT", x, y)
-            end
+            button:SetPoint("TOPRIGHT", entry.parent, "TOPRIGHT", x, y)
         end
     end
 end
@@ -364,4 +366,155 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     end)
 
     return button
+end
+
+-- ============================================================================
+-- Quest Detail Back-Button Play/Stop Toggle
+-- ============================================================================
+
+function PlayButton:CreateQuestDetailPlayStopButton()
+    if self._questDetailPlayStopBtn then
+        self:UpdateQuestDetailPlayStopState()
+        return self._questDetailPlayStopBtn
+    end
+
+    local DetailsFrame = QuestMapFrame and QuestMapFrame.DetailsFrame
+    if not DetailsFrame then return end
+
+    local backButton = DetailsFrame.BackButton
+        or (DetailsFrame.BackFrame and DetailsFrame.BackFrame.BackButton)
+    if not backButton then return end
+
+    if CLN.db.profile.showSpeakButton == false then return end
+
+    local size = 24
+    local btn = CreateFrame("Button", nil, DetailsFrame)
+    btn:SetSize(size, size)
+
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetPoint("CENTER")
+    bg:SetSize(size + 4, size + 4)
+    bg:SetTexture("Interface/Tooltips/UI-Tooltip-Background")
+    bg:SetVertexColor(1, 1, 1, 0.12)
+    btn.bg = bg
+
+    -- Play icon (speaker — matches addon voiceover branding)
+    local playIcon = btn:CreateTexture(nil, "ARTWORK")
+    playIcon:SetPoint("CENTER")
+    playIcon:SetSize(size - 4, size - 4)
+    playIcon:SetTexture("Interface/COMMON/VOICECHAT-SPEAKER")
+    btn.playIcon = playIcon
+
+    -- Stop icon (clean X mark — matches unified toolbar style)
+    local stopIcon = btn:CreateTexture(nil, "ARTWORK")
+    stopIcon:SetPoint("CENTER")
+    stopIcon:SetSize(size - 4, size - 4)
+    stopIcon:SetTexture("Interface/RAIDFRAME/ReadyCheck-NotReady")
+    stopIcon:Hide()
+    btn.stopIcon = stopIcon
+
+    btn:SetPoint("LEFT", backButton, "RIGHT", 4, 0)
+
+    btn:SetScript("OnClick", function()
+        PlayButton:OnQuestDetailPlayStopClick()
+    end)
+
+    btn:SetScript("OnEnter", function(f)
+        f.bg:SetVertexColor(1, 1, 1, 0.25)
+        if GameTooltip and GameTooltip.SetOwner then
+            GameTooltip:SetOwner(f, "ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            if btn._isPlaying then
+                GameTooltip:AddLine("Stop Voiceover", 1, 1, 1)
+            else
+                GameTooltip:AddLine("Play Voiceover", 1, 1, 1)
+            end
+            GameTooltip:Show()
+        end
+    end)
+    btn:SetScript("OnLeave", function(f)
+        f.bg:SetVertexColor(1, 1, 1, 0.12)
+        if GameTooltip_Hide then GameTooltip_Hide() end
+    end)
+
+    -- Periodic state refresh while visible
+    local refreshElapsed = 0
+    btn:SetScript("OnUpdate", function(_, dt)
+        refreshElapsed = refreshElapsed + dt
+        if refreshElapsed < 0.5 then return end
+        refreshElapsed = 0
+        PlayButton:UpdateQuestDetailPlayStopState()
+    end)
+
+    self._questDetailPlayStopBtn = btn
+    self:UpdateQuestDetailPlayStopState()
+    return btn
+end
+
+function PlayButton:OnQuestDetailPlayStopClick()
+    local questID = self:GetSelectedQuest()
+    if not questID then return end
+
+    local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    if cp and cp.questId == questID and CLN.VoiceoverPlayer:IsPlaybackActive(cp) then
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
+    else
+        CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
+    end
+
+    C_Timer.After(0.1, function()
+        PlayButton:UpdateQuestDetailPlayStopState()
+    end)
+end
+
+function PlayButton:UpdateQuestDetailPlayStopState()
+    local btn = self._questDetailPlayStopBtn
+    if not btn then return end
+
+    if CLN.db.profile.showSpeakButton == false then
+        btn:Hide()
+        return
+    end
+
+    local questID = self:GetSelectedQuest()
+    if not questID then
+        btn:Hide()
+        return
+    end
+
+    local hasVoiceover = false
+    if CLN.VoiceoverPacks then
+        for _, packData in pairs(CLN.VoiceoverPacks) do
+            local questFileName = questID .. "_Desc.ogg"
+            if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
+                hasVoiceover = true
+                break
+            end
+        end
+    end
+
+    if not hasVoiceover then
+        btn:Hide()
+        return
+    end
+
+    btn:Show()
+
+    local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local isPlaying = cp and cp.questId == questID and CLN.VoiceoverPlayer:IsPlaybackActive(cp)
+
+    btn._isPlaying = isPlaying
+    if isPlaying then
+        btn.playIcon:Hide()
+        btn.stopIcon:Show()
+    else
+        btn.playIcon:Show()
+        btn.stopIcon:Hide()
+    end
+end
+
+function PlayButton:HideQuestDetailPlayStopButton()
+    if self._questDetailPlayStopBtn then
+        self._questDetailPlayStopBtn:Hide()
+    end
 end

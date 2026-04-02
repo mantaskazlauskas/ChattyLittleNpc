@@ -12,12 +12,84 @@ CLN.VoiceoverPlayer = VoiceoverPlayer
 -- Session-local table: hash → GetTime() timestamp of last playback
 VoiceoverPlayer._gossipCooldowns = {}
 
+VoiceoverPlayer.State = {
+    IDLE = "idle",
+    QUEUED = "queued",
+    PLAYING = "playing",
+    PAUSED_USER = "paused_user",
+    PAUSED_NATIVE = "paused_native",
+    TEXT_CONTINUING = "text_continuing",
+    SUSPENDED = "suspended",
+    COMPLETED = "completed",
+    DROPPED = "dropped",
+}
+
+--- Derive a best-guess state from structural fields for records that were never
+--- given an explicit state. After Phase 3 this is only a safety net — all live
+--- records receive explicit state via SetPlaybackState.
+local function DerivePlaybackState(self, record)
+    if not record then return VoiceoverPlayer.State.IDLE end
+    if record._textContinuation then
+        return VoiceoverPlayer.State.TEXT_CONTINUING
+    end
+    if record.soundHandle then
+        local isActuallyPlaying = true
+        if type(record.isPlaying) == "function" then
+            isActuallyPlaying = record:isPlaying()
+        elseif C_Sound and type(C_Sound.IsPlaying) == "function" then
+            isActuallyPlaying = C_Sound.IsPlaying(record.soundHandle)
+        end
+        if isActuallyPlaying then
+            return VoiceoverPlayer.State.PLAYING
+        end
+    end
+    if record == self._suspendedPlayback then
+        return VoiceoverPlayer.State.SUSPENDED
+    end
+    if record.questId or record.title then
+        return VoiceoverPlayer.State.QUEUED
+    end
+    return VoiceoverPlayer.State.IDLE
+end
+
+--- Get the canonical playback state of a record.
+--- Explicit state (set via SetPlaybackState) is authoritative.
+--- DerivePlaybackState is only consulted for records without explicit state.
+function VoiceoverPlayer:GetPlaybackState(record)
+    local target = record or self.currentlyPlaying
+    if not target then return self.State.IDLE end
+    if target.state and target.state ~= self.State.IDLE then
+        return target.state
+    end
+    return DerivePlaybackState(self, target)
+end
+
+function VoiceoverPlayer:SetPlaybackState(record, state)
+    if not record then return end
+    record.state = state
+end
+
+function VoiceoverPlayer:IsPlaybackStateActive(state)
+    return state == self.State.PLAYING
+        or state == self.State.PAUSED_USER
+        or state == self.State.PAUSED_NATIVE
+        or state == self.State.TEXT_CONTINUING
+end
+
+function VoiceoverPlayer:IsPlaybackActive(record)
+    return self:IsPlaybackStateActive(self:GetPlaybackState(record))
+end
+
+function VoiceoverPlayer:IsTemporarilyPaused(record)
+    return self:GetPlaybackState(record) == self.State.PAUSED_NATIVE
+end
+
 --- Check whether any of the given hashes are still on cooldown.
 --- Expiry is checked lazily on access — no background timer needed.
 ---@param hashes string[]
 ---@return boolean
 function VoiceoverPlayer:IsGossipOnCooldown(hashes)
-    if not CLN.db.profile.gossipCooldownEnabled then return false end
+    if not CLN.db or not CLN.db.profile or not CLN.db.profile.gossipCooldownEnabled then return false end
     local cooldownMinutes = CLN.db.profile.gossipCooldownMinutes or 0
     local now = GetTime and GetTime() or 0
 
@@ -41,11 +113,21 @@ end
 --- Record that a gossip line was just played.
 ---@param hashes string[]
 function VoiceoverPlayer:RecordGossipCooldown(hashes)
-    if not CLN.db.profile.gossipCooldownEnabled then return end
+    if not CLN.db or not CLN.db.profile or not CLN.db.profile.gossipCooldownEnabled then return end
     local now = GetTime and GetTime() or 0
     for _, hash in ipairs(hashes) do
         self._gossipCooldowns[hash] = now
     end
+end
+
+--- Returns true when text contains more than one paragraph.
+--- Multi-paragraph gossip (lore, long dialogue) is exempt from cooldown.
+---@param text string|nil
+---@return boolean
+function VoiceoverPlayer:_IsMultiParagraph(text)
+    if not text or type(text) ~= "string" then return false end
+    local normalized = text:gsub("|n", "\n")
+    return normalized:find("\n\n") ~= nil
 end
 
 -- ============================================================================
@@ -62,11 +144,7 @@ function VoiceoverPlayer:IsCurrentQuestPhaseActive(questId, phase)
         return false
     end
 
-    return not not (cp.soundHandle
-        or self._paused
-        or cp._pausedByUser
-        or cp._pausedForNativeVO
-        or cp._textContinuation)
+    return self:IsPlaybackActive(cp)
 end
 
 --- Check if a quest/phase combo is already queued.
@@ -87,24 +165,111 @@ function VoiceoverPlayer:IsQuestPhaseQueued(questId, phase)
     return false
 end
 
+--- Build a stable identity key for a queue/current-playback entry.
+---@param entry table|nil
+---@return string|nil
+function VoiceoverPlayer:GetQueueEntryKey(entry)
+    if not entry then return nil end
+    if entry.questId and entry.phase then
+        return "quest|" .. tostring(entry.questId) .. "|" .. tostring(entry.phase)
+    end
+    if entry.npcId and entry.entryType and entry.title then
+        return "nonquest|"
+            .. tostring(entry.entryType) .. "|"
+            .. tostring(entry.npcId) .. "|"
+            .. tostring(entry.gender or "") .. "|"
+            .. tostring(entry.title)
+    end
+    return nil
+end
+
 --- Deduplicate the queue, removing entries that match currently playing or are duplicated.
 function VoiceoverPlayer:DeduplicateQueue()
     if not CLN.questsQueue then return end
     local seen = {}
     local cp = VoiceoverPlayer.currentlyPlaying
-    -- Mark currently playing as seen
-    if cp and cp.questId and cp.phase then
-        seen[cp.questId .. "|" .. cp.phase] = true
+    local removedAny = false
+    local currentKey = self:GetQueueEntryKey(cp)
+    if currentKey then
+        seen[currentKey] = true
     end
     for i = #CLN.questsQueue, 1, -1 do
         local q = CLN.questsQueue[i]
-        local key = (q.questId or "") .. "|" .. (q.phase or "")
-        if seen[key] then
+        local key = self:GetQueueEntryKey(q)
+        if key and seen[key] then
             table.remove(CLN.questsQueue, i)
-        else
+            removedAny = true
+        elseif key then
             seen[key] = true
         end
     end
+    if removedAny and CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then
+        CLN.ReplayFrame:MarkQueueDirty()
+    end
+end
+
+--- Remove a queued quest entry by identity.
+---@param questId number|nil
+---@param phase string|nil
+---@return boolean removed
+function VoiceoverPlayer:RemoveQueuedQuestEntry(questId, phase)
+    if not (questId and phase and CLN.questsQueue) then return false end
+    for i, q in ipairs(CLN.questsQueue) do
+        if q.questId == questId and q.phase == phase then
+            table.remove(CLN.questsQueue, i)
+            return true
+        end
+    end
+    return false
+end
+
+function VoiceoverPlayer:GetDisplayEntries()
+    local entries = {}
+    local cp = self.currentlyPlaying
+    local currentState = self:GetPlaybackState(cp)
+    local currentKey = nil
+
+    if cp and not cp._historyPushed and (cp.title or cp.questId) and self:IsPlaybackStateActive(currentState) then
+        currentKey = self:GetQueueEntryKey(cp)
+        table.insert(entries, {
+            kind = "current",
+            state = currentState,
+            isPlaying = true,
+            questId = cp.questId,
+            phase = cp.phase,
+            npcId = cp.npcId,
+            title = cp.title,
+            gender = cp.gender,
+            displayID = cp.displayID,
+            entryType = cp.entryType or (cp.questId and "quest" or "unknown"),
+        })
+    end
+
+    if CLN.questsQueue then
+        for i, q in ipairs(CLN.questsQueue) do
+            local queueKey = self:GetQueueEntryKey(q)
+            if not (currentKey and queueKey and currentKey == queueKey) then
+                local state = self:GetPlaybackState(q)
+                if state == self.State.IDLE then
+                    state = self.State.QUEUED
+                end
+                table.insert(entries, {
+                    kind = "queue",
+                    state = state,
+                    queueIndex = i,
+                    questId = q.questId,
+                    phase = q.phase,
+                    npcId = q.npcId,
+                    title = q.title,
+                    gender = q.gender,
+                    displayID = q.displayID,
+                    entryType = q.entryType or ((q.questId and q.phase) and "quest" or "unknown"),
+                })
+            end
+        end
+    end
+
+    return entries
 end
 
 function VoiceoverPlayer:GetCurrentlyPlayingObject()
@@ -113,10 +278,12 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
         npcId = nil,
         gender = nil,
         displayID = nil,
+        creatureType = nil,
         entryType = nil,
         phase = nil,
         questId = nil,
         soundHandle = nil,
+        state = VoiceoverPlayer.State.IDLE,
         title = nil,
         isPlaying = function (self)
             return self.soundHandle and C_Sound.IsPlaying(self.soundHandle) or false
@@ -126,8 +293,29 @@ end
 
 VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 VoiceoverPlayer.queueProcessed = false
-VoiceoverPlayer._paused = false
 VoiceoverPlayer._suspendedPlayback = nil
+
+--- Look up the quest body text from NpcInfoDB for a playing/queued entry.
+--- Returns the full dialogue text that the voiceover audio is based on,
+--- which is far more accurate for duration estimation than the quest title.
+---@param cp table  A currentlyPlaying or queue entry with npcId, questId, phase.
+---@return string|nil bodyText  The full quest dialogue, or nil if unavailable.
+function VoiceoverPlayer:GetQuestBodyText(cp)
+    if not (cp and cp.npcId and cp.questId and cp.phase) then return nil end
+    if not (_G.NpcInfoDB and CLN.locale) then return nil end
+    local npcData = _G.NpcInfoDB[cp.npcId]
+    if not npcData then return nil end
+    local localeData = npcData[CLN.locale]
+    if not localeData or not localeData.quests then return nil end
+    local questData = localeData.quests[cp.questId]
+    if not questData then return nil end
+    local phaseFields = { Desc = "quest_detail", Prog = "quest_progress", Comp = "quest_complete" }
+    local field = phaseFields[cp.phase]
+    if not field then return nil end
+    local text = questData[field]
+    if not text or text == "" then return nil end
+    return text
+end
 
 -- ============================================================================
 -- Centralized History Push
@@ -138,6 +326,7 @@ VoiceoverPlayer._suspendedPlayback = nil
 ---@param record table Any voiceover record (currentlyPlaying, queue item, etc.)
 function VoiceoverPlayer:PushToHistory(record)
     if not record then return end
+    if record._historyPushed then return end
     -- Resolve title: prefer explicit, fall back to questId lookup
     local title = record.title
     if not title and record.questId then
@@ -147,16 +336,23 @@ function VoiceoverPlayer:PushToHistory(record)
     if not title and not record.questId then return end
 
     if CLN.ReplayFrame and CLN.ReplayFrame.PushHistory then
-        CLN.ReplayFrame:PushHistory({
+        record._historyPushed = true
+        local historyEntry = {
             title = title,
             npcId = record.npcId,
             questId = record.questId,
             phase = record.phase,
             entryType = record.entryType or (record.questId and "quest" or "unknown"),
+            state = record.state or self:GetPlaybackState(record),
             gender = record.gender,
             displayID = record.displayID,
             completedAt = GetTime and GetTime() or 0,
-        })
+        }
+        -- Enrich with cached metadata so replays have full model info
+        if CLN.NpcMetadataCache and CLN.NpcMetadataCache.Enrich then
+            CLN.NpcMetadataCache:Enrich(historyEntry)
+        end
+        CLN.ReplayFrame:PushHistory(historyEntry)
     end
 end
 
@@ -200,21 +396,23 @@ end
 function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
     if CLN and CLN.Logger then CLN.Logger:debug("Force stopping current sound", false, CLN.Utils.LogCategories.loader) end
 
-    -- Cancel any pending native VO resume
-    self:CancelNativeVOResume()
-
     -- In queue mode, ignore external stop requests (e.g., DialogueUI closing)
     -- unless the caller explicitly forces it (cinematics, movies, user stop button).
-    if not force and CLN.db.profile.questPlaybackMode == 'queue' then
+    if not force and CLN.db and CLN.db.profile and CLN.db.profile.questPlaybackMode == 'queue' then
         if CLN and CLN.Logger then CLN.Logger:debug("Ignoring ForceStop in queue mode", false, CLN.Utils.LogCategories.loader) end
         return
     end
 
-    -- Clear paused state on explicit stop
-    self._paused = false
+    -- Cancel any pending native VO resume (must be after queue-mode guard
+    -- so an "ignored" ForceStop doesn't kill the resume timer)
+    self:CancelNativeVOResume()
+
+    -- Record the force-stop time so PlayQuestSound can reject rapid re-triggers
+    self._lastForceStopTime = GetTime and GetTime() or 0
 
     -- Push suspended playback to history before discarding
     if self._suspendedPlayback then
+        self:SetPlaybackState(self._suspendedPlayback, self.State.DROPPED)
         self:PushToHistory(self._suspendedPlayback)
         self._suspendedPlayback = nil
     end
@@ -222,17 +420,19 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
     -- Push currently playing to history before stopping
     local cp = VoiceoverPlayer.currentlyPlaying
     if cp and (cp.title or cp.questId) then
+        self:SetPlaybackState(cp, self.State.DROPPED)
         self:PushToHistory(cp)
     end
 
     if (clearQueue) then
         -- Push all queued items to history before clearing
         for _, q in ipairs(CLN.questsQueue) do
+            self:SetPlaybackState(q, self.State.DROPPED)
             self:PushToHistory(q)
         end
         CLN.questsQueue = {}
         if CLN.ReplayFrame then CLN.ReplayFrame._scrollOffset = 0 end
-        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+        self:NotifyQueueDirty()
     end
 
     if (cp and cp.soundHandle) then
@@ -245,12 +445,18 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
             CLN.ReplayFrame:HideSubtitle()
         end
     end
-    
+
+    -- Deterministic animation cleanup: the polling watcher won't fire
+    -- VOICEOVER_STOP because we clear currentlyPlaying below, so call
+    -- OnConversationStop explicitly while cp is still available for lastMsg.
+    if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
+        CLN.ReplayFrame:OnConversationStop(cp and cp.title)
+    end
+
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+    self:NotifyDisplayDirty()
 end
 
 -- ============================================================================
@@ -274,8 +480,7 @@ function VoiceoverPlayer:PauseForNativeVO(estimatedDuration)
 
     -- Stop our sound but keep the state so the watcher doesn't fire VOICEOVER_STOP
     StopSound(cp.soundHandle, 0)
-    cp._pausedForNativeVO = true
-    cp._pausedSoundHandle = cp.soundHandle
+    self:SetPlaybackState(cp, self.State.PAUSED_NATIVE)
     cp.soundHandle = nil -- Clear handle so watcher ignores us
 
     -- Suspend watcher and history-prune timers while paused
@@ -303,10 +508,7 @@ end
 function VoiceoverPlayer:ResumeAfterNativeVO()
     self._nativeVOResumeTimer = nil
     local cp = self.currentlyPlaying
-    if not (cp and cp._pausedForNativeVO) then return end
-
-    cp._pausedForNativeVO = nil
-    cp._pausedSoundHandle = nil
+    if not (cp and self:GetPlaybackState(cp) == self.State.PAUSED_NATIVE) then return end
 
     -- Resume watcher and history-prune timers
     if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
@@ -320,17 +522,15 @@ function VoiceoverPlayer:ResumeAfterNativeVO()
     -- Re-trigger playback for the current entry.
     if cp.entryType == "quest" and cp.questId and cp.phase then
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self:PlayQuestSound(cp.questId, cp.phase, cp.npcId, cp.displayID)
+        self:PlayQuestSound(cp.questId, cp.phase, cp.npcId, cp.displayID, cp.gender, cp.creatureType)
     elseif cp.npcId and cp.title and cp.entryType then
         -- Non-quest (gossip/item): resume from the beginning.
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender, cp.displayID)
+        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender, cp.displayID, cp.creatureType)
     else
         -- Can't identify the entry; clear state
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-            CLN.ReplayFrame:UpdateDisplayFrameState()
-        end
+        self:NotifyDisplayDirty()
     end
 end
 
@@ -341,16 +541,11 @@ function VoiceoverPlayer:CancelNativeVOResume()
         self._nativeVOResumeTimer = nil
     end
     local cp = self.currentlyPlaying
-    if cp and cp._pausedForNativeVO then
-        cp._pausedForNativeVO = nil
-        cp._pausedSoundHandle = nil
+    if cp and self:GetPlaybackState(cp) == self.State.PAUSED_NATIVE then
         -- Resume timers that were suspended during native VO pause
         if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
             CLN.EventHandler:ResumeTimers()
         end
-    elseif cp then
-        cp._pausedForNativeVO = nil
-        cp._pausedSoundHandle = nil
     end
 end
 
@@ -358,7 +553,19 @@ end
 ---@return boolean
 function VoiceoverPlayer:IsNativeVOPauseActive()
     local cp = self.currentlyPlaying
-    return not not ((cp and cp._pausedForNativeVO) or self._nativeVOResumeTimer)
+    return not not (self:IsTemporarilyPaused(cp) or self._nativeVOResumeTimer)
+end
+
+--- Extend (or start) the native VO resume timer without re-pausing sound.
+--- Called by EventHandler when additional native VO lines arrive while already paused.
+---@param duration number Seconds until auto-resume
+function VoiceoverPlayer:ExtendNativeVOPause(duration)
+    if self._nativeVOResumeTimer then
+        self._nativeVOResumeTimer:Cancel()
+    end
+    self._nativeVOResumeTimer = C_Timer.NewTimer(duration, function()
+        self:ResumeAfterNativeVO()
+    end)
 end
 
 -- ============================================================================
@@ -373,14 +580,14 @@ end
 --- Pause playback: stop current sound and freeze queue advancement.
 --- Skips pausing if less than 1.5 seconds of estimated playback remain.
 function VoiceoverPlayer:PausePlayback()
-    if self._paused then return end
+    if self:IsPaused() then return end
 
     local cp = self.currentlyPlaying
+    local wasNativePaused = cp and self:GetPlaybackState(cp) == self.State.PAUSED_NATIVE
 
     -- Text continuation mode: pause the subtitle sequence
     if cp and cp._textContinuation then
-        self._paused = true
-        cp._pausedByUser = true
+        self:SetPlaybackState(cp, self.State.PAUSED_USER)
         -- Cancel subtitle timers
         if CLN.ReplayFrame and CLN.ReplayFrame.HideSubtitle then
             CLN.ReplayFrame:HideSubtitle()
@@ -391,16 +598,17 @@ function VoiceoverPlayer:PausePlayback()
         if CLN and CLN.Logger then
             CLN.Logger:debug("Text continuation paused by user", false, CLN.Utils.LogCategories.loader)
         end
-        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+        self:NotifyQueueDirty()
+        self:NotifyDisplayDirty()
         return
     end
 
     -- If the VO is almost finished, let it play out instead of pausing
     if cp and cp.soundHandle and cp.startTime and cp.title and GetTime then
         local elapsed = GetTime() - cp.startTime
+        local bodyText = self:GetQuestBodyText(cp)
         local estimated = CLN.Utils and CLN.Utils.EstimateVODuration
-            and CLN.Utils.EstimateVODuration(cp.title) or 0
+            and CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
         if estimated > 0 then
             local remaining = estimated - elapsed
             if remaining >= 0 and remaining < 1.5 then
@@ -412,7 +620,9 @@ function VoiceoverPlayer:PausePlayback()
         end
     end
 
-    self._paused = true
+    if wasNativePaused then
+        self:CancelNativeVOResume()
+    end
 
     -- Store elapsed time so text continuation can estimate where we were
     if cp and cp.startTime and GetTime then
@@ -424,10 +634,12 @@ function VoiceoverPlayer:PausePlayback()
         CLN.EventHandler:SuspendTimers()
     end
 
-    if cp and cp.soundHandle then
-        StopSound(cp.soundHandle, 0)
-        cp._pausedByUser = true
-        cp.soundHandle = nil -- hide from watcher so VOICEOVER_STOP doesn't fire
+    if cp and (cp.soundHandle or wasNativePaused) then
+        self:SetPlaybackState(cp, self.State.PAUSED_USER)
+        if cp.soundHandle then
+            StopSound(cp.soundHandle, 0)
+            cp.soundHandle = nil -- hide from watcher so VOICEOVER_STOP doesn't fire
+        end
     end
 
     -- Freeze model animations
@@ -439,10 +651,10 @@ function VoiceoverPlayer:PausePlayback()
     if CLN and CLN.Logger then
         CLN.Logger:debug("Playback paused by user", false, CLN.Utils.LogCategories.loader)
     end
-    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+    self:NotifyQueueDirty()
+    self:NotifyDisplayDirty()
 
-    -- Schedule whitelist popup if there are recent NPC speeches to ask about
+    -- Schedule whitelist popupif there are recent NPC speeches to ask about
     if CLN.EventHandler and CLN.EventHandler.ScheduleWhitelistPopup then
         CLN.EventHandler:ScheduleWhitelistPopup()
     end
@@ -450,8 +662,7 @@ end
 
 --- Resume playback: clear paused flag and either continue as text or replay audio.
 function VoiceoverPlayer:ResumePlayback()
-    if not self._paused then return end
-    self._paused = false
+    if not self:IsPaused() then return end
 
     -- Resume watcher and history-prune timers
     if CLN.EventHandler and CLN.EventHandler.ResumeTimers then
@@ -460,25 +671,25 @@ function VoiceoverPlayer:ResumePlayback()
 
     local cp = self.currentlyPlaying
     -- If paused during text continuation, just complete it
-    if cp and cp._pausedByUser and cp._textContinuation then
-        cp._pausedByUser = nil
+    if cp and self:GetPlaybackState(cp) == self.State.PAUSED_USER and cp._textContinuation then
+        self:SetPlaybackState(cp, self.State.TEXT_CONTINUING)
         self:CompleteTextContinuation()
         if CLN and CLN.Logger then
             CLN.Logger:debug("Text continuation completed after pause", false, CLN.Utils.LogCategories.loader)
         end
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+        self:NotifyDisplayDirty()
         return
     end
     -- Try to re-play the paused entry (restarts from beginning)
-    if cp and cp._pausedByUser then
-        cp._pausedByUser = nil
+    if cp and self:GetPlaybackState(cp) == self.State.PAUSED_USER then
 
         -- Text continuation: if paused near the end, show remaining text
         -- instead of replaying audio from the start.
         local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
         local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
         if enabled and cp._elapsedAtPause and cp.title and CLN.Utils then
-            local estimated = CLN.Utils.EstimateVODuration(cp.title) or 0
+            local bodyText = self:GetQuestBodyText(cp)
+            local estimated = CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
             if estimated > 0 then
                 local progress = cp._elapsedAtPause / estimated
                 if progress >= threshold then
@@ -486,7 +697,7 @@ function VoiceoverPlayer:ResumePlayback()
                     if CLN and CLN.Logger then
                         CLN.Logger:debug("Text continuation at " .. string.format("%.0f%%", progress * 100), false, CLN.Utils.LogCategories.loader)
                     end
-                    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+                    self:NotifyDisplayDirty()
                     return
                 end
             end
@@ -496,6 +707,7 @@ function VoiceoverPlayer:ResumePlayback()
         local replayed = self:ReplayPausedEntry(cp)
         if not replayed then
             -- Couldn't replay; push the lost item to history and advance queue
+            self:SetPlaybackState(cp, self.State.DROPPED)
             self:PushToHistory(cp)
             self.currentlyPlaying = self:GetCurrentlyPlayingObject()
             self:ProcessQueueAfterResume()
@@ -507,7 +719,7 @@ function VoiceoverPlayer:ResumePlayback()
     if CLN and CLN.Logger then
         CLN.Logger:debug("Playback resumed by user", false, CLN.Utils.LogCategories.loader)
     end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+    self:NotifyDisplayDirty()
 end
 
 --- Enter text continuation mode: show remaining sentences as timed subtitles
@@ -517,13 +729,16 @@ end
 function VoiceoverPlayer:StartTextContinuation(cp, progress)
     cp._textContinuation = true
     cp._textContinuationStartTime = GetTime and GetTime() or 0
+    self:SetPlaybackState(cp, self.State.TEXT_CONTINUING)
 
     -- Split text into sentences and find where we left off
+    local bodyText = self:GetQuestBodyText(cp)
+    local textForSentences = bodyText or cp.title
     local sentences
     if CLN.ReplayFrame and CLN.ReplayFrame.SplitTooltipIntoSentences then
-        sentences = CLN.ReplayFrame:SplitTooltipIntoSentences(cp.title)
+        sentences = CLN.ReplayFrame:SplitTooltipIntoSentences(textForSentences)
     else
-        sentences = { cp.title }
+        sentences = { textForSentences }
     end
 
     local startIndex = CLN.Utils.EstimateSentenceAtPosition(sentences, progress)
@@ -539,7 +754,7 @@ function VoiceoverPlayer:StartTextContinuation(cp, progress)
     if startIndex > 1 then totalReadDuration = totalReadDuration + 1.5 end
     cp._textContinuationDuration = totalReadDuration
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+    self:NotifyQueueDirty()
 
     -- Show remaining sentences as subtitles with completion callback
     if CLN.ReplayFrame and CLN.ReplayFrame.ShowRemainingSubtitles then
@@ -560,12 +775,13 @@ function VoiceoverPlayer:CompleteTextContinuation()
         cp._textContinuationStartTime = nil
         cp._textContinuationDuration = nil
         cp._elapsedAtPause = nil
+        self:SetPlaybackState(cp, self.State.COMPLETED)
         self:PushToHistory(cp)
     end
 
     self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+    self:NotifyQueueDirty()
+    self:NotifyDisplayDirty()
     self:ProcessQueueAfterResume()
 
     if CLN and CLN.Logger then
@@ -614,11 +830,13 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         self.currentlyPlaying.title = cp.title
         self.currentlyPlaying.entryType = cp.entryType
         self.currentlyPlaying.gender = cp.gender
+        self.currentlyPlaying.creatureType = cp.creatureType
         self.currentlyPlaying.cantBeInterrupted = cp.cantBeInterrupted
         if GetTime then self.currentlyPlaying.startTime = GetTime() end
+        self:SetPlaybackState(self.currentlyPlaying, self.State.PLAYING)
         -- Don't touch the queue — the paused item was never in it
-        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+        self:NotifyQueueDirty()
+        self:NotifyDisplayDirty()
         if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
             pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
         end
@@ -628,30 +846,127 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
 end
 
 --- If nothing to replay, try to advance the queue, then check suspended.
+--- @deprecated Use AdvanceQueue() instead. Kept as a thin wrapper for any
+--- callers that haven't migrated yet.
 function VoiceoverPlayer:ProcessQueueAfterResume()
-    if #CLN.questsQueue > 0 then
-        local next = CLN.questsQueue[1]
-        if next.questId and next.phase then
-            self:PlayQuestSound(next.questId, next.phase, next.npcId, next.displayID)
-        elseif next.npcId and next.title and next.entryType then
+    self:AdvanceQueue()
+end
+
+-- ============================================================================
+-- Centralized Queue Advancement (Phase 1)
+-- ============================================================================
+--- Single canonical path for popping the next queued item and playing it.
+--- Falls back to suspended playback, then to idle + UI refresh.
+--- All callers that need "play the next thing" should call this.
+function VoiceoverPlayer:AdvanceQueue()
+    self:DeduplicateQueue()
+
+    -- Iterative skip of unknown entries (avoids deep recursion on malformed queues)
+    while #CLN.questsQueue > 0 do
+        local nextItem = CLN.questsQueue[1]
+        if nextItem.questId and nextItem.phase then
+            -- Clean animation state before starting next item
+            if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+                pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+            end
+            -- PlayQuestSound handles its own queue removal on success
+            self:PlayQuestSound(nextItem.questId, nextItem.phase, nextItem.npcId, nextItem.displayID, nextItem.gender, nextItem.creatureType)
+            return
+        elseif nextItem.npcId and nextItem.title and nextItem.entryType then
+            if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
+                pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+            end
             table.remove(CLN.questsQueue, 1)
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-            self:PlayNonQuestSound(next.npcId, next.entryType, next.title, next.gender, next.displayID)
+            self:NotifyQueueDirty()
+            self:PlayNonQuestSound(nextItem.npcId, nextItem.entryType, nextItem.title, nextItem.gender, nextItem.displayID, nextItem.creatureType)
+            return
         else
+            -- Unknown entry; discard and try next
+            if CLN.Logger then
+                CLN.Logger:debug("AdvanceQueue: discarding unknown entry", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or "misc")
+            end
             table.remove(CLN.questsQueue, 1)
+            self:NotifyQueueDirty()
         end
-    elseif self:HasSuspendedPlayback() then
+    end
+
+    -- Queue is empty
+    if self:HasSuspendedPlayback() then
         self:ResumeSuspendedPlayback()
     else
-        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-            CLN.ReplayFrame:UpdateDisplayFrameState()
+        self:NotifyDisplayDirty()
+    end
+end
+
+--- Drop queued items by index range, pushing each to history as DROPPED.
+--- Indices are 1-based and inclusive. Removes in reverse to avoid shifting.
+---@param startIdx number First queue index to drop (inclusive)
+---@param endIdx number Last queue index to drop (inclusive)
+function VoiceoverPlayer:DropQueuedRange(startIdx, endIdx)
+    if not CLN.questsQueue then return end
+    local lo = math.max(startIdx or 1, 1)
+    local hi = math.min(endIdx or #CLN.questsQueue, #CLN.questsQueue)
+    for i = hi, lo, -1 do
+        local item = CLN.questsQueue[i]
+        if item then
+            self:SetPlaybackState(item, self.State.DROPPED)
+            self:PushToHistory(item)
         end
+        table.remove(CLN.questsQueue, i)
+    end
+    self:NotifyQueueDirty()
+end
+
+--- Play a specific queued item by index, dropping everything before it.
+--- This is the player-owned version of what QueueList's click handler does.
+---@param queueIndex number 1-based index of the item to play
+function VoiceoverPlayer:PlayQueuedItemAtIndex(queueIndex)
+    if not CLN.questsQueue or queueIndex < 1 or queueIndex > #CLN.questsQueue then return end
+
+    -- Drop everything before the target
+    if queueIndex > 1 then
+        self:DropQueuedRange(1, queueIndex - 1)
+    end
+
+    -- The target is now at index 1
+    local item = CLN.questsQueue[1]
+    if not item then return end
+
+    if item.questId and item.phase then
+        self:PlayQuestSound(item.questId, item.phase, item.npcId, item.displayID, item.gender, item.creatureType)
+    elseif item.npcId and item.title and item.entryType then
+        table.remove(CLN.questsQueue, 1)
+        self:NotifyQueueDirty()
+        self:PlayNonQuestSound(item.npcId, item.entryType, item.title, item.gender, item.displayID, item.creatureType)
+    else
+        table.remove(CLN.questsQueue, 1)
+        self:NotifyQueueDirty()
+    end
+end
+
+-- ============================================================================
+-- Centralized UI Notification Helpers (Phase 1)
+-- ============================================================================
+--- Notify the UI that the queue contents have changed.
+function VoiceoverPlayer:NotifyQueueDirty()
+    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then
+        CLN.ReplayFrame:MarkQueueDirty()
+    end
+end
+
+--- Notify the UI that the display state (playing/paused/idle) has changed.
+function VoiceoverPlayer:NotifyDisplayDirty()
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
+        CLN.ReplayFrame:UpdateDisplayFrameState()
+    end
+    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
+        CLN.ReplayFrame:UpdatePauseButton()
     end
 end
 
 --- Toggle pause/resume.
 function VoiceoverPlayer:TogglePause()
-    if self._paused then
+    if self:IsPaused() then
         self:ResumePlayback()
     else
         self:PausePlayback()
@@ -661,7 +976,7 @@ end
 --- Is playback currently paused?
 ---@return boolean
 function VoiceoverPlayer:IsPaused()
-    return self._paused == true
+    return self:GetPlaybackState() == self.State.PAUSED_USER
 end
 
 --- Skip the currently playing sound and advance to the next item.
@@ -677,6 +992,7 @@ function VoiceoverPlayer:SkipCurrentSound()
 
     -- Push skipped item to history
     if cp.title or cp.questId then
+        self:SetPlaybackState(cp, self.State.DROPPED)
         self:PushToHistory(cp)
     end
 
@@ -695,31 +1011,12 @@ function VoiceoverPlayer:SkipCurrentSound()
         end
     end
 
-    -- Clear paused state
-    self._paused = false
-
     -- Clear current without touching suspended or queue
     self.currentlyPlaying = self:GetCurrentlyPlayingObject()
 
-    -- Advance: queue → suspended → idle
-    if #CLN.questsQueue > 0 then
-        self:DeduplicateQueue()
-        if #CLN.questsQueue > 0 then
-            local nextQuest = CLN.questsQueue[1]
-            self._skipping = false
-            self:PlayQuestSound(nextQuest.questId, nextQuest.phase, nextQuest.npcId, nextQuest.displayID)
-            return
-        end
-    end
-    if self:HasSuspendedPlayback() then
-        self._skipping = false
-        self:ResumeSuspendedPlayback()
-        return
-    end
-
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then CLN.ReplayFrame:UpdatePauseButton() end
+    -- Advance via the single canonical path
     self._skipping = false
+    self:AdvanceQueue()
 end
 
 -- ============================================================================
@@ -742,7 +1039,10 @@ function VoiceoverPlayer:SuspendCurrentPlayback()
         title = cp.title,
         entryType = cp.entryType,
         gender = cp.gender,
+        creatureType = cp.creatureType,
+        state = self.State.SUSPENDED,
     }
+    self:SetPlaybackState(cp, self.State.SUSPENDED)
 
     -- Stop the sound
     if cp.soundHandle then
@@ -771,14 +1071,15 @@ function VoiceoverPlayer:ResumeSuspendedPlayback()
     self.currentlyPlaying = self:GetCurrentlyPlayingObject()
 
     if saved.entryType == "quest" and saved.questId and saved.phase then
-        self:PlayQuestSound(saved.questId, saved.phase, saved.npcId, saved.displayID)
+        self:PlayQuestSound(saved.questId, saved.phase, saved.npcId, saved.displayID, saved.gender, saved.creatureType)
     elseif saved.npcId and saved.title and saved.entryType then
-        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender, saved.displayID)
+        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender, saved.displayID, saved.creatureType)
     end
 
     -- If playback didn't actually start (file missing/unavailable), the
     -- suspended item would be silently lost. Push it to history as a fallback.
     if not (self.currentlyPlaying and self.currentlyPlaying.soundHandle) then
+        self:SetPlaybackState(saved, self.State.DROPPED)
         self:PushToHistory(saved)
     end
 end
@@ -798,6 +1099,7 @@ function VoiceoverPlayer:StopCurrentSound()
     local cp = VoiceoverPlayer.currentlyPlaying
     -- Push outgoing record to history before clearing
     if cp and (cp.title or cp.questId) then
+        self:SetPlaybackState(cp, self.State.DROPPED)
         self:PushToHistory(cp)
     end
     if cp and cp.soundHandle and cp:isPlaying() then
@@ -814,15 +1116,16 @@ function VoiceoverPlayer:StopCurrentSound()
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+    self:NotifyDisplayDirty()
 end
 
 ---@param questId number The quest ID to play audio for
 ---@param phase string The quest phase ("Desc"|"Prog"|"Comp")
 ---@param npcId number|nil Optional NPC ID for context
 ---@param displayID number|nil Optional creature display ID for model portrait (captured at queue time)
+---@param gender string|nil Optional NPC gender ("Male", "Female", "Neutral") captured at queue time
 ---@return nil
-function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
+function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender, creatureType)
     if (not questId or not phase) then
         if CLN and CLN.Logger then
             CLN.Logger:error("Missing required arguments for PlayQuestSound", true, CLN.Utils.LogCategories.loader)
@@ -832,7 +1135,21 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
         return -- fail fast if no quest ID
     end
 
-    -- Normalize & validate phase early; keep both original and normalized for logging
+    -- Resolve displayID from static DB or metadata cache if not captured from the live unit
+    if npcId then
+        if not displayID then
+            displayID = _G.NpcDisplayIdDB and _G.NpcDisplayIdDB[npcId] or nil
+        end
+        -- Fall back to persistent metadata cache (auto-populated during gameplay)
+        if CLN.NpcMetadataCache then
+            local cached = CLN.NpcMetadataCache:Lookup(npcId)
+            if cached then
+                if not displayID then displayID = cached.displayID end
+                if not gender or gender == "" then gender = cached.gender end
+                if not creatureType or creatureType == "" then creatureType = cached.creatureType end
+            end
+        end
+    end
     local originalPhase = phase
     if CLN and CLN.Utils and CLN.Utils.NormalizeQuestPhase then
         phase = CLN.Utils:NormalizeQuestPhase(phase)
@@ -854,6 +1171,18 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
         end
     end
 
+    -- Guard against rapid re-triggers after a force-stop (e.g., dialog re-opens
+    -- within the same frame or a pending timer fires after ForceStopCurrentSound)
+    if self._lastForceStopTime and GetTime then
+        local sinceForceStopped = GetTime() - self._lastForceStopTime
+        if sinceForceStopped >= 0 and sinceForceStopped < 0.5 then
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Skipped PlayQuestSound: too soon after force-stop (" .. string.format("%.2f", sinceForceStopped) .. "s)", false, CLN.Utils.LogCategories.loader)
+            end
+            return
+        end
+    end
+
     -- While yielding to native NPC speech, defer quest playback so the paused
     -- line can resume first and queued lines continue afterward.
     if self:IsNativeVOPauseActive() then
@@ -866,13 +1195,16 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
                     title = CLN:GetTitleForQuestID(questId),
                     cantBeInterrupted = true,
                     entryType = "quest",
+                    state = self.State.QUEUED,
                     npcId = npcId,
                     displayID = displayID,
+                    gender = gender,
+                    creatureType = creatureType,
                 }
                 table.insert(CLN.questsQueue, audioFileInfo)
-                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                self:NotifyQueueDirty()
                 if CLN.db.profile.debugMode and CLN.Logger then
-                    CLN.Logger:debug("Queued quest during native VO pause: " .. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
+                    CLN.Logger:debug("Queued quest during native VO pause: ".. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
                 end
             end
         elseif CLN.db.profile.debugMode and CLN.Logger then
@@ -884,7 +1216,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
     -- While paused in queue mode, queue new items instead of playing them.
     -- This prevents playback timers from bypassing the pause and cycling
     -- queued items into history.
-    if self._paused and CLN.db.profile.questPlaybackMode == 'queue' then
+    if self:IsPaused() and CLN.db.profile.questPlaybackMode == 'queue' then
         local alreadyQueued = self:IsQuestPhaseQueued(questId, phase)
         if not alreadyQueued then
             local audioFileInfo = {
@@ -893,13 +1225,16 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
                 title = CLN:GetTitleForQuestID(questId),
                 cantBeInterrupted = true,
                 entryType = "quest",
+                state = self.State.QUEUED,
                 npcId = npcId,
                 displayID = displayID,
+                gender = gender,
+                creatureType = creatureType,
             }
             table.insert(CLN.questsQueue, audioFileInfo)
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            self:NotifyQueueDirty()
             if CLN.db.profile.debugMode and CLN.Logger then
-                CLN.Logger:debug("Queued quest while paused: " .. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
+                CLN.Logger:debug("Queued quest while paused: ".. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
             end
         end
         return
@@ -930,8 +1265,11 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
                 title = CLN:GetTitleForQuestID(questId),
                 cantBeInterrupted = true,
                 entryType = "quest",
+                state = self.State.QUEUED,
                 npcId = npcId,
                 displayID = displayID,
+                gender = gender,
+                creatureType = creatureType,
             }
 
             if (CLN.db.profile.debugMode) and CLN.Logger then
@@ -939,8 +1277,8 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
             end
 
             table.insert(CLN.questsQueue, audioFileInfo)
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-            if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+            self:NotifyQueueDirty()
+            self:NotifyDisplayDirty()
             return
         else
             -- Non-quest sound is playing: suspend it so it can resume after the queue drains
@@ -978,14 +1316,17 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
             VoiceoverPlayer.currentlyPlaying.questId = questId
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
             VoiceoverPlayer.currentlyPlaying.displayID = displayID
+            VoiceoverPlayer.currentlyPlaying.creatureType = creatureType
             VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
             VoiceoverPlayer.currentlyPlaying.entryType = "quest"
+            VoiceoverPlayer.currentlyPlaying.gender = gender
             -- Non-interruptible only when in queue mode
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = (CLN.db.profile.questPlaybackMode == 'queue')
             -- Mark playback start time for animation gating
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
             end
+            self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
 
             -- Always start fresh for new playback to avoid stale state
             if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
@@ -995,19 +1336,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
                 end
             end
 
-            if (VoiceoverPlayer.currentlyPlaying.title) then
-                local queuedHead = CLN.questsQueue[1]
-                if queuedHead and queuedHead.questId == questId and queuedHead.phase == phase then
-                    table.remove(CLN.questsQueue, 1)
-                end
-                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-                if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-                    CLN.ReplayFrame:UpdateDisplayFrameState()
-                end
-                if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
-                    CLN.ReplayFrame:UpdatePauseButton()
-                end
-            end
+            self:RemoveQueuedQuestEntry(questId, phase)
+            self:NotifyQueueDirty()
+            self:NotifyDisplayDirty()
         end
     end
 
@@ -1018,7 +1349,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
         for i, queuedAudio in ipairs(CLN.questsQueue) do
             if (queuedAudio.questId == questId and queuedAudio.phase == phase) then
                 table.remove(CLN.questsQueue, i)
-                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                self:NotifyQueueDirty()
                 break
             end
         end
@@ -1029,12 +1360,12 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID)
         end
     end
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-        CLN.ReplayFrame:UpdateDisplayFrameState()
+    if not success then
+        self:NotifyDisplayDirty()
     end
 end
 
-function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displayID)
+function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displayID, creatureType, opts)
     if (not npcId or not soundType or not text) then
         if CLN and CLN.Logger then
             CLN.Logger:error("Arguments missing to play non quest sound.", true, CLN.Utils.LogCategories.loader)
@@ -1045,7 +1376,20 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
         return
     end
 
-    -- While yielding to native VO, queue gossip if queueing is enabled, otherwise skip.
+    -- Resolve displayID from static DB or metadata cache if not captured from the live unit
+    if npcId then
+        if not displayID then
+            displayID = _G.NpcDisplayIdDB and _G.NpcDisplayIdDB[npcId] or nil
+        end
+        if CLN.NpcMetadataCache then
+            local cached = CLN.NpcMetadataCache:Lookup(npcId)
+            if cached then
+                if not displayID then displayID = cached.displayID end
+                if not gender or gender == "" then gender = cached.gender end
+                if not creatureType or creatureType == "" then creatureType = cached.creatureType end
+            end
+        end
+    end
     if self:IsNativeVOPauseActive() then
         local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
         if gossipQueue ~= "none" then
@@ -1055,11 +1399,13 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                 entryType = soundType,
                 gender = gender,
                 displayID = displayID,
+                creatureType = creatureType,
                 cantBeInterrupted = false,
+                state = self.State.QUEUED,
             })
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            self:NotifyQueueDirty()
             if CLN.db.profile.debugMode and CLN.Logger then
-                CLN.Logger:debug("Queued gossip during native VO pause: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+                CLN.Logger:debug("Queued gossip during native VO pause: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
             end
         else
             if CLN.db.profile.debugMode and CLN.Logger then
@@ -1070,7 +1416,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
     end
 
     -- While user-paused, queue gossip if gossip queueing is enabled, otherwise skip
-    if self._paused then
+    if self:IsPaused() then
         local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
         if gossipQueue ~= "none" then
             table.insert(CLN.questsQueue, {
@@ -1079,11 +1425,13 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                 entryType = soundType,
                 gender = gender,
                 displayID = displayID,
+                creatureType = creatureType,
                 cantBeInterrupted = false,
+                state = self.State.QUEUED,
             })
-            if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+            self:NotifyQueueDirty()
             if CLN.db.profile.debugMode and CLN.Logger then
-                CLN.Logger:debug("Queued gossip while paused: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+                CLN.Logger:debug("Queued gossip while paused: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
             end
         else
             if CLN.db.profile.debugMode and CLN.Logger then
@@ -1100,7 +1448,13 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
     -- Gossip cooldown: skip if this line was recently played.
     -- Cooldown is recorded on completion (OnVoiceoverStop), not on play-start,
     -- so interrupted gossip doesn't get marked as "heard".
-    if soundType == "Gossip" and self:IsGossipOnCooldown(hashes) then
+    -- Multi-paragraph gossip (lore, long dialogue) is exempt from cooldown
+    -- since the user likely wants to replay substantive text.
+    -- History-replay clicks pass opts.skipCooldown to bypass unconditionally.
+    if soundType == "Gossip"
+        and not (opts and opts.skipCooldown)
+        and not self:_IsMultiParagraph(text)
+        and self:IsGossipOnCooldown(hashes) then
         if CLN.db.profile.debugMode and CLN.Logger then
             CLN.Logger:debug("Gossip on cooldown, skipping: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
         end
@@ -1133,34 +1487,40 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                     entryType = soundType,
                     gender = gender,
                     displayID = displayID,
+                    creatureType = creatureType,
                     cantBeInterrupted = false,
+                    state = self.State.QUEUED,
                 })
-                if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                self:NotifyQueueDirty()
                 if CLN.db.profile.debugMode and CLN.Logger then
-                    CLN.Logger:debug("Queued gossip behind active playback: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
+                    CLN.Logger:debug("Queued gossip behind active playback: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
                 end
                 return
             end
         end
 
-        -- Only stop current sound once we know we have a replacement
-        if (VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle) then
-            if (VoiceoverPlayer.currentlyPlaying.cantBeInterrupted
-                and VoiceoverPlayer:IsEffectivelyPlaying()
-                and CLN.db.profile.questPlaybackMode == 'queue') then
-                return -- skip if a quest audio is playing
-            end
-            -- Push outgoing record to history before replacing
-            self:PushToHistory(VoiceoverPlayer.currentlyPlaying)
-            StopSound(VoiceoverPlayer.currentlyPlaying.soundHandle, 0.5)
+        -- Guard: skip if a non-interruptible quest audio is playing in queue mode
+        if (VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle
+            and VoiceoverPlayer.currentlyPlaying.cantBeInterrupted
+            and VoiceoverPlayer:IsEffectivelyPlaying()
+            and CLN.db.profile.questPlaybackMode == 'queue') then
+            return
         end
 
+        -- Only stop current sound once we know we have a replacement
         success, newSoundHandle = PlaySoundFile(pathToFile, CLN.db.profile.audioChannel)
         if (success) then
+            -- New sound confirmed — now safe to stop the old one
+            if (VoiceoverPlayer.currentlyPlaying and VoiceoverPlayer.currentlyPlaying.soundHandle) then
+                self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.DROPPED)
+                self:PushToHistory(VoiceoverPlayer.currentlyPlaying)
+                StopSound(VoiceoverPlayer.currentlyPlaying.soundHandle, 0.5)
+            end
             VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
             VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
             VoiceoverPlayer.currentlyPlaying.npcId = npcId
             VoiceoverPlayer.currentlyPlaying.displayID = displayID
+            VoiceoverPlayer.currentlyPlaying.creatureType = creatureType
             -- Non-quest lines are never queue-locked
             VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
             VoiceoverPlayer.currentlyPlaying.title = text
@@ -1170,6 +1530,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
             end
+            self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
 
             -- Always start fresh for new playback to avoid stale state
             if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then
@@ -1186,9 +1547,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                 CLN.ReplayFrame:UpdateConversationAnimation()
             end
 
-            if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
-                CLN.ReplayFrame:UpdatePauseButton()
-            end
+            self:NotifyDisplayDirty()
         end
     end
 
@@ -1202,7 +1561,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
         end
     end
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-        CLN.ReplayFrame:UpdateDisplayFrameState()
+    if not success then
+        self:NotifyDisplayDirty()
     end
 end
