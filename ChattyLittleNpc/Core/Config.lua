@@ -90,6 +90,108 @@ function ConfigSystem:CreateCheckbox(parent, info)
     return checkbox
 end
 
+-- Create a multiselect setting as a labeled group of checkboxes
+---@param parent table Parent category or frame
+---@param info table Setting info {name, desc, values, get, set, disabled}
+---@return table
+function ConfigSystem:CreateMultiselect(parent, info)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(540, 24)
+    container:EnableMouse(true)
+    container.info = info
+    container.checkboxes = {}
+
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("TOPLEFT", 0, 0)
+    label:SetJustifyH("LEFT")
+    label:SetTextColor(1, 0.82, 0)
+    container.label = label
+
+    local function getValues()
+        local values = info.values
+        if type(values) == "function" then
+            values = values()
+        end
+        return values or {}
+    end
+
+    local function refreshCheckbox(checkbox)
+        checkbox:SetChecked(info.get(nil, checkbox.key) and true or false)
+        updateCheckboxDisabled(checkbox)
+    end
+
+    function container:Refresh()
+        local nameText = type(info.name) == "function" and info.name() or info.name or ""
+        self.label:SetText(nameText)
+
+        local values = getValues()
+        local keys = {}
+        for key in pairs(values) do
+            keys[#keys + 1] = key
+        end
+        table.sort(keys, function(a, b)
+            local textA = tostring(values[a] or a)
+            local textB = tostring(values[b] or b)
+            if textA == textB then
+                return tostring(a) < tostring(b)
+            end
+            return textA < textB
+        end)
+
+        local topOffset = nameText ~= "" and -18 or 0
+        for index, key in ipairs(keys) do
+            local checkbox = self.checkboxes[index]
+            if not checkbox then
+                checkbox = CreateFrame("CheckButton", nil, self, "InterfaceOptionsCheckButtonTemplate")
+                checkbox:SetScript("OnShow", refreshCheckbox)
+                checkbox:SetScript("OnClick", function(btn)
+                    if evalField(info.disabled) then
+                        refreshCheckbox(btn)
+                        return
+                    end
+                    local checked = btn:GetChecked() and true or false
+                    info.set(nil, btn.key, checked)
+                    refreshCheckbox(btn)
+                    if self:GetParent() then
+                        ConfigSystem._RefreshVisibleControls(self:GetParent())
+                    end
+                end)
+                checkbox.info = { disabled = info.disabled }
+                attachTooltip(checkbox, info)
+                self.checkboxes[index] = checkbox
+            end
+
+            checkbox.key = key
+            checkbox.Text:SetText(values[key] or key or "")
+            checkbox:SetPoint("TOPLEFT", self, "TOPLEFT", 0, topOffset - ((index - 1) * 24))
+            checkbox:Show()
+            refreshCheckbox(checkbox)
+        end
+
+        for index = #keys + 1, #self.checkboxes do
+            self.checkboxes[index]:Hide()
+        end
+
+        local height = math.max(24, (#keys * 24) + (nameText ~= "" and 20 or 0))
+        self:SetHeight(height)
+    end
+
+    container:SetScript("OnShow", function(self)
+        self:Refresh()
+        local isDisabled = evalField(info.disabled)
+        if isDisabled then
+            self.label:SetTextColor(0.5, 0.5, 0.5)
+        else
+            self.label:SetTextColor(1, 0.82, 0)
+        end
+    end)
+
+    attachTooltip(container, info)
+    container:Refresh()
+
+    return container
+end
+
 -- Create a slider setting
 ---@param parent table Parent category or frame
 ---@param info table Setting info {name, desc, min, max, step, get, set, disabled}
@@ -421,6 +523,10 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                                 elseif opt.type == "select" then
                                     yOffset = yOffset - 42
                                     contentHeight = contentHeight + 42
+                                elseif opt.type == "multiselect" then
+                                    local controlHeight = control:GetHeight() or 32
+                                    yOffset = yOffset - controlHeight
+                                    contentHeight = contentHeight + controlHeight
                                 elseif opt.type == "description" then
                                     yOffset = yOffset - 40
                                     contentHeight = contentHeight + 40
@@ -508,6 +614,8 @@ function ConfigSystem:CreateControl(parent, opt)
         return self:CreateHeader(parent, text)
     elseif opt.type == "input" then
         return self:CreateInput(parent, opt)
+    elseif opt.type == "multiselect" then
+        return self:CreateMultiselect(parent, opt)
     end
     return nil
 end

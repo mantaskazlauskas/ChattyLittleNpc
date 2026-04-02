@@ -173,8 +173,17 @@ local options = {
                     get = function(info) return CLN.db.profile.gossipQueueMode or "none" end,
                     set = function(info, value) CLN.db.profile.gossipQueueMode = value end,
                 },
-                nativeVOMode = {
+                textContinuationEnabled = {
                     order = 10,
+                    type = 'toggle',
+                    width = 'full',
+                    name = 'Show Text on Resume',
+                    desc = 'When you resume a voiceover that was already near the end, show the remaining dialog text so you can read what you missed.',
+                    get = function(info) return CLN.db.profile.textContinuationEnabled end,
+                    set = function(info, value) CLN.db.profile.textContinuationEnabled = value end,
+                },
+                nativeVOMode = {
+                    order = 11,
                     type = 'toggle',
                     width = 'full',
                     name = 'Pause for Voiced NPCs',
@@ -189,7 +198,7 @@ local options = {
                     end,
                 },
                 pauseForHeader = {
-                    order = 10,
+                    order = 12,
                     type = 'header',
                     name = function()
                         local wl = CLN.db.profile.nativeVOWhitelist or {}
@@ -201,7 +210,7 @@ local options = {
                     end,
                 },
                 pauseForEmpty = {
-                    order = 11,
+                    order = 13,
                     type = 'description',
                     name = "No NPCs added yet. Pause playback while an NPC is speaking to get prompted.",
                     hidden = function()
@@ -213,7 +222,7 @@ local options = {
                     end,
                 },
                 pauseForList = {
-                    order = 12,
+                    order = 14,
                     type = 'multiselect',
                     name = '',
                     desc = 'Uncheck to move NPC to Never Ask.',
@@ -360,8 +369,9 @@ local options = {
                     order = 2,
                     type = 'toggle',
                     width = 'full',
-                    name = 'Always Visible',
+                    name = 'Always Show Frame',
                     desc = 'Keep the voiceover frame visible even when no voiceover is playing.',
+                    disabled = function() return not CLN.db.profile.showReplayFrame end,
                     get = function(info) return CLN.db.profile.alwaysShowReplayFrame end,
                     set = function(info, value)
                         CLN.db.profile.alwaysShowReplayFrame = value
@@ -392,7 +402,7 @@ local options = {
                     set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
                 },
                 showQuestTypeBadges = {
-                    order = 6,
+                    order = 5,
                     type = 'toggle',
                     width = 'full',
                     name = 'Show Quest Type Badges',
@@ -404,7 +414,7 @@ local options = {
                     end,
                 },
                 showSubtitles = {
-                    order = 7,
+                    order = 6,
                     type = 'toggle',
                     width = 'full',
                     name = 'Show Subtitles',
@@ -418,7 +428,7 @@ local options = {
                     end,
                 },
                 subtitleFontScale = {
-                    order = 8,
+                    order = 7,
                     type = 'range',
                     width = 'double',
                     name = 'Subtitle Text Size',
@@ -426,6 +436,7 @@ local options = {
                     min = 0.5,
                     max = 2.0,
                     step = 0.05,
+                    disabled = function() return not CLN.db.profile.showSubtitles end,
                     get = function(info)
                         return CLN.db.profile.subtitleFontScale or 1.0
                     end,
@@ -444,7 +455,7 @@ local options = {
                     end,
                 },
                 queueHistoryMaxEntries = {
-                    order = 9,
+                    order = 8,
                     type = 'range',
                     width = 'double',
                     name = 'Replay History Length',
@@ -459,7 +470,7 @@ local options = {
                     end,
                 },
                 historyTTLMinutes = {
-                    order = 10,
+                    order = 9,
                     type = 'range',
                     width = 'double',
                     name = 'History Auto-Cleanup (minutes)',
@@ -632,9 +643,7 @@ local options = {
         },
 
         -- ═══════════════════════════════════════════════
-        -- ADVANCED — NPC model rendering settings
-        -- ═══════════════════════════════════════════════
-        -- Accessibility
+        -- ACCESSIBILITY — High-contrast and keyboard nav
         -- ═══════════════════════════════════════════════
         Accessibility = {
             order = 35,
@@ -664,7 +673,7 @@ local options = {
             },
         },
         -- ═══════════════════════════════════════════════
-        -- Advanced
+        -- ADVANCED — NPC model rendering settings
         -- ═══════════════════════════════════════════════
         Advanced = {
             order = 40,
@@ -925,16 +934,16 @@ local options = {
                 },
                 showGossipEditor = {
                     order = 7,
-                    type = 'toggle',
-                    width = 'full',
-                    name = 'Show Gossip Editor',
+                    type = 'execute',
+                    name = 'Open Gossip Editor',
                     desc = 'Open the Gossip Editor window for editing and fixing collected NPC gossip lines.',
-                    get = function(info) return CLN.Editor.Frame:IsShown() end,
-                    set = function(info, value)
-                        if value then
-                            CLN.Editor.Frame:Show()
-                        else
-                            CLN.Editor.Frame:Hide()
+                    func = function()
+                        if CLN.Editor and CLN.Editor.Frame then
+                            if CLN.Editor.Frame:IsShown() then
+                                CLN.Editor.Frame:Hide()
+                            else
+                                CLN.Editor.Frame:Show()
+                            end
                         end
                     end,
                 },
