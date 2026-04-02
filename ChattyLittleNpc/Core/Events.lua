@@ -67,14 +67,20 @@ function EventSystem:DispatchEvent(event, ...)
     
     -- Fast path: single callback (common case) avoids snapshot allocation
     if #cbs == 1 then
-        cbs[1](event, ...)
+        local ok, err = pcall(cbs[1], event, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Event callback error [" .. tostring(event) .. "]: " .. tostring(err))
+        end
         return
     end
     
     -- Snapshot the callback list so unregisters during dispatch don't skip entries
     local snapshot = {unpack(cbs)}
     for _, callback in ipairs(snapshot) do
-        callback(event, ...)
+        local ok, err = pcall(callback, event, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Event callback error [" .. tostring(event) .. "]: " .. tostring(err))
+        end
     end
 end
 
@@ -118,14 +124,20 @@ function EventSystem:SendMessage(message, ...)
     
     -- Fast path: single callback (common case) avoids snapshot allocation
     if #cbs == 1 then
-        cbs[1](message, ...)
+        local ok, err = pcall(cbs[1], message, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Message callback error [" .. tostring(message) .. "]: " .. tostring(err))
+        end
         return
     end
     
     -- Snapshot the callback list so unregisters during dispatch don't skip entries
     local snapshot = {unpack(cbs)}
     for _, callback in ipairs(snapshot) do
-        callback(message, ...)
+        local ok, err = pcall(callback, message, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Message callback error [" .. tostring(message) .. "]: " .. tostring(err))
+        end
     end
 end
 

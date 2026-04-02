@@ -18,6 +18,15 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
             CLN:_MigrateSavedVars()
         end
 
+        -- Initialize dialog tracker tables and NPC metadata cache
+        if CLN.NpcDialogTracker and CLN.NpcDialogTracker.InitializeTables then
+            CLN.NpcDialogTracker:InitializeTables()
+        end
+        if CLN.NpcMetadataCache then
+            CLN.NpcMetadataCache:Initialize()
+            CLN.NpcMetadataCache:Prune(30)
+        end
+
         -- Enable the addon (register events, etc.)
         if CLN.OnEnable then
             CLN:OnEnable()
