@@ -492,47 +492,32 @@ end
 -- Each entry: { isPlaying=bool, queueIndex=number|nil, label=string, tooltip=string }
 function ReplayFrame:BuildQueueEntries()
     local entries = {}
-    local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    local player = CLN.VoiceoverPlayer
+    local displayEntries = (player and player.GetDisplayEntries and player:GetDisplayEntries()) or {}
 
-    -- Only show "now playing" if the sound is actually still active (playing or paused)
-    -- Use grace-aware check to stay consistent with the watcher/visibility system;
-    -- raw C_Sound.IsPlaying can briefly return false during dialog transitions.
-    local isActive = false
-    if now and (now.title or now.questId) then
-        local stillPlaying = CLN.VoiceoverPlayer.IsEffectivelyPlaying
-            and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
-            or (now.isPlaying and now:isPlaying())
-        local isPaused = CLN.VoiceoverPlayer._paused or now._pausedForNativeVO or now._textContinuation
-        isActive = stillPlaying or isPaused
-    end
-
-    if isActive then
-        local isQuest = not not now.questId
-        local npcName = self:GetNpcNameById(now.npcId)
-        local content = now.title
+    for _, item in ipairs(displayEntries) do
+        local npcName = self:GetNpcNameById(item.npcId)
+        local content = item.title
+        local isQuest = item.entryType == "quest" or (item.questId and item.phase)
         local label = ReplayFrame.Pure.FormatEntryLabel(npcName, content, isQuest)
         local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
 
-        table.insert(entries, { isPlaying = true, label = label, tooltip = tooltip, entryType = now.entryType or (isQuest and "quest" or "unknown") })
-    elseif now and (now.title or now.questId) and now.soundHandle then
-        -- Stale currentlyPlaying: sound finished but object wasn't cleared.
-        -- Push to history and clear it now.
-        CLN.VoiceoverPlayer:PushToHistory(now)
-        CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
-    end
-
-    if CLN.questsQueue then
-        for i, q in ipairs(CLN.questsQueue) do
-            local isCurrentDuplicate = isActive and now and now.questId
-                and q.questId == now.questId
-                and q.phase == now.phase
-            if not isCurrentDuplicate then
-                local npcName = self:GetNpcNameById(q.npcId)
-                local questTitle = q.title
-                local label = ReplayFrame.Pure.FormatEntryLabel(npcName, questTitle, true)
-                local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, questTitle)
-                table.insert(entries, { queueIndex = i, label = label, tooltip = tooltip, entryType = q.entryType or "quest" })
-            end
+        if item.kind == "current" then
+            table.insert(entries, {
+                isPlaying = true,
+                state = item.state,
+                label = label,
+                tooltip = tooltip,
+                entryType = item.entryType or (isQuest and "quest" or "unknown"),
+            })
+        else
+            table.insert(entries, {
+                queueIndex = item.queueIndex,
+                state = item.state,
+                label = label,
+                tooltip = tooltip,
+                entryType = item.entryType or (isQuest and "quest" or "unknown"),
+            })
         end
     end
 
@@ -548,6 +533,7 @@ function ReplayFrame:BuildQueueEntries()
             table.insert(entries, {
                 isHistory = true,
                 historyIndex = i,
+                state = h.state,
                 label = label,
                 tooltip = tooltip,
                 entryType = h.entryType or "unknown",
@@ -626,7 +612,7 @@ end
 function ReplayFrame:MarkQueueDirty()
     -- Debounce: if already scheduled, just mark dirty and exit
     self._queueDirty = true
-    self._scrollOffset = 0
+    -- Note: scroll offset is NOT reset here — RefreshQueueDataProvider clamps it
     if self._queueDirtyPending then return end
     self._queueDirtyPending = true
     local delay = 0.12 -- slightly higher than old 0.05 to absorb bursts
@@ -662,16 +648,20 @@ end
 function ReplayFrame:UpdateVisibility()
     local forced = self._forceShow
     local alwaysShow = CLN and CLN.db and CLN.db.profile and CLN.db.profile.alwaysShowReplayFrame
-    if (not forced) and (not alwaysShow) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
-        if (self.DisplayFrame) then self.DisplayFrame:Hide() end
+    -- Grace period: treat deferred playback (C_Timer.After gap) as "playing"
+    -- to avoid a fade-out/fade-in flicker between GOSSIP_SHOW and audio start.
+    local playbackPending = CLN._playbackPendingAt and GetTime
+        and (GetTime() - CLN._playbackPendingAt) < 1.0
+    if (not forced) and (not alwaysShow) and (not playbackPending) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
+        if (self.DisplayFrame) then self:_DisplayFrameFadeOut() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
         return false
     end
 
-    if (not forced) and (not alwaysShow) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
-        if (self.DisplayFrame) then self.DisplayFrame:Hide() end
+    if (not forced) and (not alwaysShow) and (not playbackPending) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
+        if (self.DisplayFrame) then self:_DisplayFrameFadeOut() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
@@ -679,7 +669,7 @@ function ReplayFrame:UpdateVisibility()
     end
 
     if (not forced) and (not alwaysShow) and (self:IsDisplayFrameHideNeeded()) then
-        if self.DisplayFrame then self.DisplayFrame:Hide() end
+        if self.DisplayFrame then self:_DisplayFrameFadeOut() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
@@ -695,10 +685,12 @@ function ReplayFrame:UpdateVisibility()
     end
 
     self:UpdateParent()
-    if self.DisplayFrame then self.DisplayFrame:Show() end
-    -- Clear stuck animation flags on frame show
+    if self.DisplayFrame then self:_DisplayFrameFadeIn() end
+    -- Clear stuck animation flag on frame show
     self._animatingCollapse = false
-    if self.DisplayFrame then self.DisplayFrame._animatingCollapse = false end
+    if self._collapseAnimFrame and self._collapseAnimFrame.SetScript then
+        self._collapseAnimFrame:SetScript("OnUpdate", nil)
+    end
     -- First-time edit mode glow hint
     if self.StartEditGlowPulse and not self._glowTriggered then
         self._glowTriggered = true
@@ -720,6 +712,11 @@ function ReplayFrame:OnCombatStart()
     if CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse == false then return end
     if self.DisplayFrame and self.DisplayFrame:IsShown() then
         self._combatAutoCollapsed = true
+        -- Cancel any in-progress fade animations for instant combat hide
+        if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then self._frameFadeInAG:Stop() end
+        if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then self._frameFadeOutAG:Stop() end
+        self._frameFadingOut = false
+        self.DisplayFrame:SetAlpha(1)
         self.DisplayFrame:Hide()
     end
     if self.NpcModelFrame then self.NpcModelFrame:Hide() end
@@ -807,8 +804,10 @@ function ReplayFrame:UpdateDisplayFrame()
     local h = self.DisplayFrame and self.DisplayFrame.GetHeight and math.floor((self.DisplayFrame:GetHeight() or 0) + 0.5) or 0
     local handle = cur and cur.soundHandle or nil
     local title = cur and cur.title or nil
-    local playing = cur and cur.isPlaying and cur:isPlaying() or false
-    local sig = table.concat({ tostring(handle), tostring(title or ""), qcount, collapsed and 1 or 0, w, h, playing and 1 or 0 }, ":")
+    local player = CLN.VoiceoverPlayer
+    local curState = player and player.GetPlaybackState and player:GetPlaybackState(cur) or "idle"
+    local playing = player and player.IsPlaybackStateActive and player:IsPlaybackStateActive(curState) or false
+    local sig = table.concat({ tostring(curState), tostring(title or ""), qcount, collapsed and 1 or 0, w, h, playing and 1 or 0 }, ":")
     local nowT = GetTime and GetTime() or 0
 
     -- Early visibility checks and show/min logic
@@ -817,7 +816,6 @@ function ReplayFrame:UpdateDisplayFrame()
     -- Self-healing: detect stuck collapsed state (height too small but not collapsed)
     if not collapsed and not self._combatAutoCollapsed
         and not self._animatingCollapse
-        and not (self.DisplayFrame and self.DisplayFrame._animatingCollapse)
         and h > 0 and h < 80
     then
         local safeH = self:GetSafeExpandHeight()

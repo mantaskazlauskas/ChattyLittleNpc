@@ -47,38 +47,36 @@ function ReplayFrame:EnsureCompactBadge()
     badge.Title = titleFS
 
     -- Right-side controls (inline, inside the badge)
+    -- Reuse the tracker-style golden icon treatment for visual consistency
+    local restFn  = ReplayFrame._ApplyTrackerIconRest
+    local hoverFn = ReplayFrame._ApplyTrackerIconHover
+
     local function makeBtn(parent, size, texPath, tooltip, onClick)
         local b = CreateFrame("Button", nil, parent)
         b:SetSize(size, size)
-        -- Subtle background circle
-        local bg = b:CreateTexture(nil, "BACKGROUND")
-        bg:SetPoint("CENTER")
-        bg:SetSize(size + 4, size + 4)
-        bg:SetTexture("Interface/Tooltips/UI-Tooltip-Background")
-        bg:SetVertexColor(1, 1, 1, 0.12)
-        b.bg = bg
         local t = b:CreateTexture(nil, "ARTWORK")
         t:SetPoint("CENTER")
         t:SetSize(size - 4, size - 4)
         t:SetTexture(texPath)
+        if restFn then restFn(t) end
         b.tex = t
         b:SetScript("OnEnter", function(self)
-            self.bg:SetVertexColor(1, 1, 1, 0.25)
+            if hoverFn then hoverFn(self.tex) end
             if GameTooltip and GameTooltip.SetOwner then
                 GameTooltip:SetOwner(self, "ANCHOR_TOP")
                 GameTooltip:ClearLines(); GameTooltip:AddLine(tooltip, 1, 1, 1); GameTooltip:Show()
             end
         end)
         b:SetScript("OnLeave", function(self)
-            self.bg:SetVertexColor(1, 1, 1, 0.12)
+            if restFn then restFn(self.tex) end
             if GameTooltip_Hide then GameTooltip_Hide() end
         end)
         b:SetScript("OnClick", onClick)
         return b
     end
 
-    -- Stop button
-    local stopBtn = makeBtn(badge, 22, "Interface/Buttons/UI-GroupLoot-Pass-Up", "Stop playback", function()
+    -- Stop button (clean X mark matching header clear icon)
+    local stopBtn = makeBtn(badge, 22, "Interface/RAIDFRAME/ReadyCheck-NotReady", "Stop playback", function()
         if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
         if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
     end)
@@ -92,7 +90,7 @@ function ReplayFrame:EnsureCompactBadge()
     pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
     -- Override tooltip to be dynamic (pause/resume)
     pauseBtn:SetScript("OnEnter", function(btn)
-        btn.bg:SetVertexColor(1, 1, 1, 0.25)
+        if hoverFn then hoverFn(btn.tex) end
         if GameTooltip and GameTooltip.SetOwner then
             local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
             GameTooltip:SetOwner(btn, "ANCHOR_TOP")
@@ -100,6 +98,10 @@ function ReplayFrame:EnsureCompactBadge()
             GameTooltip:AddLine(paused and "Resume playback" or "Pause playback", 1, 1, 1)
             GameTooltip:Show()
         end
+    end)
+    pauseBtn:SetScript("OnLeave", function(btn)
+        if restFn then restFn(btn.tex) end
+        if GameTooltip_Hide then GameTooltip_Hide() end
     end)
     badge.PauseBtn = pauseBtn
 
@@ -150,6 +152,13 @@ function ReplayFrame:EnsureCompactBadge()
         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
         if not (cp and GetTime) then return end
 
+        -- Throttle to ~20 Hz — progress bar doesn't need 60fps
+        local now = GetTime()
+        local thr = ReplayFrame.Config and ReplayFrame.Config.Throttle
+        local interval = thr and thr.progressBarInterval or 0.05
+        if (badge._progressLastUpdate or 0) + interval > now then return end
+        badge._progressLastUpdate = now
+
         -- Text continuation mode: progress based on reading time
         if cp._textContinuation and cp._textContinuationStartTime and cp._textContinuationDuration then
             -- Freeze progress bar while paused
@@ -167,7 +176,10 @@ function ReplayFrame:EnsureCompactBadge()
         -- Normal audio mode: progress based on audio duration
         if not (cp.startTime and cp.title) then return end
         local elapsed = GetTime() - cp.startTime
-        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title) or 0
+        local bodyText = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.GetQuestBodyText
+            and CLN.VoiceoverPlayer:GetQuestBodyText(cp)
+        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration
+            and CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
         if estimated <= 0 then return end
         local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
         local progress = math.min(1, math.max(0, elapsed / estimated))
@@ -175,17 +187,20 @@ function ReplayFrame:EnsureCompactBadge()
     end
 
     -- Speaker glow pulse animation
+    local F = self.Config and self.Config.Fade
+    local glowDur = F and F.badgeGlowPulseDur or 0.8
+    local glowAlpha = F and F.badgeGlowMaxAlpha or 0.35
     local glowAG = iconGlow:CreateAnimationGroup()
     glowAG:SetLooping("REPEAT")
     local fadeIn = glowAG:CreateAnimation("Alpha")
     fadeIn:SetFromAlpha(0)
-    fadeIn:SetToAlpha(0.35)
-    fadeIn:SetDuration(0.8)
+    fadeIn:SetToAlpha(glowAlpha)
+    fadeIn:SetDuration(glowDur)
     fadeIn:SetOrder(1)
     local fadeOut = glowAG:CreateAnimation("Alpha")
-    fadeOut:SetFromAlpha(0.35)
+    fadeOut:SetFromAlpha(glowAlpha)
     fadeOut:SetToAlpha(0)
-    fadeOut:SetDuration(0.8)
+    fadeOut:SetDuration(glowDur)
     fadeOut:SetOrder(2)
     badge.GlowAnim = glowAG
 
@@ -197,7 +212,8 @@ function ReplayFrame:EnsureCompactBadge()
 end
 
 function ReplayFrame:UpdatePauseButton()
-    local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+    local player = CLN.VoiceoverPlayer
+    local paused = player and player:IsPaused()
 
     -- Compact badge pause button (collapsed state)
     local badge = self.CompactBadge
@@ -206,10 +222,11 @@ function ReplayFrame:UpdatePauseButton()
         if tex then
             if paused then
                 -- Check if we're past the text continuation threshold (Smart Resume)
-                local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                local cp = player and player.currentlyPlaying
                 local showReadIcon = false
                 if cp and cp._elapsedAtPause and cp.title and CLN.Utils then
-                    local estimated = CLN.Utils.EstimateVODuration(cp.title) or 0
+                    local bodyText = player and player.GetQuestBodyText and player:GetQuestBodyText(cp)
+                    local estimated = CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
                     local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
                     local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
                     if enabled and estimated > 0 and (cp._elapsedAtPause / estimated) >= threshold then
@@ -224,6 +241,8 @@ function ReplayFrame:UpdatePauseButton()
             else
                 tex:SetTexture("Interface/TimeManager/PauseButton")
             end
+            -- Re-apply golden treatment after texture swap
+            if self._ApplyTrackerIconRest then self._ApplyTrackerIconRest(tex) end
         end
     end
 
@@ -235,9 +254,11 @@ function ReplayFrame:UpdateCompactBadge(force)
     if not (self.CollapseButton and self.CollapseButton._collapsed) then return end
     if not self.CompactBadge then return end
     local badge = self.CompactBadge
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
-    local playing = cur and cur.isPlaying and cur:isPlaying() or false
-    local textContinuation = cur and cur._textContinuation or false
+    local player = CLN.VoiceoverPlayer
+    local cur = player and player.currentlyPlaying or nil
+    local curState = player and player.GetPlaybackState and player:GetPlaybackState(cur) or nil
+    local playing = curState == (player and player.State and player.State.PLAYING or "playing")
+    local textContinuation = curState == (player and player.State and player.State.TEXT_CONTINUING or "text_continuing")
     local title = cur and cur.title or nil
     if (not title or title == "") and CLN.questsQueue and #CLN.questsQueue > 0 then
         local q = CLN.questsQueue[1]
@@ -285,6 +306,7 @@ function ReplayFrame:UpdateCompactBadge(force)
         -- Show animated progress line
         if badge.ProgressLine then
             badge.ProgressLine:Show()
+            badge._progressLastUpdate = nil
             if badge._progressOnUpdate then
                 badge:SetScript("OnUpdate", badge._progressOnUpdate)
             end
@@ -308,4 +330,3 @@ function ReplayFrame:UpdateCompactBadge(force)
         badge:SetScript("OnUpdate", nil)
     end
 end
-

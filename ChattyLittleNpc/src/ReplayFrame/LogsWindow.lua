@@ -13,13 +13,13 @@ local LW = ReplayFrame.LogsWindow
 
 -- Severity constants (matching Logger.Level)
 local SEV = { ERROR = 0, WARN = 1, INFO = 2, DEBUG = 3 }
-local SEV_NAMES = { [0] = "ERROR", [1] = "WARN", [2] = "INFO", [3] = "DEBUG" }
 local SEV_COLORS = {
     [0] = "|cffff5555",
     [1] = "|cffffff55",
     [2] = "|cffcccccc",
     [3] = "|cff87CEEb",
 }
+local SEV_LETTERS = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
 
 -- Table view constants
 local TABLE_ROW_HEIGHT = 16
@@ -165,7 +165,15 @@ local function ensureHook()
             end
         end
     end
-    -- Hook global print to capture instrumentation
+    -- Hook global print — deferred until log window is first shown
+    -- (see ShowLogsWindow / HideLogsWindow below for install/restore)
+end
+
+local _printHookInstalled = false
+
+local function installPrintHook()
+    if _printHookInstalled then return end
+    _printHookInstalled = true
     if not _G.__CLN_ORIG_PRINT then
         _G.__CLN_ORIG_PRINT = _G.print
         _G.print = function(...)
@@ -176,6 +184,15 @@ local function ensureHook()
             if _G.__CLN_ORIG_PRINT then _G.__CLN_ORIG_PRINT(...) end
             return
         end
+    end
+end
+
+local function uninstallPrintHook()
+    if not _printHookInstalled then return end
+    _printHookInstalled = false
+    if _G.__CLN_ORIG_PRINT then
+        _G.print = _G.__CLN_ORIG_PRINT
+        _G.__CLN_ORIG_PRINT = nil
     end
 end
 
@@ -316,7 +333,6 @@ end
 function LW:_FormatLines()
     local out = {}
     local count = 0
-    local sevLetters = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
     for i = 1, #CLN._AnimLogBuffer.lines do
         local L = CLN._AnimLogBuffer.lines[i]
         if L.mark then
@@ -327,7 +343,7 @@ function LW:_FormatLines()
         elseif lineMatchesFilters(L) then
             count = count + 1
             local sevColor = SEV_COLORS[L.lvl] or "|cffcccccc"
-            local sevLetter = sevLetters[L.lvl] or "I"
+            local sevLetter = SEV_LETTERS[L.lvl] or "I"
             local timeStr = self._showTime ~= false and ("|cff999999" .. fmtTime(L.t) .. "|r ") or ""
             local sevTag = sevColor .. sevLetter .. "|r "
             -- Build [source:category] or [source] tag
@@ -341,7 +357,7 @@ function LW:_FormatLines()
             else
                 tag = "|cff888888[" .. src .. "]|r "
             end
-            local sess = L.s and ("|cff666666sess:" .. tostring(L.s) .. "|r ") or ""
+            local sess = L.s and ("|cff888888sess:" .. tostring(L.s) .. "|r ") or ""
             out[#out + 1] = timeStr .. sevTag .. tag .. sess .. tostring(L.m)
         end
     end
@@ -365,6 +381,7 @@ function LW:_RefreshTable()
     if not rows or not self._tableRowContainer then return end
     local filtered = self:_GetFilteredLines()
     local totalLines = #filtered
+    self._lastFilteredCount = totalLines
     -- Calculate visible rows from container height
     local containerH = self._tableRowContainer:GetHeight()
     local visibleRows = math.max(1, math.floor(containerH / TABLE_ROW_HEIGHT))
@@ -378,7 +395,6 @@ function LW:_RefreshTable()
     if (self._tableScrollOffset or 0) > maxOffset then self._tableScrollOffset = maxOffset end
     if (self._tableScrollOffset or 0) < 0 then self._tableScrollOffset = 0 end
     local offset = self._tableScrollOffset or 0
-    local sevLetters = { [0] = "E", [1] = "W", [2] = "I", [3] = "D" }
     for i = 1, #rows do
         local row = rows[i]
         local dataIdx = offset + i
@@ -395,7 +411,7 @@ function LW:_RefreshTable()
                 for j = 1, #row.cols do row.cols[j]:Show() end
                 row.cols[1]:SetText("|cff999999" .. fmtTime(L.t) .. "|r")
                 local sevColor = SEV_COLORS[L.lvl] or "|cffcccccc"
-                row.cols[2]:SetText(sevColor .. (sevLetters[L.lvl] or "I") .. "|r")
+                row.cols[2]:SetText(sevColor .. (SEV_LETTERS[L.lvl] or "I") .. "|r")
                 row.cols[3]:SetText("|cff888888" .. (L.r or "") .. "|r")
                 row.cols[4]:SetText("|cff888888" .. (L.c or "") .. "|r")
                 row.cols[5]:SetText(tostring(L.m))
@@ -424,13 +440,27 @@ function LW:_Refresh(force)
     self._lastRefresh = t
     local curVer = CLN._AnimLogBuffer.version or 0
     if self._lastBufVersion == curVer then return end
-    self._lastBufVersion = curVer
     -- Branch on view mode
     if self._viewMode == "table" then
+        self._lastBufVersion = curVer
         self:_RefreshTable()
     else
         if not self._edit then return end
+        -- When scroll-paused and not forced (e.g. filter change), skip the
+        -- text update entirely.  Calling SetText() on a multiline EditBox
+        -- inside a ScrollFrame causes WoW to scroll to the cursor (pos 0 =
+        -- top), which fights the user's scroll position.  Leaving
+        -- _lastBufVersion stale ensures we catch up as soon as the user
+        -- scrolls back to the bottom and _scrollPaused clears.
+        if self._scrollPaused and not force then
+            return
+        end
+        self._lastBufVersion = curVer
         local txt, count = self:_FormatLines()
+        -- Save scroll position before SetText for forced refresh while paused
+        if self._scrollPaused and self._scrollFrame then
+            self._restoreScrollPos = self._scrollFrame:GetVerticalScroll()
+        end
         self._edit:SetText(txt)
         if self._lineCountLabel then
             self._lineCountLabel:SetText(count .. " / " .. #CLN._AnimLogBuffer.lines .. " lines")
@@ -800,8 +830,21 @@ function LW:Create()
     exportBtn:SetSize(80, 20)
     exportBtn:SetPoint("RIGHT", presets, "RIGHT", 0, 0)
     exportBtn:SetText("Export JSON")
+    exportBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("Dump the filtered log as JSON into the text box for copying.")
+        GameTooltip:Show()
+    end)
+    exportBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     exportBtn:SetScript("OnClick", function()
         if not LW._edit then return end
+        if LW._viewMode == "table" then
+            LW._viewMode = "text"
+            if LW._viewToggleBtn then LW._viewToggleBtn:SetText("Table") end
+            if LW._tableContainer then LW._tableContainer:Hide() end
+            if LW._tableNewEntriesBtn then LW._tableNewEntriesBtn:Hide() end
+            if LW._scrollFrame then LW._scrollFrame:Show() end
+        end
         local function esc(s)
             s = tostring(s)
             s = s:gsub('\\', '\\\\'):gsub('"', '\\"'):gsub('\n', '\\n'):gsub('\r', '\\r')
@@ -854,6 +897,32 @@ function LW:Create()
     sf:SetScrollChild(eb)
     LW._edit = eb
     LW._scrollFrame = sf
+    -- HookScript (not SetScript!) so UIPanelScrollFrameTemplate's built-in
+    -- handler runs first — it calls scrollbar:SetMinMaxValues which is
+    -- required for mousewheel and scrollbar-thumb scrolling to work.
+    sf:HookScript("OnScrollRangeChanged", function(self, _, yRange)
+        if LW._restoreScrollPos then
+            local pos = LW._restoreScrollPos
+            LW._restoreScrollPos = nil
+            local scrollTo = math.min(pos, yRange or 0)
+            self:SetVerticalScroll(scrollTo)
+            if self.ScrollBar then self.ScrollBar:SetValue(scrollTo) end
+        elseif LW._autoScroll ~= false and not LW._scrollPaused and yRange then
+            -- Guard against race: only snap to bottom if user was already
+            -- near the bottom before this range change.
+            local curScroll = self:GetVerticalScroll()
+            local prevRange = LW._prevScrollRange or 0
+            local wasAtBottom = prevRange <= 1 or curScroll >= (prevRange - 2)
+            if wasAtBottom then
+                self:SetVerticalScroll(yRange)
+                if self.ScrollBar then self.ScrollBar:SetValue(yRange) end
+            else
+                LW._scrollPaused = true
+                LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
+            end
+        end
+        LW._prevScrollRange = yRange
+    end)
 
     -- "New entries" indicator (shown when scroll-paused)
     local newBtn = CreateFrame("Button", nil, right, "UIPanelButtonTemplate")
@@ -864,6 +933,7 @@ function LW:Create()
     newBtn:Hide()
     newBtn:SetScript("OnClick", function()
         LW._scrollPaused = false
+        LW._prevScrollRange = 0
         if LW._scrollFrame then
             local maxRange = LW._scrollFrame:GetVerticalScrollRange()
             LW._scrollFrame:SetVerticalScroll(maxRange)
@@ -904,15 +974,31 @@ function LW:Create()
     local tRows = CreateFrame("Frame", nil, tc)
     tRows:SetPoint("TOPLEFT", tHeader, "BOTTOMLEFT", 0, -2)
     tRows:SetPoint("BOTTOMRIGHT", tc, "BOTTOMRIGHT", -20, 0)
-    tRows:EnableMouseWheel(true)
-    tRows:SetScript("OnMouseWheel", function(_, delta)
-        LW._tableScrollOffset = math.max(0, (LW._tableScrollOffset or 0) - delta * 3)
-        if LW._auto and LW._autoScroll ~= false then
-            LW._scrollPaused = true
-            LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
+
+    -- Shared scroll handler — called by tRows AND each row button
+    local function handleTableScroll(delta)
+        local filtered = LW:_GetFilteredLines()
+        local containerH = LW._tableRowContainer and LW._tableRowContainer:GetHeight() or 0
+        local visibleRows = math.max(1, math.floor(containerH / TABLE_ROW_HEIGHT))
+        local maxOffset = math.max(0, #filtered - visibleRows)
+        local nextOffset = (LW._tableScrollOffset or 0) - delta * 3
+        LW._tableScrollOffset = math.max(0, math.min(nextOffset, maxOffset))
+        if LW._autoScroll ~= false then
+            -- Auto-resume when user scrolls back to the bottom
+            if LW._tableScrollOffset >= maxOffset then
+                LW._scrollPaused = false
+            else
+                LW._scrollPaused = true
+                LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
+            end
         end
-        LW._lastBufVersion = nil; LW:_RefreshTable()
-    end)
+        LW:_RefreshTable()
+        -- Set version to prevent redundant re-render from OnUpdate
+        LW._lastBufVersion = CLN._AnimLogBuffer.version or 0
+    end
+
+    tRows:EnableMouseWheel(true)
+    tRows:SetScript("OnMouseWheel", function(_, delta) handleTableScroll(delta) end)
     LW._tableRowContainer = tRows
     LW._tableScrollOffset = 0
 
@@ -923,6 +1009,9 @@ function LW:Create()
         r:SetHeight(TABLE_ROW_HEIGHT)
         r:SetPoint("TOPLEFT", tRows, "TOPLEFT", 0, -(i - 1) * TABLE_ROW_HEIGHT)
         r:SetPoint("RIGHT", tRows, "RIGHT", 0, 0)
+        r:RegisterForClicks("LeftButtonUp")
+        r:EnableMouseWheel(true)
+        r:SetScript("OnMouseWheel", function(_, delta) handleTableScroll(delta) end)
         r.bg = r:CreateTexture(nil, "BACKGROUND")
         r.bg:SetAllPoints()
         r.bg:SetColorTexture(1, 1, 1, (i % 2 == 0) and 0.03 or 0)
@@ -957,24 +1046,62 @@ function LW:Create()
             if self._lineData and not self._lineData.mark then
                 GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
                 GameTooltip:SetText(tostring(self._lineData.m), 1, 1, 1, 1, true)
+                GameTooltip:AddLine(" ")
+                GameTooltip:AddLine("Click to copy this message.", 0.8, 0.8, 0.8, true)
                 GameTooltip:Show()
             end
         end)
         r:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        r:SetScript("OnClick", function(self)
+            if not self._lineData or self._lineData.mark or not LW._edit then return end
+            if LW._viewMode == "table" then
+                LW._viewMode = "text"
+                if LW._viewToggleBtn then LW._viewToggleBtn:SetText("Table") end
+                if LW._tableContainer then LW._tableContainer:Hide() end
+                if LW._tableNewEntriesBtn then LW._tableNewEntriesBtn:Hide() end
+                if LW._scrollFrame then LW._scrollFrame:Show() end
+            end
+            LW._edit:SetText(tostring(self._lineData.m))
+            LW._edit:HighlightText(0, -1)
+            LW._edit:SetFocus()
+        end)
         LW._tableRows[i] = r
     end
+
+    -- Table-view "new entries" indicator (anchored to table container)
+    local tableNewBtn = CreateFrame("Button", nil, right, "UIPanelButtonTemplate")
+    tableNewBtn:SetSize(110, 20)
+    tableNewBtn:SetPoint("BOTTOM", tc, "BOTTOM", 0, 4)
+    tableNewBtn:SetFrameLevel(right:GetFrameLevel() + 5)
+    tableNewBtn:SetText("0 new")
+    tableNewBtn:Hide()
+    tableNewBtn:SetScript("OnClick", function()
+        LW._scrollPaused = false
+        LW._lastBufVersion = nil
+        LW:_RefreshTable()
+    end)
+    LW._tableNewEntriesBtn = tableNewBtn
 
     -- View toggle button (in presets row, after None)
     local viewToggle = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
     viewToggle:SetSize(50, 20)
     viewToggle:SetPoint("LEFT", bNone, "RIGHT", 8, 0)
     viewToggle:SetText("Table")
+    viewToggle:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:SetText("Switch between text and table view.")
+        GameTooltip:Show()
+    end)
+    viewToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
     viewToggle:SetScript("OnClick", function()
+        LW._scrollPaused = false
+        LW._prevScrollRange = 0
         if LW._viewMode == "table" then
             LW._viewMode = "text"
             viewToggle:SetText("Table")
             sf:Show()
             tc:Hide()
+            if LW._tableNewEntriesBtn then LW._tableNewEntriesBtn:Hide() end
             LW._lastBufVersion = nil; LW:_Refresh(true)
         else
             LW._viewMode = "table"
@@ -985,6 +1112,7 @@ function LW:Create()
             LW._lastBufVersion = nil; LW:_Refresh(true)
         end
     end)
+    LW._viewToggleBtn = viewToggle
 
     right:SetScript("OnSizeChanged", function()
         if LW._edit and right:GetWidth() then
@@ -1007,7 +1135,21 @@ function LW:Create()
     copyBtn:SetSize(70, 22)
     copyBtn:SetPoint("LEFT", row, "LEFT", 0, 0)
     copyBtn:SetText("Copy All")
+    copyBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Select everything in the text box for Ctrl+C.")
+        GameTooltip:Show()
+    end)
+    copyBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     copyBtn:SetScript("OnClick", function()
+        if LW._viewMode == "table" then
+            LW._viewMode = "text"
+            if LW._viewToggleBtn then LW._viewToggleBtn:SetText("Table") end
+            if LW._tableContainer then LW._tableContainer:Hide() end
+            if LW._tableNewEntriesBtn then LW._tableNewEntriesBtn:Hide() end
+            if LW._scrollFrame then LW._scrollFrame:Show() end
+            LW._lastBufVersion = nil; LW:_Refresh(true)
+        end
         if LW._edit then LW._edit:HighlightText(0, -1); LW._edit:SetFocus() end
     end)
 
@@ -1015,7 +1157,20 @@ function LW:Create()
     copyVisBtn:SetSize(76, 22)
     copyVisBtn:SetPoint("LEFT", copyBtn, "RIGHT", 4, 0)
     copyVisBtn:SetText("Copy Vis")
+    copyVisBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Render filtered log into the text box and select it for Ctrl+C.")
+        GameTooltip:Show()
+    end)
+    copyVisBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     copyVisBtn:SetScript("OnClick", function()
+        if LW._viewMode == "table" then
+            LW._viewMode = "text"
+            if LW._viewToggleBtn then LW._viewToggleBtn:SetText("Table") end
+            if LW._tableContainer then LW._tableContainer:Hide() end
+            if LW._tableNewEntriesBtn then LW._tableNewEntriesBtn:Hide() end
+            if LW._scrollFrame then LW._scrollFrame:Show() end
+        end
         if LW._edit then
             local txt = LW:_FormatLines()
             LW._edit:SetText(txt)
@@ -1033,6 +1188,7 @@ function LW:Create()
     pauseChk:SetScript("OnClick", function(self)
         LW._auto = not self:GetChecked()
         LW._scrollPaused = false
+        LW._prevScrollRange = 0
         if LW._auto then LW._lastBufVersion = nil; LW:_Refresh() end
     end)
 
@@ -1063,14 +1219,16 @@ function LW:Create()
     f:SetScript("OnShow", function()
         LW._auto = (LW._auto ~= false)
         LW._scrollPaused = false
+        LW._prevScrollRange = 0
         LW:_RebuildCategoryList()
         LW._lastBufVersion = nil
         LW:_Refresh()
     end)
     f:SetScript("OnUpdate", function()
         if not f:IsShown() then return end
-        -- Detect scroll-up: auto-pause when user scrolls away from bottom
-        if LW._auto and LW._autoScroll ~= false and LW._scrollFrame then
+        -- Detect scroll-up: auto-pause when user scrolls away from bottom (text view only;
+        -- table view manages _scrollPaused via its own OnMouseWheel handler)
+        if LW._viewMode ~= "table" and LW._auto and LW._autoScroll ~= false and LW._scrollFrame then
             local maxRange = LW._scrollFrame:GetVerticalScrollRange()
             local curScroll = LW._scrollFrame:GetVerticalScroll()
             local atBottom = maxRange <= 1 or curScroll >= (maxRange - 2)
@@ -1081,9 +1239,19 @@ function LW:Create()
                 LW._scrollPausedVersion = CLN._AnimLogBuffer.version or 0
             end
         end
-        -- Update "new entries" indicator
+        -- Table view: auto-resume when user has scrolled back to the bottom
+        if LW._viewMode == "table" and LW._auto and LW._autoScroll ~= false and LW._scrollPaused and LW._tableRowContainer then
+            local filtered = LW._lastFilteredCount or 0
+            local containerH = LW._tableRowContainer:GetHeight()
+            local visibleRows = math.max(1, math.floor(containerH / TABLE_ROW_HEIGHT))
+            local maxOffset = math.max(0, filtered - visibleRows)
+            if (LW._tableScrollOffset or 0) >= maxOffset then
+                LW._scrollPaused = false
+            end
+        end
+        -- Update "new entries" indicator (text view only — button is anchored to text ScrollFrame)
         if LW._newEntriesBtn then
-            if LW._scrollPaused and LW._auto then
+            if LW._viewMode ~= "table" and LW._scrollPaused and LW._auto then
                 local newCount = (CLN._AnimLogBuffer.version or 0) - (LW._scrollPausedVersion or 0)
                 if newCount > 0 then
                     LW._newEntriesBtn:SetText(newCount .. " new")
@@ -1095,6 +1263,20 @@ function LW:Create()
                 LW._newEntriesBtn:Hide()
             end
         end
+        -- Update "new entries" indicator for table view
+        if LW._tableNewEntriesBtn then
+            if LW._viewMode == "table" and LW._scrollPaused and LW._auto then
+                local newCount = (CLN._AnimLogBuffer.version or 0) - (LW._scrollPausedVersion or 0)
+                if newCount > 0 then
+                    LW._tableNewEntriesBtn:SetText(newCount .. " new")
+                    LW._tableNewEntriesBtn:Show()
+                else
+                    LW._tableNewEntriesBtn:Hide()
+                end
+            else
+                LW._tableNewEntriesBtn:Hide()
+            end
+        end
         if LW._auto then LW:_Refresh() end
     end)
 
@@ -1104,11 +1286,13 @@ end
 
 function LW:Show()
     local f = self:Create()
+    installPrintHook()
     f:Show()
 end
 
 function LW:Hide()
     if self._frame then self._frame:Hide() end
+    uninstallPrintHook()
 end
 
 -- Slash commands

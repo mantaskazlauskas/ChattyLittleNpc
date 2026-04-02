@@ -38,7 +38,6 @@ function ReplayFrame:SaveFramePosition()
         local isCollapsed = (self.CollapseButton and self.CollapseButton._collapsed)
             or self._combatAutoCollapsed
             or self._animatingCollapse
-            or (self.DisplayFrame._animatingCollapse)
         if isCollapsed then
             -- Use the pre-collapse height (or profile default) instead of the tiny current height
             h = self._preCollapseHeight
@@ -224,7 +223,7 @@ end
 function ReplayFrame:SaveSizeForActiveLayout()
     if not self.DisplayFrame then return end
     -- Skip saving during collapse to avoid persisting collapsed dimensions
-    if self._combatAutoCollapsed or self._animatingCollapse or self.DisplayFrame._animatingCollapse then return end
+    if self._combatAutoCollapsed or self._animatingCollapse then return end
     local w, h = self.DisplayFrame:GetSize()
     if self:IsCompactModeEnabled() then
         CLN.db.profile.compactWidth = w

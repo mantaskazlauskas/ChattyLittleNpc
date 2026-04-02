@@ -220,35 +220,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         if CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
                     end
                 elseif button == "LeftButton" and e.queueIndex then
-                    local qi = e.queueIndex
-                    -- Push items before clicked index to history so they aren't silently lost
-                    -- Remove in reverse to avoid index shifting
-                    for i = qi - 1, 1, -1 do
-                        local skipped = CLN.questsQueue[i]
-                        if skipped and CLN.VoiceoverPlayer then
-                            CLN.VoiceoverPlayer:PushToHistory(skipped)
-                        end
-                        table.remove(CLN.questsQueue, i)
-                    end
-                    if this.MarkQueueDirty then this:MarkQueueDirty() end
-                    -- Play the clicked item (now at index 1); PlayQuestSound handles
-                    -- queue removal on success and leaves remaining items intact on failure.
-                    local first = CLN.questsQueue[1]
-                    if first and first.questId and first.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                        if CLN.Logger then
-                            CLN.Logger:debug("ReplayFrame queue manual play: " .. tostring(first.questId) .. " (" .. tostring(first.phase) .. ")", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                        end
-                        CLN.VoiceoverPlayer:PlayQuestSound(first.questId, first.phase, first.npcId, first.displayID)
-                    elseif first and first.npcId and first.title and first.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
-                        table.remove(CLN.questsQueue, 1)
-                        if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        CLN.VoiceoverPlayer:PlayNonQuestSound(first.npcId, first.entryType, first.title, first.gender, first.displayID)
-                    else
-                        if CLN.Logger then
-                            CLN.Logger:warn("Skipped queued entry (missing data or player)", false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
-                        end
-                        table.remove(CLN.questsQueue, 1)
-                        if this.MarkQueueDirty then this:MarkQueueDirty() end
+                    -- Delegate to player: drops items before target, then plays it
+                    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQueuedItemAtIndex then
+                        CLN.VoiceoverPlayer:PlayQueuedItemAtIndex(e.queueIndex)
                     end
                 elseif button == "LeftButton" and e.isHistory then
                     if InCombatLockdown and InCombatLockdown() then return end
@@ -274,9 +248,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         end
                     end
                     if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
-                        CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID)
+                        CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID, e.gender, e.creatureType)
                     elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
-                        CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender, e.displayID)
+                        CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender, e.displayID, e.creatureType, { skipCooldown = true })
                     end
                     if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
                 end

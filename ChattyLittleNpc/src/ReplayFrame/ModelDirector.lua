@@ -83,7 +83,6 @@ function Director:LooksLikeGreeting(msg)
             local firstWords = firstPart:match("^(%S+%s+%S+%s+%S+)") or firstPart
             local hasCommonGreetingWords = string.find(firstWords, "welcome") or 
                                          string.find(firstWords, "%f[%a]come%f[%A]") or
-                                         string.find(firstWords, "seek") or
                                          string.find(firstWords, "need") or
                                          string.find(firstWords, "help")
             if CLN.Utils and CLN.Utils.LogAnimDebug then 
@@ -117,10 +116,20 @@ local function pruneStaleEntries(tbl, ttl)
 end
 
 local function getWaveKey()
-    -- prefer GUID if available, otherwise npcId from playback
+    -- Always normalize to npcId so the same NPC uses a consistent key
+    -- regardless of whether UnitGUID("npc") is available at call time.
+    -- pcall-protect UnitGUID + comparisons/strsplit against secret values (WoW 12.0+).
     if UnitGUID then
-        local guid = UnitGUID("npc") or UnitGUID("target")
-        if guid and guid ~= "" then return guid end
+        local ok, key = pcall(function()
+            local guid = UnitGUID("npc") or UnitGUID("target")
+            if guid and guid ~= "" then
+                local npcId = select(6, strsplit("-", guid))
+                if npcId and npcId ~= "" then return npcId end
+                return guid
+            end
+            return nil
+        end)
+        if ok and key then return key end
     end
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId then return tostring(cur.npcId) end
