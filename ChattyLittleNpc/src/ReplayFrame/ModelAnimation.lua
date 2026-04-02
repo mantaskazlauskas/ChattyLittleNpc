@@ -31,29 +31,38 @@ local function ensureAnimTable(self)
 end
 
 function ReplayFrame:BreathingCameraUpdate(elapsed)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         return
     end
     if not elapsed or elapsed <= 0 then return end
     ensureAnimTable(self)
+    local B = self.Config and self.Config.Breathing
+    -- Phase always advances so the sine wave stays time-accurate
     self._breathPhase = (self._breathPhase or 0) + elapsed
     if #self._anims > 0 then
         self._breathBaseZoom = nil
         self._breathBaseZ = nil
         self._breathLastAppliedZoom = nil
         self._breathLastAppliedZ = nil
+        self._breathThrottleAccum = nil
         return
     end
+
+    -- Throttle expensive work (trait lookup, sin, pcalls) to ~30 Hz
+    local thr = self.Config and self.Config.Throttle
+    self._breathThrottleAccum = (self._breathThrottleAccum or 0) + elapsed
+    if self._breathThrottleAccum < (thr and thr.breathingInterval or 0.033) then return end
+    self._breathThrottleAccum = 0
 
     local m = self.NpcModelFrame
     if not m then return end
 
     local traits = self.GetPersonalityTraits and self:GetPersonalityTraits() or { energy = 0.5, driftAmplitudeScale = 1 }
-    local energyScale = 0.5 + (tonumber(traits.energy) or 0.5)
+    local energyScale = (B and B.energyBase or 0.5) + (tonumber(traits.energy) or 0.5)
     local driftScale = tonumber(traits.driftAmplitudeScale) or 1
-    local ampScale = math.max(0.5, math.min(1.5, energyScale * driftScale))
-    local period = 6 - ((tonumber(traits.energy) or 0.5) * 2)
-    period = math.max(4, math.min(6, period))
+    local ampScale = math.max(B and B.ampClampMin or 0.5, math.min(B and B.ampClampMax or 1.5, energyScale * driftScale))
+    local period = (B and B.periodBase or 6) - ((tonumber(traits.energy) or 0.5) * (B and B.periodEnergyScale or 2))
+    period = math.max(B and B.periodClampMin or 4, math.min(B and B.periodClampMax or 6, period))
     local omega = (math.pi * 2) / period
 
     local liveZoom
@@ -62,7 +71,7 @@ function ReplayFrame:BreathingCameraUpdate(elapsed)
         if ok and type(z) == "number" then liveZoom = z end
     end
     if self._breathBaseZoom == nil then
-        self._breathBaseZoom = liveZoom or self._currentZoom or 0.65
+        self._breathBaseZoom = liveZoom or self._currentZoom or (self.Config and self.Config.DEFAULT_ZOOM or 0.65)
     elseif liveZoom ~= nil and self._breathLastAppliedZoom ~= nil and not approxEqual(liveZoom, self._breathLastAppliedZoom) then
         self._breathBaseZoom = liveZoom
     end
@@ -79,9 +88,9 @@ function ReplayFrame:BreathingCameraUpdate(elapsed)
     end
 
     local phase = self._breathPhase
-    local zoomOffset = math.sin(phase * omega) * 0.004 * ampScale
-    local panOffset = math.sin((phase * omega) + 1.2) * 0.002 * ampScale
-    local targetZoom = applyClamp((self._breathBaseZoom or 0.65) + zoomOffset, 0, 1.5)
+    local zoomOffset = math.sin(phase * omega) * (B and B.zoomAmplitude or 0.004) * ampScale
+    local panOffset = math.sin((phase * omega) + (B and B.panPhaseOffset or 1.2)) * (B and B.panAmplitude or 0.002) * ampScale
+    local targetZoom = applyClamp((self._breathBaseZoom or (self.Config and self.Config.DEFAULT_ZOOM or 0.65)) + zoomOffset, 0, 1.5)
     local targetZ = (self._breathBaseZ or 0) + panOffset
 
     if m.SetPortraitZoom then pcall(m.SetPortraitZoom, m, targetZoom) end
@@ -94,7 +103,7 @@ end
 
 -- Public: stop all animations of a given kind ("zoom"|"pan")
 function ReplayFrame:AnimStop(kind)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         -- Ensure updater detaches since nothing should animate
         if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
         return
@@ -110,7 +119,7 @@ end
 
 -- Internal: start a generic animation
 function ReplayFrame:_AnimStart(kind, from, to, duration, opts)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "_AnimStart skipped due to debug no-op: " .. tostring(kind))
         end
@@ -145,19 +154,20 @@ end
 
 -- Public: animate zoom to target in [0..1.5]
 function ReplayFrame:AnimZoomTo(target, duration, opts)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimZoomTo skipped due to debug no-op")
         end
         return nil
     end
+    local Cam = self.Config and self.Config.Camera
     local m = self.NpcModelFrame
-    local from = self._currentZoom or 0.65
+    local from = self._currentZoom or (self.Config and self.Config.DEFAULT_ZOOM or 0.65)
     if m and m.GetPortraitZoom then
         local ok, z = pcall(m.GetPortraitZoom, m)
         if ok and type(z) == "number" then from = z end
     end
-    target = applyClamp(target or 0.65, 0, 1.5)
+    target = applyClamp(target or (self.Config and self.Config.DEFAULT_ZOOM or 0.65), 0, 1.5)
     
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimZoomTo: from=" .. tostring(from) .. " to=" .. tostring(target) .. " dur=" .. tostring(duration or 0.5))
@@ -173,12 +183,12 @@ function ReplayFrame:AnimZoomTo(target, duration, opts)
     end
 
     self:AnimStop("zoom")
-    return self:_AnimStart("zoom", from, target, duration or 0.5, opts)
+    return self:_AnimStart("zoom", from, target, duration or (Cam and Cam.defaultZoomDur or 0.5), opts)
 end
 
 -- Public: animate vertical pan (Z) to target
 function ReplayFrame:AnimPanTo(targetZ, duration, opts)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimPanTo skipped due to debug no-op")
         end
@@ -207,12 +217,12 @@ function ReplayFrame:AnimPanTo(targetZ, duration, opts)
     end
 
     self:AnimStop("pan")
-    return self:_AnimStart("pan", fromZ, targetZ, duration or 0.25, opts)
+    return self:_AnimStart("pan", fromZ, targetZ, duration or (self.Config and self.Config.Camera and self.Config.Camera.defaultPanDur or 0.25), opts)
 end
 
 -- Public: update all running animations; called each OnUpdate
 function ReplayFrame:AnimUpdate(elapsed)
-    if (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations) or (self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled()) then
+    if self:_CameraAnimsDisabled() then
         -- Ensure updater detaches
         if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
         return

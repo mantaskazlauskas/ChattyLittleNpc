@@ -16,9 +16,10 @@ function ReplayFrame:_EmitEmoteEvent(event, payload)
     if CLN and CLN.SendMessage then
         pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
     end
-    -- Local listeners on this frame
+    -- Local listeners on this frame (snapshot to avoid mutation during iteration)
     if self._emoteEventHandlers and self._emoteEventHandlers[ev] then
-        for _, fn in ipairs(self._emoteEventHandlers[ev]) do
+        local snapshot = {unpack(self._emoteEventHandlers[ev])}
+        for _, fn in ipairs(snapshot) do
             pcall(fn, payload, self)
         end
     end
@@ -61,23 +62,104 @@ function ReplayFrame:OnceEmote(event, fn)
     return self:OnEmote(event, wrapper)
 end
 
--- Global camera default (kept consistent across modules)
+-- Global animation/timing constants (kept consistent across modules)
 ReplayFrame.Config = ReplayFrame.Config or {
     DEFAULT_ZOOM = 0.65,
-    Camera = { },
+
+    Collapse = {
+        collapsedHeight   = 56,
+        duration          = 0.18,
+        badgeScaleStart   = 0.90,
+    },
+
+    Breathing = {
+        zoomAmplitude     = 0.004,
+        panAmplitude      = 0.002,
+        panPhaseOffset    = 1.2,
+        energyBase        = 0.5,
+        ampClampMin       = 0.5,
+        ampClampMax       = 1.5,
+        periodBase        = 6,
+        periodEnergyScale = 2,
+        periodClampMin    = 4,
+        periodClampMax    = 6,
+    },
+
+    Camera = {
+        defaultZoomDur    = 0.5,
+        defaultPanDur     = 0.25,
+        defaultStepZoomDur = 0.4,
+        defaultStepPanDur = 0.25,
+    },
+
     Timings = {
         recentlyStartedWindow = 0.6,
-        stopHideDelay = 0.6,
-        waveLateStart = 2.0,
-    waveAfterModelVisible = 1.2, -- extra grace to allow waving shortly after model shows
-    oneShotWatchTimeout = 2.0, -- fallback timeout for non-looping emote watcher
+        stopHideDelay         = 0.6,
+        waveLateStart         = 2.0,
+        waveAfterModelVisible = 1.2,
+        oneShotWatchTimeout   = 2.0,
+        fsmStartDebounce      = 0.5,
+        fsmStopDebounce       = 0.3,
+        idlePokeInterval      = 4.0,
+        talkPokeInterval      = 1.2,
+        animDecisionDebounce  = 0.2,
     },
+
+    Emotes = {
+        waveDuration      = 1.5,
+        waveZoom          = 0.3,
+        waveOutDur        = 0.2,
+        waveZoomBackDur   = 0.5,
+        bowDuration       = 1.8,
+        pointDuration     = 1.2,
+        nodDuration       = 0.9,
+        headShakeDuration = 1.1,
+    },
+
+    Residue = {
+        durationMin       = 1.5,
+        durationRange     = 1.0,
+        sadZoomDrift      = 0.03,
+        neutralZoomDrift  = 0.02,
+    },
+
     Loop = {
-    talkChance = 0.97,
-    talkMin = 3.5,
-    talkMax = 7.5,
-    idleMin = 0.15,
-    idleMax = 0.35,
+        talkChance        = 0.97,
+        talkMin           = 3.5,
+        talkMax           = 7.5,
+        idleMin           = 0.15,
+        idleMax           = 0.35,
+        pointChance       = 0.05,
+        emphasisThreshold = 0.3,
+        fidgetMinDur      = 0.6,
+        minSegmentDur     = 0.15,
+    },
+
+    Subtitle = {
+        sentenceDurMin        = 1.5,
+        sentenceDurMax        = 5.0,
+        perCharCoeff          = 0.07,
+        durationMultiplier    = 1.2,
+        firstSentenceDelay    = 0.3,
+        lastSentencePause     = 2.0,
+        recapDuration         = 1.5,
+        readingDurMin         = 1.0,
+        combatSpeedMult       = 0.7,
+    },
+
+    Fade = {
+        frameFadeIn        = 0.2,
+        frameFadeOut       = 0.25,
+        subtitleFadeIn     = 0.15,
+        subtitleFadeOut    = 0.2,
+        collapseDur        = 0.2,
+        badgeGlowPulseDur  = 0.8,
+        badgeGlowMaxAlpha  = 0.35,
+    },
+
+    Throttle = {
+        breathingInterval   = 0.033,  -- ~30 Hz
+        progressBarInterval = 0.05,   -- ~20 Hz
     },
 }
 
@@ -147,6 +229,23 @@ function ReplayFrame:CancelEmote()
     self:_EmitEmoteEvent("EMOTE_CANCELLED", { name = old })
 end
 
+-- Shared precondition for Play*Emote methods.
+-- needCamera (default true): also verifies zoom/pan helpers exist and model is shown.
+-- Returns model, normalised opts on success; nil on failure.
+function ReplayFrame:_EmotePrecondition(opts, needCamera)
+    if self:_NoAnimDebugEnabled() then return nil end
+    if self._npcIsDead then return nil end
+    local m = self.NpcModelFrame
+    if not m then return nil end
+    if needCamera ~= false then
+        local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil) or (self.ShowRangePercent ~= nil)
+        local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
+        if not (hasZoom and hasPan) then return nil end
+        if not m:IsShown() then return nil end
+    end
+    return m, opts or {}
+end
+
 -- Public: Play an emote by name
 function ReplayFrame:PlayEmote(name, opts)
     opts = opts or {}
@@ -184,7 +283,7 @@ end
 -- steps: array of { zoom?, zoomDur?, panZ?, panDur?, animId?, animName?, hold? }
 -- Note: completion is emitted via EMOTE_COMPLETE; external callbacks are deprecated.
 function ReplayFrame:_StartEmoteSequence(steps, opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then
+    if self:_NoAnimDebugEnabled() then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence skipped due to debug no-op")
         end
@@ -324,18 +423,8 @@ end
 -- Wave emote: declarative sequence of camera and animation steps
 -- Options: duration (default 1.5), waveZoom (0.3), waveOutDur (0.2), zoomBackDur (0.5), lowerDelta (0.05)
 function ReplayFrame:PlayWaveEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
-    -- Accept either absolute or percent-based animation helpers
-    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil) or (self.ShowRangePercent ~= nil)
-    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
-    if not (m and hasZoom and hasPan) then 
-        return false 
-    end
-    -- Skip entirely if the model isn't visible
-    if not m:IsShown() then
-        return false
-    end
+    local m, opts = self:_EmotePrecondition(opts, true)
+    if not m then return false end
 
     local duration = tonumber(opts.duration) or 1.5
     local waveOutDur = (opts.waveOutDur ~= nil) and opts.waveOutDur or 0.2
@@ -359,7 +448,7 @@ end
 
 -- Alias: Hello emote uses the same wave choreography with tuned defaults
 function ReplayFrame:PlayHelloEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
+    if self:_NoAnimDebugEnabled() then return false end
     opts = opts or {}
     if opts.duration == nil then opts.duration = 1.5 end
     if opts.waveZoom == nil then opts.waveZoom = 0.3 end
@@ -374,13 +463,8 @@ end
 -- Nod (YES) emote: small zoom-in and quick nod using animation id 185 (EmoteYes).
 -- Options: duration (default 0.9), zoomIn (default +0.08), lowerDelta (default 0.02)
 function ReplayFrame:PlayNodEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
-    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
-    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
-    if not (m and hasZoom and hasPan) then return false end
-    if not m:IsShown() then return false end
-    opts = opts or {}
+    local m, opts = self:_EmotePrecondition(opts, true)
+    if not m then return false end
     local duration = tonumber(opts.duration) or 0.9
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name("nod")
@@ -405,13 +489,8 @@ end
 -- Head shake (NO) emote: small zoom-in and quick head shake using animation id 186 (EmoteNo).
 -- Options: duration (default 1.1), zoomIn (default +0.08), lowerDelta (default 0.02)
 function ReplayFrame:PlayHeadShakeEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
-    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
-    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
-    if not (m and hasZoom and hasPan) then return false end
-    if not m:IsShown() then return false end
-    opts = opts or {}
+    local m, opts = self:_EmotePrecondition(opts, true)
+    if not m then return false end
     local duration = tonumber(opts.duration) or 1.1
     return (self.EmoteBuilder and self.EmoteBuilder:new()
         :name("headshake")
@@ -436,13 +515,8 @@ end
 -- Bow emote: reverential gesture using animation 66 (bow) with HasAnimation gating.
 -- Falls back to nod (185) if the model doesn't support bow.
 function ReplayFrame:PlayBowEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
-    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
-    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
-    if not (m and hasZoom and hasPan) then return false end
-    if not m:IsShown() then return false end
-    opts = opts or {}
+    local m, opts = self:_EmotePrecondition(opts, true)
+    if not m then return false end
     local duration = tonumber(opts.duration) or 1.8
 
     local A = ReplayFrame.AnimIds or {}
@@ -467,13 +541,8 @@ end
 -- Point emote: brief emphasis gesture using animation 25 (point) with HasAnimation gating.
 -- Falls back to talk-exclamation (64) if the model doesn't support point.
 function ReplayFrame:PlayPointEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
-    local hasZoom = (self.AnimZoomTo ~= nil) or (self.AnimZoomToRangePercent ~= nil)
-    local hasPan = (self.AnimPanTo ~= nil) or (self.AnimPanToPercent ~= nil)
-    if not (m and hasZoom and hasPan) then return false end
-    if not m:IsShown() then return false end
-    opts = opts or {}
+    local m, opts = self:_EmotePrecondition(opts, true)
+    if not m then return false end
     local duration = tonumber(opts.duration) or 1.2
 
     local A = ReplayFrame.AnimIds or {}
@@ -608,7 +677,7 @@ end
 -- Run the sequence on the ReplayFrame
 function ReplayFrame.EmoteBuilder:run(opts)
     local r = self.r
-    if r and r._NoAnimDebugEnabled and r:_NoAnimDebugEnabled() then
+    if r and r:_NoAnimDebugEnabled() then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run skipped due to debug no-op")
         end
@@ -652,10 +721,8 @@ end
 
 -- Simple talk emote: choose appropriate talk animation id and apply; duration controlled by caller
 function ReplayFrame:PlayTalkEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
+    local m, opts = self:_EmotePrecondition(opts, false)
     if not m then return false end
-    opts = opts or {}
     -- Percent-based camera targets for TALK: upper body
     local talkRange = { p0 = 0.50, p1 = 1.00 }
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -695,10 +762,8 @@ end
 
 -- Simple idle emote: set to stand/idle
 function ReplayFrame:PlayIdleEmote(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return false end
-    local m = self.NpcModelFrame
+    local m, opts = self:_EmotePrecondition(opts, false)
     if not m then return false end
-    opts = opts or {}
     -- Percent-based camera targets for IDLE: full body
     local idleRange = { p0 = 0.00, p1 = 1.00 }
     if m.SetSheathed then pcall(m.SetSheathed, m, true) end
@@ -707,14 +772,14 @@ function ReplayFrame:PlayIdleEmote(opts)
     if duration > 0 then
     local builder = self.EmoteBuilder and self.EmoteBuilder:new()
     if not builder then return false end
-    builder:name("idle"):preset("Idle", { duration = 0.5, panDur = 0.25 }):anim(0)
+    builder:name("idle"):preset("Idle", { duration = 0.5, panDur = 0.25 }):anim(self._naturalAnimId or 0)
         builder:hold(duration)
         local ok = builder:run() or false
         -- State writes removed; FSM owns state
         return ok
     else
         -- Direct idle animation, let system handle what comes next
-        if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
+        if self.SetModelAnim then self:SetModelAnim(self._naturalAnimId or 0) elseif m.SetAnimation then pcall(m.SetAnimation, m, self._naturalAnimId or 0) end
     -- Move camera to IDLE targets unless caller requested skip (e.g. emote loop brief pause)
     if not opts.skipCamera and self.ApplyEmotePreset then self:ApplyEmotePreset("Idle", 0.5, { panDur = 0.25, easing = "easeOutCubic" }) end
         return true
@@ -723,7 +788,8 @@ end
 
 -- Conversation emote loop: 80% talk / 20% idle by RNG
 function ReplayFrame:StartEmoteLoop(opts)
-    if self._NoAnimDebugEnabled and self:_NoAnimDebugEnabled() then return end
+    if self:_NoAnimDebugEnabled() then return end
+    if self._npcIsDead then return end
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     if not (cur and cur.soundHandle and cur.isPlaying and cur:isPlaying()) then return end
     -- Guard: don't start another loop if already active for this handle
@@ -749,11 +815,11 @@ function ReplayFrame:StartEmoteLoop(opts)
     -- Store config for the loop; use sane defaults
     opts = opts or {}
     local L = (ReplayFrame.Config and ReplayFrame.Config.Loop) or {}
-    self._loopTalkChance = tonumber(opts.talkChance or self.talkChance) or L.talkChance or 0.95
+    self._loopTalkChance = tonumber(opts.talkChance or self.talkChance) or L.talkChance or 0.97
     self._loopTalkMin = tonumber(opts.talkMinDuration or self.talkMinDuration) or L.talkMin or 3.5
-    self._loopTalkMax = tonumber(opts.talkMaxDuration or self.talkMaxDuration) or L.talkMax or 6.5
-    self._loopIdleMin = tonumber(opts.idleMinDuration or self.idleMinDuration) or L.idleMin or 0.2
-    self._loopIdleMax = tonumber(opts.idleMaxDuration or self.idleMaxDuration) or L.idleMax or 0.5
+    self._loopTalkMax = tonumber(opts.talkMaxDuration or self.talkMaxDuration) or L.talkMax or 7.5
+    self._loopIdleMin = tonumber(opts.idleMinDuration or self.idleMinDuration) or L.idleMin or 0.15
+    self._loopIdleMax = tonumber(opts.idleMaxDuration or self.idleMaxDuration) or L.idleMax or 0.35
     self._loopLastWasIdle = false
 
     -- Ensure the first segment is TALK to avoid any initial idle
@@ -774,9 +840,10 @@ end
 
 function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     if not self:_EmoteLoop_StillValid() then return end
-    local talkChance = self._loopTalkChance or 0.95
-    local talkMin, talkMax = self._loopTalkMin or 3.5, self._loopTalkMax or 6.5
-    local idleMin, idleMax = self._loopIdleMin or 0.2, self._loopIdleMax or 0.5
+    if self._npcIsDead then return end
+    local talkChance = self._loopTalkChance or 0.97
+    local talkMin, talkMax = self._loopTalkMin or 3.5, self._loopTalkMax or 7.5
+    local idleMin, idleMax = self._loopIdleMin or 0.15, self._loopIdleMax or 0.35
     local nowT = now or (GetTime and GetTime() or 0)
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local traits = self.GetPersonalityTraits and self:GetPersonalityTraits(cur and cur.npcId) or { playful = 0.5, energy = 0.5, idleVarianceScale = 1, talkEnergyScale = 1 }
@@ -871,7 +938,7 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
                         end
                     end })
                 end
-                if self.SetModelAnim then self:SetModelAnim(0) end
+                if self.SetModelAnim then self:SetModelAnim(self._naturalAnimId or 0) end
                 dur = math.max(dur, 0.7)
                 self._emoteSegType = "fidget_lean"
             end
@@ -899,7 +966,7 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
             end
             if self.SetModelAnim then self:SetModelAnim(talkId) elseif m.SetAnimation then pcall(m.SetAnimation, m, talkId) end
         else
-            if self.SetModelAnim then self:SetModelAnim(0) elseif m.SetAnimation then pcall(m.SetAnimation, m, 0) end
+            if self.SetModelAnim then self:SetModelAnim(self._naturalAnimId or 0) elseif m.SetAnimation then pcall(m.SetAnimation, m, self._naturalAnimId or 0) end
         end
     end
     -- Schedule next segment via timer

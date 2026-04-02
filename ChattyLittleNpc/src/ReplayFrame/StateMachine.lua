@@ -97,7 +97,12 @@ function ReplayFrame:InitStateMachine()
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "hello" then return end
                     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                    local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
+                    if isAudioPlaying then
+                        if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
+                            self._fsm.lastHandle = cur.soundHandle
+                            self._fsm.lastMsg = cur.title
+                        end
                         self:_fsm_enter(S.TALK)
                     else
                         self:_fsm_enter(S.IDLE)
@@ -117,7 +122,12 @@ function ReplayFrame:InitStateMachine()
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "bow" then return end
                     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                    local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
+                    if isAudioPlaying then
+                        if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
+                            self._fsm.lastHandle = cur.soundHandle
+                            self._fsm.lastMsg = cur.title
+                        end
                         self:_fsm_enter(S.TALK)
                     else
                         self:_fsm_enter(S.IDLE)
@@ -138,7 +148,12 @@ function ReplayFrame:InitStateMachine()
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "point" then return end
                     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                    if cur and cur.isPlaying and cur:isPlaying() and self._fsm and self._fsm.lastHandle == cur.soundHandle then
+                    local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
+                    if isAudioPlaying then
+                        if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
+                            self._fsm.lastHandle = cur.soundHandle
+                            self._fsm.lastMsg = cur.title
+                        end
                         self:_fsm_enter(S.TALK)
                     else
                         self:_fsm_enter(S.IDLE)
@@ -335,8 +350,10 @@ function ReplayFrame:_FSM_StartResidue(lastMsg)
             if self._fsm.state ~= S.RESIDUE then return end
             if tok ~= (self._fsm.residueToken or 0) then return end
             self:_fsm_enter(S.IDLE)
-            local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
-            self._fsm.hideAt = now() + delay
+            if self._fsm.state == S.IDLE then
+                local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
+                self._fsm.hideAt = now() + delay
+            end
         end)
     else
         self:_fsm_enter(S.IDLE)
@@ -384,7 +401,9 @@ function ReplayFrame:FSM_OnPlaybackStop(lastMsg)
     self:_fsm_enter(S.IDLE)
     -- schedule hide shortly if nothing is playing
     local delay = (self.Timings and self.Timings.stopHideDelay) or 0.6
-    fsm.hideAt = now() + delay
+    if fsm.state == S.IDLE then
+        fsm.hideAt = now() + delay
+    end
 end
 
 -- Helper function to process pending context after animation completes
@@ -430,6 +449,10 @@ function ReplayFrame:FSM_Tick()
         and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
         or (cur and cur.isPlaying and cur:isPlaying() or false)
 
+    if playing then
+        fsm.hideAt = nil
+    end
+
     -- Late hide if nothing resumed
     local editPreviewActive = self._editMode or self._blizzardEditMode
     if (not editPreviewActive) and (not playing) and fsm.hideAt and now() >= fsm.hideAt then
@@ -442,13 +465,17 @@ function ReplayFrame:FSM_Tick()
 
     -- Safety: if state is talk/bow/point but playback handle changed/ended, transition appropriately
     if fsm.state == S.TALK or fsm.state == S.BOW or fsm.state == S.POINT then
-        if (not playing) or (cur and fsm.lastHandle and cur.soundHandle ~= fsm.lastHandle) then
+        if not playing then
             -- Debounce: avoid calling stop repeatedly for the same stale handle
             local staleHandle = fsm.lastHandle
             if staleHandle ~= fsm._lastTickStopHandle then
                 fsm._lastTickStopHandle = staleHandle
                 self:FSM_OnPlaybackStop(fsm.lastMsg)
             end
+        elseif cur and fsm.lastHandle ~= cur.soundHandle then
+            fsm.lastHandle = cur.soundHandle
+            fsm.lastMsg = cur.title
+            fsm._lastTickStopHandle = nil
         end
     end
 end
