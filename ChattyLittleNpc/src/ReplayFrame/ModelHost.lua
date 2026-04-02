@@ -48,7 +48,10 @@ function ReplayFrame:CreateModelHost(parent)
         host.SetDisplayInfo = function(_, id) pcall(pm.SetDisplayInfo, pm, id) end
         host.SetPortraitZoom = function(_, v) pcall(pm.SetPortraitZoom, pm, tonumber(v) or 0.65) end
         host.GetPortraitZoom = function() return 0.65 end
-        host.SetPosition = function(_, x, y, z) pcall(pm.SetPosition, pm, x, y, z) end
+        host.SetPosition = function(self, x, y, z)
+            pcall(pm.SetPosition, pm, x, y, z)
+            if self._lastCamSnapshot then self._lastCamSnapshot.tz = z end
+        end
         host.SetRotation = function(_, r) pcall(pm.SetRotation, pm, r) end
         host.SetAnimation = function(_, a) pcall(pm.SetAnimation, pm, a) end
         host.GetAnimation = function() return nil end
@@ -84,6 +87,17 @@ function ReplayFrame:CreateModelHost(parent)
             if targetCenter ~= nil then self:SetTarget(targetCenter) end
             self:SetCamera(2.5, 0, 0)
         end
+        host.SetModelPosition = function(self, anchor, xPct, yPct)
+            self._positioning = { anchor = anchor or "BOTTOM", xPct = tonumber(xPct) or 0.5, yPct = tonumber(yPct) or 0 }
+            local y = tonumber(yPct) or 0
+            pcall(pm.SetPosition, pm, 0, 0, -(y - 0.3) * 0.5)
+            return true
+        end
+        host.ReapplyModelPosition = function(self)
+            if not self._positioning then return false end
+            return self:SetModelPosition(self._positioning.anchor, self._positioning.xPct, self._positioning.yPct)
+        end
+        host.ClearModelPosition = function(self) if self._positioning then self._positioning = nil; self._userControlledCamera = false end end
     else
         if attach then attach() end
     end
@@ -111,7 +125,7 @@ function ReplayFrame:CreateModelHost(parent)
             ReplayFrame.HostCamera.Attach(self)
         end
         -- Best-effort: carry over zoom feel
-        if self.SetPortraitZoom then self:SetPortraitZoom(self._zoom or 0.65) end
+        if self.SetPortraitZoom then self:SetPortraitZoom(self._zoom or 0) end
         if self.SetDisplayInfo then self:SetDisplayInfo(displayID) end
         local U = CLN and CLN.Utils
         if U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug("host") and U.LogAnimDebug then

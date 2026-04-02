@@ -72,6 +72,8 @@ function M.Attach(host, backend)
     function host:SetPosition(x, y, z)
         self._targetZ = z or self._targetZ or 0
         safeCall(backend.frame, "SetPosition", x, y, z)
+        -- Keep snapshot in sync so breathing animation preserves the Z offset
+        if self._lastCamSnapshot then self._lastCamSnapshot.tz = z end
     end
 
     function host:SetRotation(rad)
@@ -82,7 +84,7 @@ function M.Attach(host, backend)
         self._lastAnimId = animId
     -- Respect ReplayFrame debug no-op animation mode
     local r = ReplayFrame
-    if r and r._NoAnimDebugEnabled and r:_NoAnimDebugEnabled() then return end
+    if r and r:_NoAnimDebugEnabled() then return end
     safeCall(backend.frame, "SetAnimation", animId)
     end
 
@@ -108,10 +110,14 @@ function M.Attach(host, backend)
     -- Compatibility stubs used by presets/code calling scene-style helpers
     function host:PointCameraAtHead() end
     function host:FrameFullBodyFront()
-        -- Bust portrait: zoom in on head+shoulders, slight vertical offset for headroom
-        if self.SetPortraitZoom then self:SetPortraitZoom(0.70) end
-        if self.SetPosition then self:SetPosition(0, 0, 0.08) end
+        -- Upper 2/3 shot: full-body zoom + negative z to crop feet/lower legs.
+        -- _lastCamSnapshot.tz tells the breathing animation to preserve our offset.
+        local z = -0.15
+        if self.SetPortraitZoom then self:SetPortraitZoom(0.01) end
+        if self.SetPosition then self:SetPosition(0, 0, z) end
         if self.SetRotation then self:SetRotation(0) end
+        self._lastCamSnapshot = self._lastCamSnapshot or {}
+        self._lastCamSnapshot.tz = z
     end
     function host:FitDefault()
         return self:FrameFullBodyFront()
@@ -128,6 +134,34 @@ function M.Attach(host, backend)
         if P and P[name] then return P[name](self) end
         -- Fallbacks
         if name == "FullBody" then return self:FrameFullBodyFront(0.1) end
+    end
+
+    -- Positioning API stubs (PlayerModel lacks true 3D camera;
+    -- best-effort emulation via portrait zoom + SetPosition offset)
+    function host:SetModelPosition(anchor, xPct, yPct)
+        -- PlayerModel has no 3D projection; store state for API parity
+        self._positioning = {
+            anchor = anchor or "BOTTOM",
+            xPct   = tonumber(xPct) or 0.5,
+            yPct   = tonumber(yPct) or 0,
+        }
+        -- Best-effort: map yPct to vertical offset
+        local y = tonumber(yPct) or 0
+        local z = -(y - 0.3) * 0.5  -- heuristic: 0.3 is roughly "natural"
+        self:SetPosition(0, 0, z)
+        return true
+    end
+
+    function host:ReapplyModelPosition()
+        if not self._positioning then return false end
+        return self:SetModelPosition(self._positioning.anchor, self._positioning.xPct, self._positioning.yPct)
+    end
+
+    function host:ClearModelPosition()
+        if self._positioning then
+            self._positioning = nil
+            self._userControlledCamera = false
+        end
     end
 
     -- Tiny Framing API (emulated for PlayerModel)

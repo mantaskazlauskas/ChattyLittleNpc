@@ -8,18 +8,18 @@ local BR = NS.BodyRegions
 
 -- Semantic body anchors per morphology class (0 = feet, 1 = top).
 BR.ANCHORS = {
-    tall_humanoid = { feet = 0.00, waist = 0.45, chest = 0.68, shoulders = 0.78, chin = 0.84, eyeLine = 0.92, headTop = 1.00, talkFocus = 0.90 },
-    stocky_humanoid = { feet = 0.00, waist = 0.40, chest = 0.63, shoulders = 0.74, chin = 0.80, eyeLine = 0.90, headTop = 1.00, talkFocus = 0.88 },
-    wide_beast = { feet = 0.00, waist = 0.30, chest = 0.50, shoulders = 0.62, chin = 0.72, eyeLine = 0.82, headTop = 1.00, talkFocus = 0.76 },
-    dragon = { feet = 0.00, waist = 0.35, chest = 0.55, shoulders = 0.67, chin = 0.75, eyeLine = 0.86, headTop = 1.00, talkFocus = 0.80 },
-    tiny_critter = { feet = 0.00, waist = 0.35, chest = 0.55, shoulders = 0.70, chin = 0.80, eyeLine = 0.88, headTop = 1.00, talkFocus = 0.75 },
+    tall_humanoid = { feet = 0.00, upperThigh = 0.33, waist = 0.45, chest = 0.68, shoulders = 0.78, chin = 0.84, eyeLine = 0.92, headTop = 1.00, talkFocus = 0.90 },
+    stocky_humanoid = { feet = 0.00, upperThigh = 0.33, waist = 0.40, chest = 0.63, shoulders = 0.74, chin = 0.80, eyeLine = 0.90, headTop = 1.00, talkFocus = 0.88 },
+    wide_beast = { feet = 0.00, upperThigh = 0.33, waist = 0.30, chest = 0.50, shoulders = 0.62, chin = 0.72, eyeLine = 0.82, headTop = 1.00, talkFocus = 0.76 },
+    dragon = { feet = 0.00, upperThigh = 0.33, waist = 0.35, chest = 0.55, shoulders = 0.67, chin = 0.75, eyeLine = 0.86, headTop = 1.00, talkFocus = 0.80 },
+    tiny_critter = { feet = 0.00, upperThigh = 0.33, waist = 0.35, chest = 0.55, shoulders = 0.70, chin = 0.80, eyeLine = 0.88, headTop = 1.00, talkFocus = 0.75 },
 }
 
 BR.REGION_WIDTHS = {
-    tall_humanoid = { bust = 0.60, head = 0.40, upper_body = 0.65, full_body = 1.00 },
-    stocky_humanoid = { bust = 0.65, head = 0.45, upper_body = 0.70, full_body = 1.00 },
-    wide_beast = { bust = 0.80, head = 0.60, upper_body = 0.85, full_body = 1.00 },
-    dragon = { bust = 0.70, head = 0.50, upper_body = 0.75, full_body = 1.00 },
+    tall_humanoid = { bust = 0.70, head = 0.40, upper_body = 0.65, full_body = 1.00 },
+    stocky_humanoid = { bust = 0.75, head = 0.45, upper_body = 0.70, full_body = 1.00 },
+    wide_beast = { bust = 0.55, head = 0.60, upper_body = 0.85, full_body = 1.00 },
+    dragon = { bust = 0.75, head = 0.50, upper_body = 0.75, full_body = 1.00 },
     tiny_critter = { bust = 1.00, head = 1.00, upper_body = 1.00, full_body = 1.00 },
 }
 
@@ -83,11 +83,12 @@ local function buildRegionFromAnchors(anchors, widths, regionName)
             widthKey = "full_body",
         }
     else
+        -- "bust" — upper 2/3 medium shot (upper-thigh to head top)
         spec = {
-            focusAnchor = "talkFocus",
-            bottomAnchor = "shoulders",
+            focusAnchor = "chest",
+            bottomAnchor = "upperThigh",
             topAnchor = "headTop",
-            focusScreenY = 0.56,
+            focusScreenY = 0.48,
             widthKey = "bust",
         }
     end
@@ -118,10 +119,40 @@ local function buildRegionFromAnchors(anchors, widths, regionName)
     }
 end
 
+-- Map UnitCreatureType to morphology classes.
+-- Keys use unlocalized IDs (patch 11.1.5+, e.g. "BEAST") and also
+-- English localized names as fallback (e.g. "Beast").
+-- "Humanoid"/"HUMANOID" is intentionally absent — bbox decides tall vs stocky.
+local CREATURE_TYPE_MAP = {
+    -- Unlocalized IDs (preferred, locale-independent)
+    BEAST      = "wide_beast",
+    DRAGONKIN  = "dragon",
+    CRITTER    = "tiny_critter",
+    GIANT      = "tall_humanoid",
+    UNDEAD     = "tall_humanoid",
+    -- English localized fallback
+    Beast      = "wide_beast",
+    Dragonkin  = "dragon",
+    Critter    = "tiny_critter",
+    Giant      = "tall_humanoid",
+    Undead     = "tall_humanoid",
+}
+
 --- Classify a model by its canonical bounding box aspect ratio and height.
+--- If a creatureTypeHint (from UnitCreatureType) is provided and maps to a
+--- known class, it takes priority over geometry.  Bbox heuristics remain the
+--- fallback for Humanoid (tall vs stocky) and unmapped types.
 --- @param canonBbox table with .size = { x=width, y=depth, z=height }
+--- @param creatureTypeHint string|nil result of UnitCreatureType("npc")
 --- @return string one of "tall_humanoid","stocky_humanoid","wide_beast","dragon","tiny_critter"
-function BR.Classify(canonBbox)
+function BR.Classify(canonBbox, creatureTypeHint)
+    -- Primary signal: server-authoritative creature type
+    if creatureTypeHint and creatureTypeHint ~= "" then
+        local mapped = CREATURE_TYPE_MAP[creatureTypeHint]
+        if mapped then return mapped end
+    end
+
+    -- Fallback: bbox geometry heuristic
     if not (canonBbox and canonBbox.size) then return "tall_humanoid" end
     local w = tonumber(canonBbox.size.x) or 1
     local h = tonumber(canonBbox.size.z) or 1
@@ -162,6 +193,12 @@ function BR.GetRegion(class, regionName)
             rangeHi = 1.00,
             shoulderW = 1.00,
         }
+    end
+    -- wide_beast bust defaults to full body framing
+    if useClass == "wide_beast" and regionName == "bust" then
+        local anchors = BR.GetAnchors(useClass)
+        local widths = BR.REGION_WIDTHS[useClass] or BR.REGION_WIDTHS.tall_humanoid
+        return buildRegionFromAnchors(anchors, widths, "full_body")
     end
     local anchors = BR.GetAnchors(useClass)
     local widths = BR.REGION_WIDTHS[useClass] or BR.REGION_WIDTHS.tall_humanoid
@@ -219,7 +256,9 @@ function BR.ToWorldCoords(canonBbox, region)
 end
 
 --- Solve camera distance for composition-driven, asymmetric region framing.
---- @param worldRegion table from ToWorldCoords/SolveWorldRegion
+--- NOTE: This function intentionally mutates worldRegion in place (writes back
+--- targetZ, focusZ, spans, etc.) so callers can read derived values directly.
+--- @param worldRegion table from ToWorldCoords/SolveWorldRegion (mutated in place)
 --- @param fovV number vertical field of view in radians
 --- @param aspect number viewport aspect ratio
 --- @param paddingFrac number|nil composition padding fraction

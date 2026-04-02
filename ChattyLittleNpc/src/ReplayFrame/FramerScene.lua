@@ -140,6 +140,8 @@ end
 -- Public: Zoom by a height factor (inverse relationship with distance)
 function FS.ZoomToHeightFactor(host, k, padding)
     if not host then return end
+    -- Explicit zoom overrides SetModelPosition
+    host._positioning = nil
     local factor = tonumber(k) or 1.0; if factor == 0 then factor = 1.0 end
     host._distance = math.max(0.1, (host._distance or 10) / factor)
     if host._ApplyCamera then host:_ApplyCamera() end
@@ -149,6 +151,8 @@ end
 -- Public: ProjectFit passthrough that ensures coherent updates
 function FS.ProjectFit(host, scale, center)
     if not host then return end
+    -- Explicit projection overrides SetModelPosition
+    host._positioning = nil
     if scale ~= nil and host.SetActorScale then host:SetActorScale(scale) end
     -- Update target coordinates directly so _ApplyCamera positions the camera
     -- at the requested center. Calling delta-based SetTarget before the absolute

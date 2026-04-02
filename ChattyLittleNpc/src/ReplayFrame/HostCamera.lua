@@ -73,10 +73,13 @@ function HC.Attach(host)
             if isScene and has(self.FrameFullBodyFront) then
                 return self:FrameFullBodyFront(tonumber(_padding) or 0.12)
             end
-            -- PlayerModel fallback: bust portrait zoom + position + rotation
-            if has(self.SetPortraitZoom) then self:SetPortraitZoom(0.70) end
-            if has(self.SetPosition) then self:SetPosition(0, 0, 0.08) end
+            -- PlayerModel fallback: full-body zoom + negative z to crop feet (upper 2/3)
+            local z = -0.15
+            if has(self.SetPortraitZoom) then self:SetPortraitZoom(0.01) end
+            if has(self.SetPosition) then self:SetPosition(0, 0, z) end
             if has(self.SetRotation) then self:SetRotation(0) end
+            self._lastCamSnapshot = self._lastCamSnapshot or {}
+            self._lastCamSnapshot.tz = z
             debugf("FitDefault(shim)")
         end
     end

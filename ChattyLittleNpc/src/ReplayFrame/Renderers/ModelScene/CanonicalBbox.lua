@@ -64,7 +64,8 @@ end
 --- @param getModelVersion function returns current model version (for guard checks)
 --- @param animCtrl table|nil AnimationController instance to restore desired anim
 --- @param callback function(bbox) called on success with the stable bbox
-function CB.SampleCanonical(actor, displayID, modelVersion, getModelVersion, animCtrl, callback)
+--- @param creatureTypeHint string|nil result of UnitCreatureType("npc")
+function CB.SampleCanonical(actor, displayID, modelVersion, getModelVersion, animCtrl, callback, creatureTypeHint)
     if not actor then
         log("SampleCanonical: no actor")
         return
@@ -113,7 +114,7 @@ function CB.SampleCanonical(actor, displayID, modelVersion, getModelVersion, ani
         local sig = bboxSignature(bbox)
         if lastSig and lastSig == sig then
             -- Stable: two identical readings
-            local class = NS.BodyRegions and NS.BodyRegions.Classify(bbox) or "tall_humanoid"
+            local class = NS.BodyRegions and NS.BodyRegions.Classify(bbox, creatureTypeHint) or "tall_humanoid"
             CB._cache[id] = {
                 bbox = bbox,
                 class = class,
@@ -133,7 +134,7 @@ function CB.SampleCanonical(actor, displayID, modelVersion, getModelVersion, ani
 
         if ticks >= MAX_TICKS then
             -- Best-effort: use last reading
-            local class = NS.BodyRegions and NS.BodyRegions.Classify(bbox) or "tall_humanoid"
+            local class = NS.BodyRegions and NS.BodyRegions.Classify(bbox, creatureTypeHint) or "tall_humanoid"
             CB._cache[id] = {
                 bbox = bbox,
                 class = class,

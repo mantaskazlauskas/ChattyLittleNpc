@@ -66,7 +66,7 @@ function M.Create(parent)
     -- Create actor
     local actor
     if scene.CreateActor then
-        local okA, a = pcall(scene.CreateActor, scene, "ModelSceneActorTemplate")
+        local okA, a = pcall(scene.CreateActor, scene, nil, "CLNModelSceneActorTemplate")
         if okA and a then actor = a end
         if not actor then
             local okB, b = pcall(scene.CreateActor, scene)
@@ -88,6 +88,15 @@ function M.Create(parent)
     if actor.SetModelScale then pcall(actor.SetModelScale, actor, 1.0) end
     if actor.SetUseCenterForOrigin then pcall(actor.SetUseCenterForOrigin, actor, true) end
     if actor.SetDesaturated then pcall(actor.SetDesaturated, actor, false) end
+    
+    -- Wire up OnAnimFinished diagnostic callback (for testing)
+    if actor.SetOnAnimFinishedCallback then
+        actor:SetOnAnimFinishedCallback(function(a)
+            if CLN and CLN.Print then
+                CLN:Print("|cff00ff00[AnimFinished]|r actor animation completed")
+            end
+        end)
+    end
     
     -- Lighting setup
     if scene.SetCameraNearClip then pcall(scene.SetCameraNearClip, scene, 0.1) end
@@ -148,6 +157,233 @@ function M.Attach(host, backend)
         self._lastCamSnapshot = s
     end
 
+    local function shouldCaptureFrameDiagnostics()
+        return CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode
+    end
+
+    function host:_EnsureFrameDiagOverlay()
+        if self._frameDiagOverlay or not CreateFrame then return end
+
+        -- Parent to UIParent at TOOLTIP strata so the overlay renders above
+        -- the ModelScene 3D viewport (which occludes normal children/siblings
+        -- regardless of frame level) and is not clipped by ModelContainer's
+        -- SetClipsChildren(true).  Anchored to the host frame for positioning.
+        local overlay = CreateFrame("Frame", "CLN_FrameDiagOverlay", UIParent)
+        if not overlay then return end
+
+        overlay:SetFrameStrata("TOOLTIP")
+        if overlay.EnableMouse then pcall(overlay.EnableMouse, overlay, false) end
+        overlay:SetPoint("BOTTOMLEFT", self, "BOTTOMLEFT", 4, 4)
+        overlay:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -4, 4)
+        overlay:SetHeight(52)
+
+        local bg = overlay:CreateTexture(nil, "BACKGROUND")
+        if bg then
+            bg:SetAllPoints(overlay)
+            if bg.SetColorTexture then
+                bg:SetColorTexture(0, 0, 0, 0.6)
+            end
+        end
+
+        local text = overlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        if text then
+            text:SetPoint("TOPLEFT", overlay, "TOPLEFT", 4, -4)
+            text:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", -4, -4)
+            text:SetJustifyH("LEFT")
+            text:SetJustifyV("TOP")
+            if text.SetTextColor then
+                text:SetTextColor(1.0, 0.95, 0.8, 1.0)
+            end
+        end
+
+        overlay:Hide()
+        self._frameDiagOverlay = overlay
+        self._frameDiagText = text
+    end
+
+    function host:_HideFrameDiagOverlay()
+        if self._frameDiagText and self._frameDiagText.SetText then
+            self._frameDiagText:SetText("")
+        end
+        if self._frameDiagOverlay and self._frameDiagOverlay.Hide then
+            self._frameDiagOverlay:Hide()
+        end
+    end
+
+    function host:_SetFrameDiagOverlayText(text)
+        if not shouldCaptureFrameDiagnostics() or type(text) ~= "string" or text == "" then
+            self:_HideFrameDiagOverlay()
+            return
+        end
+
+        self:_EnsureFrameDiagOverlay()
+        if not (self._frameDiagOverlay and self._frameDiagText and self._frameDiagText.SetText) then return end
+
+        self._frameDiagText:SetText(text)
+        if self._frameDiagOverlay.Show then
+            self._frameDiagOverlay:Show()
+        end
+        -- Temporary probe: confirm overlay code path is reached at runtime
+        if print then print("|cff00ff00CLN DiagOverlay|r shown, strata=TOOLTIP, lines=" .. tostring(select(2, text:gsub("\n","")) + 1)) end
+    end
+
+    function host:_RefreshFrameDiagnostics(regionName, source, distance, tx, ty, tz)
+        if not shouldCaptureFrameDiagnostics() then
+            self:_HideFrameDiagOverlay()
+            return
+        end
+
+        local bbox = self:GetBounds()
+        if not bbox then
+            self:_HideFrameDiagOverlay()
+            return
+        end
+
+        regionName = regionName or (self._lastRegionName or "bust")
+
+        local world, class
+        if MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
+            world, class = MS.BodyRegions.SolveWorldRegion(bbox, regionName)
+        end
+
+        world = world or {
+            targetX = (bbox.center and bbox.center.x) or 0,
+            targetY = (bbox.center and bbox.center.y) or 0,
+            targetZ = (bbox.center and bbox.center.z) or 0,
+            visibleH = (bbox.size and bbox.size.z) or 1,
+            fitWidth = (bbox.size and bbox.size.x) or 1,
+            visibleLo = (bbox.min and bbox.min.z) or 0,
+            visibleHi = (bbox.max and bbox.max.z) or 1,
+        }
+        class = class or "live"
+
+        world.boundsCenterX = world.boundsCenterX or (bbox.center and bbox.center.x) or world.targetX or 0
+        world.targetX = tx or world.targetX or world.boundsCenterX
+        world.cameraTargetX = tx or world.cameraTargetX or world.targetX or world.boundsCenterX
+        world.targetY = ty or world.targetY or (bbox.center and bbox.center.y) or 0
+        world.targetZ = tz or world.targetZ or world.focusZ or (bbox.center and bbox.center.z) or 0
+        world.focusZ = world.focusZ or world.targetZ
+
+        local fw, fh = 0, 0
+        if self.GetSize then fw, fh = self:GetSize() end
+        self:_LogFrameDiagnostics(regionName, source or "live", class, bbox, world, distance or self._camDist or 0, fw, fh)
+    end
+
+    function host:_LogFrameDiagnostics(regionName, source, class, bbox, worldRegion, distance, frameW, frameH)
+        if not shouldCaptureFrameDiagnostics() then
+            self:_HideFrameDiagOverlay()
+            return
+        end
+        if not (worldRegion and MS and MS.ProjectionVerifier and MS.ProjectionVerifier.Measure and backend.frame) then
+            self:_HideFrameDiagOverlay()
+            return
+        end
+
+        local fw = tonumber(frameW) or -1
+        local fh = tonumber(frameH) or -1
+        local bboxCenter = (bbox and bbox.center) or {}
+        local bboxSize = (bbox and bbox.size) or {}
+        local targetZ = worldRegion.targetZ or worldRegion.focusZ or 0
+        local focusZ = worldRegion.focusZ or targetZ
+        local boundsCenterX = worldRegion.boundsCenterX or worldRegion.targetX or worldRegion.cameraTargetX or 0
+        local cameraTargetX = worldRegion.cameraTargetX or worldRegion.targetX or boundsCenterX
+        local shiftX = cameraTargetX - boundsCenterX
+        local sourceLabel = tostring(source or "?")
+        if sourceLabel == "canonical" then sourceLabel = "canon" end
+        local headerLine = string.format(
+            "did=%s %s %s %s",
+            tostring(self._currentDisplayID or "?"),
+            tostring(regionName or "?"),
+            sourceLabel,
+            tostring(class or "?")
+        )
+        local bboxLine = string.format(
+            "bbox=%.2f/%.2f/%.2f frame=%.0fx%.0f",
+            tonumber(bboxSize.x) or 0,
+            tonumber(bboxSize.y) or 0,
+            tonumber(bboxSize.z) or 0,
+            fw,
+            fh
+        )
+        local solveLine = string.format(
+            "d=%.2f z=%.2f/%.2f x=%.2f->%.2f",
+            tonumber(distance) or -1,
+            tonumber(targetZ) or 0,
+            tonumber(focusZ) or 0,
+            tonumber(boundsCenterX) or 0,
+            tonumber(cameraTargetX) or 0
+        )
+
+        self:_DebugLog(
+            "framing",
+            "FrameDiag[%s] session=%s did=%s source=%s class=%s frame=%.0fx%.0f bboxC=(%.2f,%.2f,%.2f) bboxS=(%.2f,%.2f,%.2f) dist=%.3f targetZ=%.3f focusZ=%.3f boundsCX=%.3f camTX=%.3f shiftX=%.3f visH=%.3f fitW=%.3f",
+            tostring(regionName or "?"),
+            tostring(self._sessionId or "?"),
+            tostring(self._currentDisplayID or "?"),
+            tostring(source or "?"),
+            tostring(class or "?"),
+            fw,
+            fh,
+            tonumber(bboxCenter.x) or 0,
+            tonumber(bboxCenter.y) or 0,
+            tonumber(bboxCenter.z) or 0,
+            tonumber(bboxSize.x) or 0,
+            tonumber(bboxSize.y) or 0,
+            tonumber(bboxSize.z) or 0,
+            tonumber(distance) or -1,
+            tonumber(targetZ) or 0,
+            tonumber(focusZ) or 0,
+            tonumber(boundsCenterX) or 0,
+            tonumber(cameraTargetX) or 0,
+            tonumber(shiftX) or 0,
+            tonumber(worldRegion.visibleH) or -1,
+            tonumber(worldRegion.fitWidth) or -1
+        )
+
+        local ok, metrics = MS.ProjectionVerifier.Measure(backend.frame, worldRegion, fw, fh)
+        if not ok then
+            self:_DebugLog("framing", "FrameDiag[%s] proj=unavailable", tostring(regionName or "?"))
+            self:_SetFrameDiagOverlayText(string.format("%s\n%s\n%s\nproj=unavailable", headerLine, bboxLine, solveLine))
+            return
+        end
+
+        local focusErrorLabel = "na"
+        local focusError = tonumber(metrics.focusErrorPY)
+        if focusError then
+            focusErrorLabel = string.format("%.0f", focusError)
+        end
+        local projLine = string.format(
+            "box=%.0f,%.0f-%.0f,%.0f cov=%.2f/%.2f fe=%s",
+            tonumber(metrics.minPX) or -1,
+            tonumber(metrics.minPY) or -1,
+            tonumber(metrics.maxPX) or -1,
+            tonumber(metrics.maxPY) or -1,
+            tonumber(metrics.coverageH) or -1,
+            tonumber(metrics.coverageW) or -1,
+            focusErrorLabel
+        )
+
+        self:_DebugLog(
+            "framing",
+            "FrameDiag[%s] proj box=(%.1f,%.1f)-(%.1f,%.1f) covH=%.3f covW=%.3f target=(%.1f,%.1f) top=%.1f bottom=%.1f focus=%.1f desired=%.1f err=%.1f",
+            tostring(regionName or "?"),
+            tonumber(metrics.minPX) or -1,
+            tonumber(metrics.minPY) or -1,
+            tonumber(metrics.maxPX) or -1,
+            tonumber(metrics.maxPY) or -1,
+            tonumber(metrics.coverageH) or -1,
+            tonumber(metrics.coverageW) or -1,
+            tonumber(metrics.targetPX) or -1,
+            tonumber(metrics.targetPY) or -1,
+            tonumber(metrics.topPY) or -1,
+            tonumber(metrics.bottomPY) or -1,
+            tonumber(metrics.focusPY) or -1,
+            tonumber(metrics.desiredFocusPY) or -1,
+            tonumber(metrics.focusErrorPY) or -1
+        )
+        self:_SetFrameDiagOverlayText(string.format("%s\n%s\n%s\n%s", headerLine, bboxLine, solveLine, projLine))
+    end
+
     -- Model versioning to cancel stale pending frames/callbacks
     function host:_BumpModelVersion()
         self._modelVersion = (self._modelVersion or 0) + 1
@@ -156,6 +392,13 @@ function M.Attach(host, backend)
         self._frameTimer = nil
         self._framePendingPad = nil
         self._framePendingReason = nil
+        -- Clear stale anchor/camera state from previous model
+        self._anchorTop = nil
+        self._anchorFactor = nil
+        self._lastBounds = nil
+        -- Clear stale positioning — old anchor percentages are invalid for new bbox
+        self._positioning = nil
+        self._userControlledCamera = false
     end
 
     -- Debounced/coalesced auto-framing coordinator
@@ -194,6 +437,12 @@ function M.Attach(host, backend)
                 self:_DebugLog("framing", "abort pending frame (version changed) reason=%s", reason)
                 return
             end
+            -- Re-check at fire time: if user took manual control (SetModelPosition,
+            -- pan, etc.) between scheduling and firing, respect that and bail out.
+            if (not force) and self._userControlledCamera then
+                self:_DebugLog("framing", "abort pending frame (user took control) reason=%s", reason)
+                return
+            end
             local a = backend and backend.actor
             if not a then return end
             local isLoaded = true
@@ -230,6 +479,10 @@ function M.Attach(host, backend)
     -- Basic model operations
     ---Clear current model from the actor
     function host:ClearModel()
+        self:_HideFrameDiagOverlay()
+        -- Clear positioning/camera state so stale values don't block future auto-framing
+        self._positioning = nil
+        self._userControlledCamera = false
         if backend.actor and backend.actor.ClearModel then 
             pcall(backend.actor.ClearModel, backend.actor) 
         end
@@ -237,7 +490,8 @@ function M.Attach(host, backend)
     
     ---Load a model by creature display ID
     ---@param displayID number
-    function host:SetDisplayInfo(displayID)
+    ---@param creatureTypeHint string|nil UnitCreatureType result for morphology
+    function host:SetDisplayInfo(displayID, creatureTypeHint)
         if not (backend.actor and backend.actor.SetModelByCreatureDisplayID) then
             if CLN and CLN.Logger then
                 CLN.Logger:error("ModelSceneHost: actor lacks SetModelByCreatureDisplayID", false, CLN.Utils.LogCategories.host)
@@ -269,6 +523,7 @@ function M.Attach(host, backend)
     -- Reset camera state for fresh model
     self._lastCamSnapshot = nil
     self._userControlledCamera = false
+        self:_HideFrameDiagOverlay()
         self._sessionId = string.format("displayID:%s@%.3f", tostring(displayID), now())
         self:_BumpModelVersion()
         -- Invalidate canonical bbox cache when displayID changes
@@ -279,6 +534,7 @@ function M.Attach(host, backend)
             end
         end
         self._currentDisplayID = displayID
+        self._creatureTypeHint = creatureTypeHint
         
         -- Delegate to Loader module
         if MS and MS.Loader and MS.Loader.loadByDisplayID then
@@ -360,7 +616,7 @@ function M.Attach(host, backend)
                         if (h._modelVersion or 0) ~= vAtReg then return end
                         h:_DebugLog("canonical", "Canonical bbox ready for displayID=%s", tostring(displayID))
                         h:_RequestAutoFrame(0.12, { reason = "canonicalReady" })
-                    end)
+                    end, h._creatureTypeHint)
                 end
                 if h and h._animCtrl and h._animCtrl.apply then
                     h._animCtrl:apply(backend.actor)
@@ -388,6 +644,9 @@ function M.Attach(host, backend)
     -- Reset camera state for fresh unit
     self._lastCamSnapshot = nil
     self._userControlledCamera = false
+    self._creatureTypeHint = nil  -- clear stale hint from prior displayID load
+    self._currentDisplayID = nil  -- clear stale displayID; resolved in OnModelLoadedOnce
+        self:_HideFrameDiagOverlay()
         self._sessionId = string.format("unit:%s@%.3f", tostring(unit), now())
         self:_BumpModelVersion()
         
@@ -493,13 +752,24 @@ function M.Attach(host, backend)
                     local okD, dID = pcall(UnitCreatureDisplayID, unit)
                     if okD and type(dID) == "number" and dID > 0 then unitDisplayID = dID end
                 end
+                -- Persist resolved displayID so canonical bbox lookup works
+                if unitDisplayID and not h._currentDisplayID then
+                    h._currentDisplayID = unitDisplayID
+                end
+                -- Resolve creature type: prefer stored hint, fall back to live query
+                local ctHint = h._creatureTypeHint
+                if not ctHint and UnitCreatureType and UnitExists and UnitExists(unit) then
+                    -- pcall returns (ok, localized, unlocalizedID)
+                    local okCT, locCT, unlocCT = pcall(UnitCreatureType, unit)
+                    if okCT then ctHint = unlocCT or locCT end
+                end
                 if unitDisplayID and MS and MS.CanonicalBbox and MS.CanonicalBbox.SampleCanonical then
                     local getVer = function() return h._modelVersion or 0 end
                     MS.CanonicalBbox.SampleCanonical(backend.actor, unitDisplayID, vAtReg, getVer, h._animCtrl, function(bbox)
                         if (h._modelVersion or 0) ~= vAtReg then return end
                         h:_DebugLog("canonical", "Canonical bbox ready for unit=%s displayID=%s", tostring(unit), tostring(unitDisplayID))
                         h:_RequestAutoFrame(0.12, { reason = "canonicalReady" })
-                    end)
+                    end, ctHint)
                 end
                 if h and h._animCtrl and h._animCtrl.apply then
                     h._animCtrl:apply(backend.actor)
@@ -524,7 +794,7 @@ function M.Attach(host, backend)
         
         -- Respect debug no-op mode
         local r = ReplayFrame
-        if r and r._NoAnimDebugEnabled and r:_NoAnimDebugEnabled() then return end
+        if r and r:_NoAnimDebugEnabled() then return end
         
         if backend.actor and backend.actor.SetAnimation then
             local okLoaded = not backend.actor.IsLoaded or backend.actor:IsLoaded()
@@ -549,9 +819,15 @@ function M.Attach(host, backend)
         -- intended framing (e.g., sliding down to feet during a bow).
         local s = self._lastCamSnapshot or {}
         if s.tx and s.ty and s.tz then
-            local px, py, pz = s.tx, s.ty + d, s.tz
-            self:_ApplyCameraLookAt(px, py, pz, s.tx, s.ty, s.tz)
-            self:_UpdateSnapshot({ px = px, py = py, pz = pz })
+            local tz = s.tz
+            -- Re-derive tz from anchor state so the head stays at the top
+            -- even when breathing or resize changes the camera distance.
+            if self._anchorTop and self._anchorFactor then
+                tz = self._anchorTop - self._anchorFactor * d
+            end
+            local px, py, pz = s.tx, s.ty + d, tz
+            self:_ApplyCameraLookAt(px, py, pz, s.tx, s.ty, tz)
+            self:_UpdateSnapshot({ px = px, py = py, pz = pz, tz = tz })
         else
             self:PointCameraAtHead()
         end
@@ -563,6 +839,9 @@ function M.Attach(host, backend)
     
     function host:PointCameraAtHead()
         if backend.kind ~= "scene" or not backend.frame then return end
+        self._anchorTop = nil
+        self._anchorFactor = nil
+        self._positioning = nil
         local b = self:GetBounds()
         local baseX, baseY, baseZ
         if b and MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
@@ -585,6 +864,7 @@ function M.Attach(host, backend)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         -- Persist snapshot for subsequent operations (zoom/pan)
         self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz })
+        self:_RefreshFrameDiagnostics("head", "point", d, tx, ty, tz)
     end
 
     -- Apply camera from explicit _distance/_targetX/Y/Z (used by FramerScene)
@@ -619,6 +899,11 @@ function M.Attach(host, backend)
         -- Only mark as user-controlled if NOT called from internal animation pan
         if not self._internalPanActive then
             self._userControlledCamera = true
+            -- Manual pan invalidates the top-anchor — don't snap back on zoom/resize.
+            self._anchorTop = nil
+            self._anchorFactor = nil
+            -- Manual pan overrides SetModelPosition — clear so resize doesn't reapply stale positioning
+            self._positioning = nil
         end
         -- Current camera pos/target (from last basis if getters missing)
         local px, py, pz = 0, (self._camDist or 2.5), (self._camBaseZ or 1.0)
@@ -717,15 +1002,19 @@ function M.Attach(host, backend)
 
     -- Refit distance only, preserving current target; used on resize
     function host:FitDistanceForCurrentTarget(paddingFrac)
-        local b = self:GetBounds()
+        -- Use canonical bbox when available (same source as FrameRegion)
+        local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
+            and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
+        local b = canonEntry and canonEntry.bbox or self:GetBounds()
         if not b then return end
+        local classHint = canonEntry and canonEntry.class or nil
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
         local usePad = tonumber(paddingFrac) or 0.12
         local regionName = self._lastRegionName or "bust"
         local world
         if MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion then
-            world = MS.BodyRegions.SolveWorldRegion(b, regionName)
+            world = MS.BodyRegions.SolveWorldRegion(b, regionName, classHint)
         end
         world = world or {
             visibleH = (b.size.z or 1),
@@ -760,6 +1049,11 @@ function M.Attach(host, backend)
         local tx = s.tx or b.center.x or 0
         local ty = s.ty or b.center.y or 0
         local tz = s.tz or b.center.z or (self._camBaseZ or 1.0)
+        -- Re-derive tz from anchor state so the head stays at the top
+        -- even when resize changes the camera distance.
+        if self._anchorTop and self._anchorFactor then
+            tz = self._anchorTop - self._anchorFactor * d
+        end
         local px, py, pz = tx, ty + d, tz
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         self:_UpdateClipPlanesForFit(d, b, paddingFrac)
@@ -768,6 +1062,7 @@ function M.Attach(host, backend)
         if not self._lastCamSnapshot.sessionId then self._lastCamSnapshot.sessionId = self._sessionId end
         self._lastCamSnapshot.tx, self._lastCamSnapshot.ty, self._lastCamSnapshot.tz = tx, ty, tz
         self._lastCamSnapshot.px, self._lastCamSnapshot.py, self._lastCamSnapshot.pz = px, py, pz
+        self:_RefreshFrameDiagnostics(regionName, "refit", d, tx, ty, tz)
     end
     
     -- Immediate framing implementation (called by coordinator)
@@ -783,6 +1078,9 @@ function M.Attach(host, backend)
         paddingFrac = tonumber(paddingFrac) or 0.12
         regionName = regionName or "bust"
         self._lastRegionName = regionName
+        -- FrameRegion establishes an authoritative camera placement;
+        -- clear any SetModelPosition state so it won't be reapplied on resize.
+        self._positioning = nil
         local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
             and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
         local bbox = canonEntry and canonEntry.bbox or self:GetBounds()
@@ -838,16 +1136,8 @@ function M.Attach(host, backend)
         elseif world.targetZ == nil then
             world.targetZ = world.focusZ or ((world.visibleLo or 0) + (world.visibleHi or 0)) * 0.5
         end
-
-        local fw, fh = 0, 0
-        if self.GetSize then fw, fh = self:GetSize() end
-        if MS and MS.ProjectionVerifier and MS.ProjectionVerifier.AdjustHeadroom and backend.frame
-            and (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
-            local corrected, changed = MS.ProjectionVerifier.AdjustHeadroom(backend.frame, self, world, d, fw, fh, { topMarginPct = 0.08 })
-            if changed and corrected then
-                world = corrected
-            end
-        end
+        world.boundsCenterX = world.boundsCenterX or world.targetX or 0
+        world.cameraTargetX = world.cameraTargetX or world.targetX or world.boundsCenterX
 
         self._camDist = d
         -- Sync _zoom from geometry distance so AnimZoomTo reads correct baseline
@@ -855,10 +1145,52 @@ function M.Attach(host, backend)
         -- Clear stale _distance to prevent _ApplyCamera from overriding this distance
         self._distance = nil
         local aimTargetZ = world.targetZ or world.focusZ or 0
+        local cameraTargetX = world.cameraTargetX or world.targetX or world.boundsCenterX or 0
+
+        -- Apply initial camera from SolveDistance so Project3DPointTo2D is valid
+        local px, py, pz = cameraTargetX, world.targetY + d, aimTargetZ
+        local tx, ty, tz = cameraTargetX, world.targetY, aimTargetZ
+        self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
+
+        -- Projection-based corrections (measure actual rendered position, then adjust)
+        local fw, fh = 0, 0
+        if self.GetSize then fw, fh = self:GetSize() end
+        if MS and MS.ProjectionVerifier and MS.ProjectionVerifier.AdjustHeadroom and backend.frame
+            and (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
+            local corrected, changed = MS.ProjectionVerifier.AdjustHeadroom(backend.frame, self, world, d, fw, fh, { topMarginPct = 0.12 })
+            if changed and corrected then
+                world = corrected
+                aimTargetZ = world.targetZ or aimTargetZ
+            end
+        end
+        if MS and MS.ProjectionVerifier and MS.ProjectionVerifier.AdjustHorizontalAnchor and backend.frame
+            and (tonumber(fw) or 0) > 1 and (tonumber(fh) or 0) > 1 then
+            local corrected, changed = MS.ProjectionVerifier.AdjustHorizontalAnchor(backend.frame, world, fw, fh, {
+                leftMarginPct = 0.08,
+                maxCoverageW = 0.72,
+            })
+            if changed and corrected then
+                world = corrected
+                cameraTargetX = world.cameraTargetX or cameraTargetX
+            end
+        end
+
+        -- Persist anchor state from the projection-corrected result.
+        -- Back-compute the effective "anchor world Z" — the point that maps to
+        -- paddingFrac from the viewport top at this distance — from the corrected
+        -- aimTargetZ.  When distance changes (breathing, resize), re-derive tz
+        -- using: tz = _anchorTop - _anchorFactor * d
+        do
+            local tanHV = math.tan(fov * 0.5)
+            if tanHV < 1e-4 then tanHV = math.tan(0.4) end
+            local effectiveAnchorZ = aimTargetZ + (1 - 2 * paddingFrac) * d * tanHV
+            self._anchorTop = effectiveAnchorZ
+            self._anchorFactor = (1 - 2 * paddingFrac) * tanHV
+        end
         self._camBaseZ = aimTargetZ
 
-        local px, py, pz = world.targetX, world.targetY + d, aimTargetZ
-        local tx, ty, tz = world.targetX, world.targetY, aimTargetZ
+        px, py, pz = cameraTargetX, world.targetY + d, aimTargetZ
+        tx, ty, tz = cameraTargetX, world.targetY, aimTargetZ
 
         self:_DebugLog("framing", "FrameRegion(%s) source=%s class=%s dist=%.2f zoom=%.3f focusZ=%.2f targetZ=%.2f visH=%.2f fitW=%.2f",
             regionName, source, class, d, self._zoom or -1, world.focusZ or -1, aimTargetZ, world.visibleH, world.fitWidth)
@@ -879,6 +1211,10 @@ function M.Attach(host, backend)
                     d = refined
                     self._camDist = d
                     self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+                    -- Re-derive tz from anchor state for the new distance
+                    if self._anchorTop and self._anchorFactor then
+                        tz = self._anchorTop - self._anchorFactor * d
+                    end
                     px, py, pz = tx, ty + d, tz
                     self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
                     self:_UpdateClipPlanesForFit(d, bbox, paddingFrac)
@@ -887,6 +1223,7 @@ function M.Attach(host, backend)
             end
         end
 
+        self:_LogFrameDiagnostics(regionName, source, class, bbox, world, d, fw, fh)
         if self._DumpState then self:_DumpState("after-FrameRegion/" .. regionName) end
     end
 
@@ -894,6 +1231,11 @@ function M.Attach(host, backend)
     function host:TransitionToRegion(regionName, duration)
         regionName = regionName or "bust"
         self._lastRegionName = regionName
+        -- Animated transition replaces any SetModelPosition placement
+        -- and invalidates stale anchor state so zoom animation doesn't fight pan
+        self._positioning = nil
+        self._anchorTop = nil
+        self._anchorFactor = nil
         local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached
             and self._currentDisplayID and MS.CanonicalBbox.GetCached(self._currentDisplayID)
         if not (canonEntry and MS.BodyRegions) then
@@ -947,6 +1289,17 @@ function M.Attach(host, backend)
         
         if backend.actor.GetActiveBoundingBox then
             local ok, a, b, c, d, e, f = pcall(backend.actor.GetActiveBoundingBox, backend.actor)
+            if ok and type(a) == "table" and type(b) == "table" then
+                minX, minY, minZ = tonumber(a.x) or 0, tonumber(a.y) or 0, tonumber(a.z) or 0
+                maxX, maxY, maxZ = tonumber(b.x) or 0, tonumber(b.y) or 0, tonumber(b.z) or 0
+            elseif ok and type(a) == "number" then
+                minX, minY, minZ, maxX, maxY, maxZ = tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0, tonumber(d) or 0, tonumber(e) or 0, tonumber(f) or 0
+            end
+        end
+
+        -- Fallback: GetMaxBoundingBox when active bbox is unavailable
+        if not minX and backend.actor.GetMaxBoundingBox then
+            local ok, a, b, c, d, e, f = pcall(backend.actor.GetMaxBoundingBox, backend.actor)
             if ok and type(a) == "table" and type(b) == "table" then
                 minX, minY, minZ = tonumber(a.x) or 0, tonumber(a.y) or 0, tonumber(a.z) or 0
                 maxX, maxY, maxZ = tonumber(b.x) or 0, tonumber(b.y) or 0, tonumber(b.z) or 0
@@ -1020,7 +1373,35 @@ function M.Attach(host, backend)
         end
         return self._frontYaw or math.pi
     end
-    
+
+    --- Position the model so that the named anchor point appears at viewport
+    --- coordinates (xPct, yPct).  Delegates to the Positioning module.
+    --- @param anchor string one of "BOTTOM","CENTER","TOP", etc. (9 standard)
+    --- @param xPct number 0.0 = left … 0.5 = center … 1.0 = right
+    --- @param yPct number 0.0 = bottom … 0.5 = center … 1.0 = top
+    --- @return boolean success
+    function host:SetModelPosition(anchor, xPct, yPct)
+        if MS and MS.Positioning and MS.Positioning.SetModelPosition then
+            return MS.Positioning.SetModelPosition(self, anchor, xPct, yPct)
+        end
+        return false
+    end
+
+    --- Reapply stored positioning after resize / re-frame.
+    function host:ReapplyModelPosition()
+        if MS and MS.Positioning and MS.Positioning.ReapplyPosition then
+            return MS.Positioning.ReapplyPosition(self)
+        end
+        return false
+    end
+
+    --- Clear positioning state, allowing auto-framing to resume.
+    function host:ClearModelPosition()
+        if MS and MS.Positioning and MS.Positioning.ClearPosition then
+            MS.Positioning.ClearPosition(self)
+        end
+    end
+
     -- Load monitoring
     function host:OnModelLoadedOnce(cb)
         if type(cb) ~= "function" then return end
@@ -1072,7 +1453,10 @@ function M.Attach(host, backend)
             if a and a.IsLoaded then
                 local okL, v = pcall(a.IsLoaded, a)
                 if okL and v then
-                    if host._userControlledCamera then
+                    if host._positioning then
+                        host:FitDistanceForCurrentTarget(0.12)
+                        host:ReapplyModelPosition()
+                    elseif host._userControlledCamera then
                         host:FitDistanceForCurrentTarget(0.12)
                     else
                         host:FrameFullBodyFront(0.12)
@@ -1084,6 +1468,7 @@ function M.Attach(host, backend)
         host:HookScript("OnHide", function()
             local f, a = backend.frame, backend.actor
             host:_DebugLog("host", "OnHide (frame+actor hidden)")
+            host:_HideFrameDiagOverlay()
             if a and a.Hide then pcall(a.Hide, a) end
             if f and f.Hide then pcall(f.Hide, f) end
         end)
@@ -1099,7 +1484,11 @@ function M.Attach(host, backend)
             if backend.actor and backend.actor.IsLoaded then
                 local okL, v = pcall(backend.actor.IsLoaded, backend.actor)
                 if okL and v then
-                    if host._userControlledCamera then
+                    if host._positioning then
+                        -- Refit distance first (preserves scale), then reapply position
+                        host:FitDistanceForCurrentTarget(0.12)
+                        host:ReapplyModelPosition()
+                    elseif host._userControlledCamera then
                         host:FitDistanceForCurrentTarget(0.12)
                     else
                         host:FrameFullBodyFront(0.12)

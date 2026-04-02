@@ -36,16 +36,17 @@ function PV.Measure(scene, worldRegion, frameW, frameH)
     local halfW = (worldRegion.fitWidth or 1) * 0.5
     local lo = worldRegion.visibleLo or 0
     local hi = worldRegion.visibleHi or 1
-    local tx = worldRegion.targetX or 0
+    local boundsCenterX = worldRegion.boundsCenterX or worldRegion.targetX or worldRegion.cameraTargetX or 0
+    local tx = worldRegion.cameraTargetX or worldRegion.targetX or boundsCenterX
     local ty = worldRegion.targetY or 0
     local tz = worldRegion.targetZ or 0
     local focusZ = worldRegion.focusZ or tz
 
     local points = {
-        { tx - halfW, ty, lo },
-        { tx + halfW, ty, lo },
-        { tx - halfW, ty, hi },
-        { tx + halfW, ty, hi },
+        { boundsCenterX - halfW, ty, lo },
+        { boundsCenterX + halfW, ty, lo },
+        { boundsCenterX - halfW, ty, hi },
+        { boundsCenterX + halfW, ty, hi },
     }
 
     local minPX, minPY = math.huge, math.huge
@@ -80,6 +81,8 @@ function PV.Measure(scene, worldRegion, frameW, frameH)
         minPY = minPY,
         maxPX = maxPX,
         maxPY = maxPY,
+        projectedWidth = projW,
+        projectedHeight = projH,
         coverageH = projH / math.max(fh, 1),
         coverageW = projW / math.max(fw, 1),
         targetPX = targetPX,
@@ -104,7 +107,7 @@ function PV.Verify(scene, worldRegion, frameW, frameH)
     return true, metrics.coverageH or 0, metrics.coverageW or 0
 end
 
---- Apply top-headroom correction by nudging target Z upward if projected top is too close.
+--- Apply top-anchoring correction: nudge target Z so projected head lands at desired margin.
 --- @param scene table ModelScene frame
 --- @param host table ModelSceneHost with _ApplyCameraLookAt
 --- @param worldRegion table from BodyRegions.ToWorldCoords
@@ -119,7 +122,7 @@ function PV.AdjustHeadroom(scene, host, worldRegion, distance, frameW, frameH, o
     local fh = tonumber(frameH) or 0
     if fw <= 1 or fh <= 1 then return worldRegion, false end
 
-    local tx = worldRegion.targetX or 0
+    local tx = worldRegion.cameraTargetX or worldRegion.targetX or worldRegion.boundsCenterX or 0
     local ty = worldRegion.targetY or 0
     local tz = worldRegion.targetZ or 0
     local d = tonumber(distance) or 2.5
@@ -146,14 +149,24 @@ function PV.AdjustHeadroom(scene, host, worldRegion, distance, frameW, frameH, o
     end
 
     local dzTop = 0
-    if currentTopPx < desiredTopPx then
+    local topDeadzonePx = math.max(2, fh * 0.015)
+    local topErrorPx = desiredTopPx - currentTopPx
+    if math.abs(topErrorPx) > topDeadzonePx then
         local pxPerWorld = (tonumber(metrics.targetPY) or 0) - currentTopPx
         if pxPerWorld > epsilon and worldTopSpan > epsilon then
-            local shiftPx = desiredTopPx - currentTopPx
-            dzTop = (shiftPx / pxPerWorld) * worldTopSpan
+            dzTop = (topErrorPx / pxPerWorld) * worldTopSpan
             if dzTop > epsilon then
+                -- Head too close to top edge — push content down
                 local maxAdjust = worldTopSpan * 0.9
                 if dzTop > maxAdjust then dzTop = maxAdjust end
+            elseif dzTop < -epsilon then
+                -- Head too far from top edge — pull content up (anchor to top)
+                local maxAdjust = math.max(0, worldBottomSpan) * 0.6
+                if maxAdjust < epsilon then
+                    dzTop = 0
+                elseif dzTop < -maxAdjust then
+                    dzTop = -maxAdjust
+                end
             else
                 dzTop = 0
             end
@@ -186,6 +199,9 @@ function PV.AdjustHeadroom(scene, host, worldRegion, distance, frameW, frameH, o
 
     local dz = dzTop + dzFocus
     if dzTop > 0 and dz < dzTop then
+        dz = dzTop
+    end
+    if dzTop < -epsilon and dz > 0 then
         dz = dzTop
     end
     local correctedTargetZ = tz + dz
@@ -233,6 +249,69 @@ function PV.AdjustHeadroom(scene, host, worldRegion, distance, frameW, frameH, o
     return corrected, true
 end
 
+--- Nudge narrow portraits toward the left edge while keeping wider models centered.
+--- @param scene table ModelScene frame
+--- @param worldRegion table from BodyRegions.ToWorldCoords
+--- @param frameW number viewport width
+--- @param frameH number viewport height
+--- @param opts table|nil { leftMarginPct = 0.08, maxCoverageW = 0.72 }
+--- @return table correctedWorldRegion, boolean changed
+function PV.AdjustHorizontalAnchor(scene, worldRegion, frameW, frameH, opts)
+    if not (scene and worldRegion) then return worldRegion, false end
+    local fw = tonumber(frameW) or 0
+    local fh = tonumber(frameH) or 0
+    if fw <= 1 or fh <= 1 then return worldRegion, false end
+
+    local ok, metrics = PV.Measure(scene, worldRegion, fw, fh)
+    if not ok then return worldRegion, false end
+
+    local fitWidth = tonumber(worldRegion.fitWidth) or 0
+    local projectedWidth = tonumber(metrics.projectedWidth) or ((tonumber(metrics.maxPX) or 0) - (tonumber(metrics.minPX) or 0))
+    local coverageW = tonumber(metrics.coverageW) or 0
+    local boundsCenterX = worldRegion.boundsCenterX or worldRegion.targetX or worldRegion.cameraTargetX or 0
+    local leftMarginPct = (opts and tonumber(opts.leftMarginPct)) or 0.08
+    local maxCoverageW = (opts and tonumber(opts.maxCoverageW)) or 0.72
+    local epsilon = 1e-4
+
+    if fitWidth <= epsilon or projectedWidth <= epsilon then
+        return worldRegion, false
+    end
+    if coverageW >= maxCoverageW then
+        return worldRegion, false
+    end
+
+    local desiredLeftPx = math.max(0, leftMarginPct) * fw
+    local currentLeftPx = tonumber(metrics.minPX)
+    if currentLeftPx == nil then
+        return worldRegion, false
+    end
+
+    local shiftPx = currentLeftPx - desiredLeftPx
+    if shiftPx <= 0.5 then
+        return worldRegion, false
+    end
+
+    local shiftWorld = shiftPx * (fitWidth / projectedWidth)
+    if shiftWorld <= epsilon then
+        return worldRegion, false
+    end
+
+    local corrected = {}
+    for k, v in pairs(worldRegion) do corrected[k] = v end
+    corrected.boundsCenterX = boundsCenterX
+    corrected.cameraTargetX = boundsCenterX + shiftWorld
+
+    log(
+        "AdjustHorizontalAnchor: covW=%.3f leftPx=%.1f->%.1f shiftPx=%.1f shiftWorld=%.3f",
+        coverageW,
+        currentLeftPx,
+        desiredLeftPx,
+        shiftPx,
+        shiftWorld
+    )
+    return corrected, true
+end
+
 --- Conservatively refine camera distance for projected coverage.
 --- Keeps initial distance when coverage is already acceptable; only zooms out when too close.
 --- Calls host:_ApplyCameraLookAt internally; restores the best-found distance.
@@ -251,12 +330,17 @@ function PV.RefineDistance(scene, host, worldRegion, initialDist, frameW, frameH
 
     local best = tonumber(initialDist) or 2.5
     local d = best
-    local tx = worldRegion.targetX or 0
+    local tx = worldRegion.cameraTargetX or worldRegion.targetX or worldRegion.boundsCenterX or 0
     local ty = worldRegion.targetY or 0
     local tz = worldRegion.targetZ or 0
     local function applyDistance(dist)
         if host._ApplyCameraLookAt then
-            host:_ApplyCameraLookAt(tx, ty + dist, tz, tx, ty, tz)
+            -- Re-derive tz from anchor state when distance changes
+            local useZ = tz
+            if host._anchorTop and host._anchorFactor then
+                useZ = host._anchorTop - host._anchorFactor * dist
+            end
+            host:_ApplyCameraLookAt(tx, ty + dist, useZ, tx, ty, useZ)
         end
     end
 
