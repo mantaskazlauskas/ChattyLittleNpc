@@ -9,6 +9,7 @@ Run: python tests/run_tests.py
 import sys
 import os
 import unittest
+import math
 
 try:
     from lupa import LuaRuntime
@@ -245,10 +246,10 @@ class TestBodyRegions(unittest.TestCase):
             upper_target, upper_lo, upper_hi, upper_w,
         ) = values
 
-        self.assertAlmostEqual(bust_target, 0.90, places=5)
+        self.assertAlmostEqual(bust_target, 0.92, places=5)
         self.assertAlmostEqual(bust_lo, 0.78, places=5)
         self.assertAlmostEqual(bust_hi, 1.00, places=5)
-        self.assertAlmostEqual(bust_w, 0.60, places=5)
+        self.assertAlmostEqual(bust_w, 0.35, places=5)
 
         self.assertAlmostEqual(head_target, 0.92, places=5)
         self.assertAlmostEqual(head_lo, 0.84, places=5)
@@ -279,17 +280,17 @@ class TestBodyRegions(unittest.TestCase):
         ) = result
 
         self.assertEqual(klass, "tall_humanoid")
-        self.assertAlmostEqual(target_z, 28.0, places=5)
+        self.assertAlmostEqual(target_z, 28.4, places=5)
         self.assertAlmostEqual(visible_lo, 25.6, places=5)
         self.assertAlmostEqual(visible_hi, 30.0, places=5)
         self.assertAlmostEqual(visible_h, 4.4, places=5)
-        self.assertAlmostEqual(fit_width, 4.8, places=5)
+        self.assertAlmostEqual(fit_width, 2.8, places=5)
         self.assertAlmostEqual(visible_h, visible_hi - visible_lo, places=5)
         self.assertAlmostEqual(fit_width, 8.0 * shoulder_w, places=5)
         self.assertAlmostEqual(focus_z, target_z, places=5)
         self.assertAlmostEqual(bottom_z, visible_lo, places=5)
         self.assertAlmostEqual(top_z, visible_hi, places=5)
-        self.assertAlmostEqual(desired_focus_y, 0.56, places=5)
+        self.assertAlmostEqual(desired_focus_y, 0.42, places=5)
         self.assertAlmostEqual(focus_to_top, visible_hi - target_z, places=5)
         self.assertAlmostEqual(focus_to_bottom, target_z - visible_lo, places=5)
 
@@ -307,13 +308,13 @@ class TestBodyRegions(unittest.TestCase):
         klass, target_z, visible_lo, visible_hi, fit_width, region_target, region_lo, region_w = result
 
         self.assertEqual(klass, "stocky_humanoid")
-        self.assertAlmostEqual(region_target, 0.88, places=5)
+        self.assertAlmostEqual(region_target, 0.90, places=5)
         self.assertAlmostEqual(region_lo, 0.74, places=5)
-        self.assertAlmostEqual(region_w, 0.65, places=5)
-        self.assertAlmostEqual(target_z, 27.6, places=5)
+        self.assertAlmostEqual(region_w, 0.40, places=5)
+        self.assertAlmostEqual(target_z, 28.0, places=5)
         self.assertAlmostEqual(visible_lo, 24.8, places=5)
         self.assertAlmostEqual(visible_hi, 30.0, places=5)
-        self.assertAlmostEqual(fit_width, 5.2, places=5)
+        self.assertAlmostEqual(fit_width, 3.2, places=5)
 
     def test_region_exposes_composition_fields(self):
         result = lua_call(self.lua, '''
@@ -330,14 +331,14 @@ class TestBodyRegions(unittest.TestCase):
             focus_screen_y, width_fit_pct
         ) = result
 
-        self.assertEqual(focus_anchor, "talkFocus")
+        self.assertEqual(focus_anchor, "eyeLine")
         self.assertEqual(bottom_anchor, "shoulders")
         self.assertEqual(top_anchor, "headTop")
-        self.assertAlmostEqual(focus_pct, 0.90, places=5)
+        self.assertAlmostEqual(focus_pct, 0.92, places=5)
         self.assertAlmostEqual(bottom_pct, 0.78, places=5)
         self.assertAlmostEqual(top_pct, 1.00, places=5)
-        self.assertAlmostEqual(focus_screen_y, 0.56, places=5)
-        self.assertAlmostEqual(width_fit_pct, 0.60, places=5)
+        self.assertAlmostEqual(focus_screen_y, 0.42, places=5)
+        self.assertAlmostEqual(width_fit_pct, 0.35, places=5)
 
     def test_solve_distance_uses_asymmetric_focus_composition(self):
         result = lua_call(self.lua, '''
@@ -365,6 +366,220 @@ class TestBodyRegions(unittest.TestCase):
         self.assertAlmostEqual(aim_b, focus_b, places=5)
         self.assertGreater(aim_a, focus_a)
 
+
+class TestModelScenePositioning(unittest.TestCase):
+    """Test ModelScene Positioning anchor math and host integration."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local NS = _G.ChattyLittleNpc.ReplayFrame.ModelScene
+            NS.Diagnostics = { log = function() end }
+            NS.CanonicalBbox = NS.CanonicalBbox or {}
+        """)
+        load_file(cls.lua, "src/ReplayFrame/Renderers/ModelScene/Positioning.lua")
+
+    def test_get_anchor_names_returns_expected_order(self):
+        result = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            return table.concat(P.GetAnchorNames(), ",")
+        ''')
+        self.assertEqual(
+            result,
+            "TOP_LEFT,TOP,TOP_RIGHT,LEFT,CENTER,RIGHT,BOTTOM_LEFT,BOTTOM,BOTTOM_RIGHT",
+        )
+
+    def test_resolve_anchor_point_uses_bbox_edges_and_center_y(self):
+        ax, ay, az = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            local bbox = {
+                min = { x = -2, y = 1, z = 10 },
+                max = { x = 4, y = 9, z = 30 },
+                center = { x = 1, y = 5, z = 20 },
+            }
+            return P.ResolveAnchorPoint(bbox, P.Anchors.TOP_LEFT)
+        ''')
+        self.assertAlmostEqual(ax, -2.0, places=5)
+        self.assertAlmostEqual(ay, 5.0, places=5)
+        self.assertAlmostEqual(az, 30.0, places=5)
+
+    def test_set_model_position_prefers_canonical_bbox_and_clamps_percentages(self):
+        ok, tx, ty, tz, px, py, pz, anchor, x_pct, y_pct, user_controlled, anchor_top_cleared, anchor_factor_cleared = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            local bbox = {
+                min = { x = -2, y = 1, z = 10 },
+                max = { x = 4, y = 9, z = 30 },
+                center = { x = 1, y = 5, z = 20 },
+            }
+            _G.ChattyLittleNpc.ReplayFrame.ModelScene.CanonicalBbox.GetCached = function(displayID)
+                return { bbox = bbox }
+            end
+            local host = {
+                _currentDisplayID = 77,
+                _camDist = 5,
+                _anchorTop = 123,
+                _anchorFactor = 456,
+                GetFovV = function() return 1.2 end,
+                GetAspect = function() return 1.5 end,
+                GetBounds = function()
+                    return {
+                        min = { x = -100, y = 0, z = -100 },
+                        max = { x = 100, y = 10, z = 100 },
+                        center = { x = 0, y = 5, z = 0 },
+                    }
+                end,
+                _ApplyCameraLookAt = function(self, camPx, camPy, camPz, camTx, camTy, camTz)
+                    self.camera = { tx = camTx, ty = camTy, tz = camTz, px = camPx, py = camPy, pz = camPz }
+                end,
+                _UpdateSnapshot = function(self, snapshot)
+                    self.snapshot = snapshot
+                end,
+            }
+            local success = P.SetModelPosition(host, P.Anchors.TOP_RIGHT, -1, 2)
+            return
+                success,
+                host.camera.tx,
+                host.camera.ty,
+                host.camera.tz,
+                host.camera.px,
+                host.camera.py,
+                host.camera.pz,
+                host._positioning.anchor,
+                host._positioning.xPct,
+                host._positioning.yPct,
+                host._userControlledCamera,
+                host._anchorTop == nil,
+                host._anchorFactor == nil
+        ''')
+        self.assertTrue(ok)
+        d = 5.0
+        half_h = d * math.tan(1.2 * 0.5)
+        half_w = half_h * 1.5
+        self.assertAlmostEqual(tx, 4.0 + half_w, places=5)
+        self.assertAlmostEqual(ty, 5.0, places=5)
+        self.assertAlmostEqual(tz, 30.0 - half_h, places=5)
+        self.assertAlmostEqual(px, tx, places=5)
+        self.assertAlmostEqual(py, 10.0, places=5)
+        self.assertAlmostEqual(pz, tz, places=5)
+        self.assertEqual(anchor, 'TOP_RIGHT')
+        self.assertAlmostEqual(x_pct, 0.0, places=5)
+        self.assertAlmostEqual(y_pct, 1.0, places=5)
+        self.assertTrue(user_controlled)
+        self.assertTrue(anchor_top_cleared)
+        self.assertTrue(anchor_factor_cleared)
+
+    def test_set_model_position_falls_back_to_live_bounds_when_no_canonical_bbox(self):
+        ok, tx, ty, tz = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            _G.ChattyLittleNpc.ReplayFrame.ModelScene.CanonicalBbox.GetCached = function()
+                return nil
+            end
+            local host = {
+                _camDist = 4,
+                GetFovV = function() return 1.0 end,
+                GetAspect = function() return 2.0 end,
+                GetBounds = function()
+                    return {
+                        min = { x = 10, y = 2, z = 20 },
+                        max = { x = 14, y = 8, z = 26 },
+                        center = { x = 12, y = 5, z = 23 },
+                    }
+                end,
+                _ApplyCameraLookAt = function(self, _, _, _, camTx, camTy, camTz)
+                    self.tx, self.ty, self.tz = camTx, camTy, camTz
+                end,
+                _UpdateSnapshot = function() end,
+            }
+            local success = P.SetModelPosition(host, P.Anchors.LEFT, 0.5, 0.5)
+            return success, host.tx, host.ty, host.tz
+        ''')
+        self.assertTrue(ok)
+        self.assertAlmostEqual(tx, 10.0, places=5)
+        self.assertAlmostEqual(ty, 5.0, places=5)
+        self.assertAlmostEqual(tz, 23.0, places=5)
+
+    def test_set_model_position_ignores_invalid_canonical_bbox_and_uses_live_bounds(self):
+        ok, tx, ty, tz = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            _G.ChattyLittleNpc.ReplayFrame.ModelScene.CanonicalBbox.GetCached = function()
+                return {
+                    bbox = {
+                        min = { x = 1, z = 2 },
+                        max = { x = 3, z = 4 },
+                    }
+                }
+            end
+            local host = {
+                _camDist = 4,
+                GetFovV = function() return 1.0 end,
+                GetAspect = function() return 1.0 end,
+                GetBounds = function()
+                    return {
+                        min = { x = 6, y = 1, z = 7 },
+                        max = { x = 10, y = 5, z = 11 },
+                        center = { x = 8, y = 3, z = 9 },
+                    }
+                end,
+                _ApplyCameraLookAt = function(self, _, _, _, camTx, camTy, camTz)
+                    self.tx, self.ty, self.tz = camTx, camTy, camTz
+                end,
+                _UpdateSnapshot = function() end,
+            }
+            local success = P.SetModelPosition(host, P.Anchors.CENTER, 0.5, 0.5)
+            return success, host.tx, host.ty, host.tz
+        ''')
+        self.assertTrue(ok)
+        self.assertAlmostEqual(tx, 8.0, places=5)
+        self.assertAlmostEqual(ty, 3.0, places=5)
+        self.assertAlmostEqual(tz, 9.0, places=5)
+
+    def test_set_model_position_returns_false_when_required_camera_inputs_missing(self):
+        result = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            _G.ChattyLittleNpc.ReplayFrame.ModelScene.CanonicalBbox.GetCached = function()
+                return {
+                    bbox = {
+                        min = { x = 0, y = 0, z = 0 },
+                        max = { x = 1, y = 1, z = 1 },
+                        center = { x = 0.5, y = 0.5, z = 0.5 },
+                    }
+                }
+            end
+            local host = {
+                _ApplyCameraLookAt = function() end,
+                _UpdateSnapshot = function() end,
+            }
+            return P.SetModelPosition(host, P.Anchors.CENTER, 0.5, 0.5)
+        ''')
+        self.assertFalse(result)
+
+    def test_set_model_position_returns_false_when_camera_application_errors(self):
+        result = lua_call(self.lua, '''
+            local P = _G.ChattyLittleNpc.ReplayFrame.ModelScene.Positioning
+            _G.ChattyLittleNpc.ReplayFrame.ModelScene.CanonicalBbox.GetCached = function()
+                return {
+                    bbox = {
+                        min = { x = 0, y = 0, z = 0 },
+                        max = { x = 2, y = 2, z = 2 },
+                        center = { x = 1, y = 1, z = 1 },
+                    }
+                }
+            end
+            local host = {
+                _camDist = 3,
+                GetFovV = function() return 1.0 end,
+                GetAspect = function() return 1.0 end,
+                _ApplyCameraLookAt = function()
+                    error("boom")
+                end,
+                _UpdateSnapshot = function()
+                    error("should not run")
+                end,
+            }
+            return P.SetModelPosition(host, P.Anchors.CENTER, 0.5, 0.5)
+        ''')
+        self.assertFalse(result)
 
 class TestProjectionVerifier(unittest.TestCase):
     """Lightweight projection math checks with mocked scene projection."""
@@ -1058,6 +1273,451 @@ class TestNativeVOPausePlaybackGating(unittest.TestCase):
         self.assertEqual(qlen, 0)
 
 
+class TestReplayModelDisplayIDResolution(unittest.TestCase):
+    """Replay model selection should prefer runtime-captured displayID over static DB."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            NpcDisplayIdDB = {
+                [100] = 9999,
+                [200] = 2222,
+            }
+            local CLN = _G.ChattyLittleNpc
+            CLN.VoiceoverPlayer = CLN.VoiceoverPlayer or {}
+            CLN.VoiceoverPlayer.currentlyPlaying = {
+                npcId = 100,
+                displayID = 5555,
+            }
+        """)
+        load_file(cls.lua, "src/ReplayFrame/ModelFrame.lua")
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.VoiceoverPlayer.currentlyPlaying = {
+                npcId = 100,
+                displayID = 5555,
+            }
+        """)
+
+    def test_prefers_runtime_display_id_for_active_npc(self):
+        value = lua_call(self.lua, '''
+            local rf = _G.ChattyLittleNpc.ReplayFrame
+            return rf:ResolveNpcDisplayID(100)
+        ''')
+        self.assertEqual(value, 5555)
+
+    def test_falls_back_to_db_when_runtime_display_missing(self):
+        value = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            CLN.VoiceoverPlayer.currentlyPlaying.displayID = nil
+            local rf = CLN.ReplayFrame
+            return rf:ResolveNpcDisplayID(100)
+        ''')
+        self.assertEqual(value, 9999)
+
+    def test_falls_back_to_db_when_runtime_npc_mismatch(self):
+        value = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            CLN.VoiceoverPlayer.currentlyPlaying = {
+                npcId = 101,
+                displayID = 5555,
+            }
+            local rf = CLN.ReplayFrame
+            return rf:ResolveNpcDisplayID(200)
+        ''')
+        self.assertEqual(value, 2222)
+
+
+class TestReplayQueuePipelineFixes(unittest.TestCase):
+    """Regression coverage for queue identity, history ownership, and stale UI reads."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.db.profile.audioChannel = "MASTER"
+            CLN.db.profile.questPlaybackMode = "queue"
+            CLN.db.profile.gossipQueueMode = "all"
+            CLN.db.profile.gossipCooldownEnabled = false
+            CLN.db.profile.gossipCooldownMinutes = 0
+            CLN.db.profile.textContinuationEnabled = true
+            CLN.db.profile.textContinuationThreshold = 0.75
+            CLN.db.profile.queueHistoryMaxEntries = 20
+            CLN.db.profile.historyTTLMinutes = 5
+
+            CLN.Utils = CLN.Utils or {}
+            CLN.Utils.LogCategories = { loader = "loader", ui = "ui", animation = "animation" }
+            function CLN.Utils:NormalizeQuestPhase(phase) return phase end
+            function CLN.Utils:IsCanonicalQuestPhase(phase)
+                return phase == "Desc" or phase == "Prog" or phase == "Comp"
+            end
+            function CLN.Utils:GetHashes(npcId, text)
+                return { tostring(npcId) .. ":" .. tostring(text) }
+            end
+            function CLN.Utils:GetPathToNonQuestFile()
+                return "Interface\\\\AddOns\\\\dummy.ogg"
+            end
+            function CLN.Utils:IsNilOrEmpty(value)
+                return value == nil or value == ""
+            end
+            function CLN:GetTitleForQuestID(questId)
+                return "Quest " .. tostring(questId)
+            end
+
+            CLN.VoiceoverPacks = {
+                TestPack = {
+                    _voiceoverIndex = {
+                        ["100_Desc.ogg"] = true,
+                        ["300_Comp.ogg"] = true,
+                    }
+                }
+            }
+
+            C_Sound = { IsPlaying = function() return false end }
+            function PlaySoundFile() return true, 4242 end
+            function StopSound() end
+        """)
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/ReplayFrame/init.lua")
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+            function RF:GetNpcNameById(id)
+                return id and ("NPC " .. tostring(id)) or nil
+            end
+            function RF:UpdateDisplayFrameState() end
+            function RF:UpdatePauseButton() end
+            function RF:HideSubtitle() end
+            function RF:ResetAnimationState() end
+            function RF:PruneOldHistory() end
+            function RF:GetHistory()
+                return self._replayHistory or {}
+            end
+        """)
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.questsQueue = {}
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP._suspendedPlayback = nil
+
+            local RF = CLN.ReplayFrame
+            RF._replayHistory = {}
+            RF._historyPushCalls = 0
+            RF._queueDirtyCalls = 0
+            RF.PushHistory = function(self, entry)
+                self._historyPushCalls = (self._historyPushCalls or 0) + 1
+                self._lastHistory = entry
+            end
+            RF.MarkQueueDirty = function(self)
+                self._queueDirtyCalls = (self._queueDirtyCalls or 0) + 1
+            end
+        """)
+
+    def test_deduplicate_queue_keeps_distinct_nonquest_entries(self):
+        qlen, titles = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            CLN.questsQueue = {
+                { npcId = 1, title = "Hello there", entryType = "Gossip", gender = "Male" },
+                { npcId = 2, title = "Hello there", entryType = "Gossip", gender = "Male" },
+                { npcId = 1, title = "Hello there", entryType = "Gossip", gender = "Male" },
+            }
+            CLN.VoiceoverPlayer:DeduplicateQueue()
+            return #CLN.questsQueue, CLN.questsQueue[1].npcId .. "," .. CLN.questsQueue[2].npcId
+        ''')
+        self.assertEqual(qlen, 2)
+        self.assertEqual(set(titles.split(",")), {"1", "2"})
+
+    def test_deduplicate_queue_removes_current_nonquest_duplicate(self):
+        qlen, remaining_npc = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            CLN.questsQueue = {
+                { npcId = 1, title = "Stay awhile", entryType = "Gossip", gender = "Male" },
+                { npcId = 2, title = "Fresh line", entryType = "Gossip", gender = "Female" },
+            }
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.npcId = 1
+            cp.title = "Stay awhile"
+            cp.entryType = "Gossip"
+            cp.gender = "Male"
+            cp.soundHandle = 99
+            VP.currentlyPlaying = cp
+            VP:DeduplicateQueue()
+            return #CLN.questsQueue, CLN.questsQueue[1].npcId
+        ''')
+        self.assertEqual(qlen, 1)
+        self.assertEqual(remaining_npc, 2)
+
+    def test_push_to_history_is_idempotent_per_record(self):
+        push_calls, pushed_flag = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local record = {
+                npcId = 5,
+                title = "One line",
+                entryType = "Gossip",
+            }
+            CLN.VoiceoverPlayer:PushToHistory(record)
+            CLN.VoiceoverPlayer:PushToHistory(record)
+            return CLN.ReplayFrame._historyPushCalls, record._historyPushed and true or false
+        ''')
+        self.assertEqual(push_calls, 1)
+        self.assertTrue(pushed_flag)
+
+    def test_get_playback_state_reads_explicit_state(self):
+        user_state, native_state = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Paused line"
+            VP:SetPlaybackState(cp, VP.State.PAUSED_USER)
+            VP.currentlyPlaying = cp
+            local userState = VP:GetPlaybackState(cp)
+
+            VP:SetPlaybackState(cp, VP.State.PAUSED_NATIVE)
+            local nativeState = VP:GetPlaybackState(cp)
+            return userState, nativeState
+        ''')
+        self.assertEqual(user_state, "paused_user")
+        self.assertEqual(native_state, "paused_native")
+
+    def test_pause_playback_converts_native_pause_into_user_pause(self):
+        paused, state, timer_cleared, cancelled = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Native paused line"
+            cp.entryType = "Gossip"
+            cp.npcId = 77
+            VP:SetPlaybackState(cp, VP.State.PAUSED_NATIVE)
+            VP.currentlyPlaying = cp
+            _G.nativeResumeCancelled = false
+            VP._nativeVOResumeTimer = {
+                Cancel = function()
+                    _G.nativeResumeCancelled = true
+                end
+            }
+
+            VP:PausePlayback()
+
+            return VP:IsPaused(), VP:GetPlaybackState(cp),
+                VP._nativeVOResumeTimer == nil,
+                _G.nativeResumeCancelled
+        ''')
+        self.assertTrue(paused)
+        self.assertEqual(state, "paused_user")
+        self.assertTrue(timer_cleared)
+        self.assertTrue(cancelled)
+
+    def test_get_display_entries_returns_current_then_queue_with_states(self):
+        first_kind, first_state, second_kind, second_state, second_title = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Current line"
+            cp.entryType = "Gossip"
+            cp.npcId = 10
+            cp.soundHandle = 321
+            VP:SetPlaybackState(cp, VP.State.PLAYING)
+            VP.currentlyPlaying = cp
+
+            CLN.questsQueue = {
+                { questId = 200, phase = "Prog", title = "Quest 200", entryType = "quest", state = VP.State.QUEUED },
+            }
+
+            local entries = VP:GetDisplayEntries()
+            return entries[1].kind, entries[1].state, entries[2].kind, entries[2].state, entries[2].title
+        ''')
+        self.assertEqual(first_kind, "current")
+        self.assertEqual(first_state, "playing")
+        self.assertEqual(second_kind, "queue")
+        self.assertEqual(second_state, "queued")
+        self.assertEqual(second_title, "Quest 200")
+
+    def test_build_queue_entries_does_not_mutate_stale_current(self):
+        entries_count, push_calls, current_title = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Stale gossip"
+            cp.entryType = "Gossip"
+            cp.npcId = 77
+            cp.soundHandle = 555
+            cp.startTime = -100
+            VP.currentlyPlaying = cp
+
+            local entries = CLN.ReplayFrame:BuildQueueEntries()
+            return #entries, CLN.ReplayFrame._historyPushCalls, VP.currentlyPlaying.title
+        ''')
+        self.assertEqual(entries_count, 0)
+        self.assertEqual(push_calls, 0)
+        self.assertEqual(current_title, "Stale gossip")
+
+    def test_get_display_entries_ignores_current_already_in_history(self):
+        entries_count = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Already archived"
+            cp.entryType = "Gossip"
+            cp.npcId = 77
+            cp.soundHandle = 555
+            cp._historyPushed = true
+            VP:SetPlaybackState(cp, VP.State.PLAYING)
+            VP.currentlyPlaying = cp
+
+            return #VP:GetDisplayEntries()
+        ''')
+        self.assertEqual(entries_count, 0)
+
+    def test_build_queue_entries_carries_state_from_player_projection(self):
+        current_state, queued_state = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Current line"
+            cp.entryType = "Gossip"
+            cp.npcId = 77
+            cp.soundHandle = 555
+            VP:SetPlaybackState(cp, VP.State.PLAYING)
+            VP.currentlyPlaying = cp
+
+            CLN.questsQueue = {
+                { npcId = 12, title = "Queued line", entryType = "Gossip", gender = "Male", state = VP.State.QUEUED },
+            }
+
+            local entries = CLN.ReplayFrame:BuildQueueEntries()
+            return entries[1].state, entries[2].state
+        ''')
+        self.assertEqual(current_state, "playing")
+        self.assertEqual(queued_state, "queued")
+
+    def test_play_quest_sound_removes_matching_queued_entry_even_when_not_head(self):
+        qlen, head_id, current_id, current_state = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            CLN.questsQueue = {
+                { questId = 200, phase = "Prog", title = "Quest 200", entryType = "quest" },
+                { questId = 100, phase = "Desc", title = "Quest 100", entryType = "quest" },
+            }
+            CLN.VoiceoverPlayer:PlayQuestSound(100, "Desc", 9, 10)
+            return #CLN.questsQueue, CLN.questsQueue[1].questId, CLN.VoiceoverPlayer.currentlyPlaying.questId, CLN.VoiceoverPlayer.currentlyPlaying.state
+        ''')
+        self.assertEqual(qlen, 1)
+        self.assertEqual(head_id, 200)
+        self.assertEqual(current_id, 100)
+        self.assertEqual(current_state, "playing")
+
+    def test_advance_queue_plays_when_current_is_completed(self):
+        """AdvanceQueue must not see a COMPLETED currentlyPlaying as effectively playing."""
+        current_id, current_state, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            -- Simulate a just-finished sound: still has handle but state=COMPLETED
+            local old = VP:GetCurrentlyPlayingObject()
+            old.questId = 99
+            old.phase = "Desc"
+            old.title = "Finished quest"
+            old.entryType = "quest"
+            old.soundHandle = 9999
+            old._historyPushed = true
+            VP:SetPlaybackState(old, VP.State.COMPLETED)
+            VP.currentlyPlaying = old
+
+            CLN.questsQueue = {
+                { questId = 100, phase = "Desc", title = "Quest 100", entryType = "quest" },
+            }
+            -- Clear current like OnVoiceoverStop does before advancing
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP:AdvanceQueue()
+            return VP.currentlyPlaying.questId, VP.currentlyPlaying.state, #CLN.questsQueue
+        ''')
+        self.assertEqual(current_id, 100)
+        self.assertEqual(current_state, "playing")
+        self.assertEqual(qlen, 0)
+
+    def test_advance_queue_pops_quest_and_plays(self):
+        current_id, current_state, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            CLN.questsQueue = {
+                { questId = 300, phase = "Comp", title = "Quest 300", entryType = "quest" },
+            }
+            VP:AdvanceQueue()
+            return VP.currentlyPlaying.questId, VP.currentlyPlaying.state, #CLN.questsQueue
+        ''')
+        self.assertEqual(current_id, 300)
+        self.assertEqual(current_state, "playing")
+        self.assertEqual(qlen, 0)
+
+    def test_advance_queue_pops_nonquest_and_plays(self):
+        current_title, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            CLN.questsQueue = {
+                { npcId = 5, title = "Gossip line", entryType = "Gossip", gender = "Male" },
+            }
+            VP:AdvanceQueue()
+            return VP.currentlyPlaying.title, #CLN.questsQueue
+        ''')
+        self.assertEqual(current_title, "Gossip line")
+        self.assertEqual(qlen, 0)
+
+    def test_advance_queue_skips_unknown_entries(self):
+        current_id, qlen = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            CLN.questsQueue = {
+                { foo = "bar" },
+                { questId = 100, phase = "Desc", title = "Quest 100", entryType = "quest" },
+            }
+            VP:AdvanceQueue()
+            return VP.currentlyPlaying.questId, #CLN.questsQueue
+        ''')
+        self.assertEqual(current_id, 100)
+        self.assertEqual(qlen, 0)
+
+    def test_drop_queued_range_pushes_history_and_removes(self):
+        qlen, push_calls = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            CLN.questsQueue = {
+                { questId = 1, phase = "Desc", title = "Q1", entryType = "quest" },
+                { questId = 2, phase = "Desc", title = "Q2", entryType = "quest" },
+                { questId = 3, phase = "Desc", title = "Q3", entryType = "quest" },
+            }
+            VP:DropQueuedRange(1, 2)
+            return #CLN.questsQueue, CLN.ReplayFrame._historyPushCalls
+        ''')
+        self.assertEqual(qlen, 1)
+        self.assertEqual(push_calls, 2)
+
+    def test_play_queued_item_at_index_drops_before_and_plays(self):
+        current_id, qlen, push_calls = lua_call(self.lua, '''
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            CLN.questsQueue = {
+                { questId = 200, phase = "Prog", title = "Q200", entryType = "quest" },
+                { questId = 100, phase = "Desc", title = "Q100", entryType = "quest" },
+                { questId = 300, phase = "Comp", title = "Q300", entryType = "quest" },
+            }
+            VP:PlayQueuedItemAtIndex(2)
+            return VP.currentlyPlaying.questId, #CLN.questsQueue, CLN.ReplayFrame._historyPushCalls
+        ''')
+        self.assertEqual(current_id, 100)
+        self.assertEqual(qlen, 1)  # Q300 remains
+        self.assertEqual(push_calls, 1)  # Q200 was dropped to history
+
+
 @unittest.skip("Md5.lua uses WoW bit library that hangs in Lua 5.4")
 class TestMD5(unittest.TestCase):
     """Test MD5:GenerateHash against known vectors."""
@@ -1074,8 +1734,9 @@ class TestMD5(unittest.TestCase):
 
     def test_empty_string(self):
         result = self._md5("")
-        # This addon's MD5 impl produces 40 hex chars (5 x 8)
-        self.assertEqual(len(result), 40, "MD5 hash should be 40 hex chars")
+        # RFC 1321 MD5 produces 32 hex chars (4 x 8)
+        self.assertEqual(len(result), 32, "MD5 hash should be 32 hex chars")
+        self.assertEqual(result, "d41d8cd98f00b204e9800998ecf8427e")
 
     def test_deterministic(self):
         h1 = self._md5("Hello, World!")
