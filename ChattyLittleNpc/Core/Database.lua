@@ -41,7 +41,11 @@ function Database:New(savedVarName, defaults, defaultProfile)
     -- Create profile accessor
     instance.profile = setmetatable({}, {
         __index = function(t, key)
-            local profileData = instance.sv.profiles[instance.sv.currentProfile]
+            local profiles = instance.sv and instance.sv.profiles
+            local profileData = profiles and profiles[instance.sv.currentProfile]
+            if type(profileData) ~= "table" then
+                return instance.defaults.profile and instance.defaults.profile[key]
+            end
             if profileData[key] ~= nil then
                 return profileData[key]
             end
@@ -49,7 +53,12 @@ function Database:New(savedVarName, defaults, defaultProfile)
             return instance.defaults.profile and instance.defaults.profile[key]
         end,
         __newindex = function(t, key, value)
-            instance.sv.profiles[instance.sv.currentProfile][key] = value
+            local profiles = instance.sv and instance.sv.profiles
+            if not profiles then return end
+            if not profiles[instance.sv.currentProfile] then
+                profiles[instance.sv.currentProfile] = {}
+            end
+            profiles[instance.sv.currentProfile][key] = value
         end
     })
     

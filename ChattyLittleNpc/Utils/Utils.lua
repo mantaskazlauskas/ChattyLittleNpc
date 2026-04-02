@@ -130,6 +130,7 @@ end
 --- Replacing player name, race and class with "Hero" so that it would be consistent across all players (for hash generation).
 -- @param text The string to be cleaned.
 function Utils:CleanText(text)
+    if not text or text == "" then return text or "" end
     buildCleanPatterns()
     for _, p in ipairs(_cleanPatterns) do
         text = text:gsub(p[1], p[2])
@@ -144,6 +145,7 @@ end
 --- Cleans the provided text by removing unwanted characters or formatting.
 -- @param text The string to be cleaned.
 function Utils:CleanTextV2(text)
+    if not text or text == "" then return text or "" end
     buildCleanPatterns()
     for _, p in ipairs(_cleanV2Patterns) do
         text = text:gsub(p[1], p[2])
@@ -174,7 +176,7 @@ function Utils:PrintTable(t, indent)
         local formatting = string.rep("  ", indent) .. k .. ": "
         if (type(v) == "table") then
             if CLN and CLN.Logger then CLN.Logger:info(formatting, false, self.LogCategories.misc) end
-            self.PrintTable(v, indent + 1)
+            self:PrintTable(v, indent + 1)
         else
             if CLN and CLN.Logger then CLN.Logger:info(formatting .. tostring(v), false, self.LogCategories.misc) end
         end
