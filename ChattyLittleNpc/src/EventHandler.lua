@@ -295,14 +295,17 @@ function EventHandler:ITEM_TEXT_READY()
     local itemName = ItemTextGetItem()
     local itemText = ItemTextGetText()
     local itemId = C_Item.GetItemInfoInstant(itemName)
-    -- pcall-protect UnitGUID against potential secret values (WoW 12.0+).
-    -- type() is safe on secrets; concatenation extracts the plain string.
+    -- Desecret UnitGUID against potential secret values (WoW 12.0+).
     local unitGuid
     do
         local raw = UnitGUID('npc')
         if type(raw) == "string" then
-            local gOk, plain = pcall(function() return "" .. raw end)
-            unitGuid = gOk and plain or nil
+            local blocked
+            unitGuid, blocked = CLN.Utils.Desecret(raw)
+            if blocked and CLN.Logger then
+                CLN.Logger:warn("Secret value blocked: UnitGUID in ITEM_TEXT_READY",
+                    false, CLN.Utils.LogCategories.secrets)
+            end
         end
     end
     local unitType = "Item"
@@ -495,31 +498,26 @@ end
 --- Pauses addon voiceover when a whitelisted NPC speaks (or all NPCs in "all" mode).
 --- Note: EventSystem dispatches (event, ...) so the first arg here is the event name.
 function EventHandler:OnNpcChatMessage(event, text, npcName, languageName, channelName, playerName2, specialFlags, zoneChannelID, channelIndex, channelBaseName, languageID, lineID, guid, bnSenderID, isMobile, isSubtitle, hideSenderInLetterbox, supressRaidIcons)
-    -- Secret value handling (Patch 12.0+):
-    -- CHAT_MSG_MONSTER_* args can be "secret" values that error on comparison,
-    -- length (#), string methods, table-key use, and even tostring().
-    -- type() IS safe on secrets.  Concatenation is nominally allowed but can
-    -- still fail for some secret values, so we wrap everything in pcall.
-    local function desecret(val)
-        -- type() is documented as safe on secret values (returns real type)
-        local t = type(val)
-        if t ~= "string" and t ~= "number" then return val end
-        -- Attempt concatenation (allowed on secret strings/numbers per Blizzard docs)
-        local ok, plain = pcall(function() return "" .. val end)
-        if ok and plain then return plain end
-        -- Concatenation failed — try string.format which is also listed as allowed
-        ok, plain = pcall(string.format, "%s", val)
-        if ok and plain then return plain end
-        -- Value is truly inaccessible; return nil
-        return nil
+    -- Desecret event args — see CLN.Utils.Desecret() for secret-value handling.
+    local desecret = CLN.Utils.Desecret
+    local text, textBlocked = desecret(text)
+    local npcName, nameBlocked = desecret(npcName)
+    local guid, guidBlocked = desecret(guid)
+
+    -- Log when secret values block NPC message processing
+    if (textBlocked or nameBlocked or guidBlocked) and CLN.Logger then
+        local parts = {}
+        if textBlocked then parts[#parts + 1] = "text" end
+        if nameBlocked then parts[#parts + 1] = "npcName" end
+        if guidBlocked then parts[#parts + 1] = "guid" end
+        CLN.Logger:warn("Secret value blocked: " .. table.concat(parts, ", ")
+            .. " (event=" .. tostring(event) .. ")",
+            false, CLN.Utils.LogCategories.secrets)
     end
-    text = desecret(text)
-    npcName = desecret(npcName)
-    guid = desecret(guid)
 
     -- If critical args are still inaccessible, bail early rather than error downstream
     -- (npcName nil is okay — we can still work with guid/npcId)
-    local ok, err = pcall(self._OnNpcChatMessageInner, self, event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID)
+    local ok, err = pcall(self._OnNpcChatMessageInner, self, event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID, nameBlocked, guidBlocked)
     if not ok and CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug("OnNpcChatMessage inner error: " .. tostring(err), false, CLN.Utils.LogCategories.loader)
     end
@@ -527,7 +525,7 @@ end
 
 --- Inner implementation of OnNpcChatMessage, called via pcall for safety.
 --- All secret values should be desecret'd before reaching here.
-function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID)
+function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubtitle, hideSenderInLetterbox, lineID, nameBlocked, guidBlocked)
     local npcId = nil
     -- Try the event guid first, then fall back to nearby unit GUIDs
     local resolvedGuid = guid
@@ -535,11 +533,15 @@ function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubti
         -- Try "npc" unit (quest dialog NPC) or "target" as fallbacks
         local npcGuid = UnitGUID("npc")
         local targetGuid = UnitGUID("target")
-        -- Match by name to avoid attributing to the wrong unit
-        if npcGuid and UnitName and npcName and UnitName("npc") == npcName then
-            resolvedGuid = npcGuid
-        elseif targetGuid and UnitName and npcName and UnitName("target") == npcName then
-            resolvedGuid = targetGuid
+        -- Match by name to avoid attributing to the wrong unit.
+        -- UnitName() can also return secret values, so wrap comparisons in pcall.
+        if npcGuid and UnitName and npcName then
+            local ok, eq = pcall(function() return UnitName("npc") == npcName end)
+            if ok and eq then resolvedGuid = npcGuid end
+        end
+        if not resolvedGuid and targetGuid and UnitName and npcName then
+            local ok, eq = pcall(function() return UnitName("target") == npcName end)
+            if ok and eq then resolvedGuid = targetGuid end
         end
     end
     if resolvedGuid and type(resolvedGuid) == "string" then
@@ -551,13 +553,13 @@ function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubti
     if CLN.db.profile.debugMode and CLN.Logger then
         CLN.Logger:debug(
             "NPC_MSG event=" .. tostring(event)
-            .. " npc=" .. tostring(npcName or "nil")
+            .. " npc=" .. (nameBlocked and "<SECRET>" or tostring(npcName or "nil"))
             .. " npcId=" .. tostring(npcId)
             .. " text=" .. (text and string.sub(text, 1, 60) or "nil")
             .. " isSubtitle=" .. tostring(isSubtitle)
             .. " hideSender=" .. tostring(hideSenderInLetterbox)
             .. " lineID=" .. tostring(lineID)
-            .. " guid=" .. tostring(guid or "nil"),
+            .. " guid=" .. (guidBlocked and "<SECRET>" or tostring(guid or "nil")),
             false, CLN.Utils.LogCategories.loader)
     end
 
