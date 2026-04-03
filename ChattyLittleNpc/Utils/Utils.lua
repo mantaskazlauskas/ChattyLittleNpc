@@ -50,7 +50,79 @@ Utils.LogCategories = {
     emotes = "emotes",
     ui = "ui",
     misc = "misc",
+    secrets = "secrets",
 }
+
+--- Session-level counters for secret-value encounters.
+--- Callers of Desecret() can read these for telemetry/debug display.
+Utils.SecretStats = {
+    total   = 0,   -- Desecret() calls that detected a secret value
+    blocked = 0,   -- times the value was truly inaccessible (returned nil)
+}
+
+--- Convert a WoW 12.0+ "secret value" into a normal Lua value safe for
+--- comparison, boolean tests, table-key use, and string operations.
+--- Returns the plain value when possible, or nil when the value is truly
+--- inaccessible (e.g. during M+/PvP combat restrictions).
+---@param val any
+---@return any|nil plainValue
+---@return boolean wasBlocked true when val was secret and could not be extracted
+function Utils.Desecret(val)
+    local t = type(val)
+    if t ~= "string" and t ~= "number" then return val, false end
+    -- Fast path: value is not secret at all (outside M+/PvP/combat contexts)
+    if issecretvalue and not issecretvalue(val) then return val, false end
+    -- Value is (or might be) secret — count it
+    Utils.SecretStats.total = Utils.SecretStats.total + 1
+    -- Attempt concatenation (allowed on secret strings/numbers per Blizzard docs).
+    -- Use `if ok then` (not `if ok and plain then`) to avoid a truthiness test
+    -- on the result, which would itself error if the result is still secret.
+    local ok, plain = pcall(function() return "" .. val end)
+    if ok then
+        -- Concatenation can produce another secret string (tainted by our addon);
+        -- verify the result is actually usable for comparison/branching.
+        if issecretvalue and issecretvalue(plain) then
+            Utils.SecretStats.blocked = Utils.SecretStats.blocked + 1
+            return nil, true
+        end
+        if not issecretvalue then
+            local canCompare = pcall(function() return plain == plain end)
+            if not canCompare then
+                Utils.SecretStats.blocked = Utils.SecretStats.blocked + 1
+                return nil, true
+            end
+        end
+        return plain, false
+    end
+    -- Concatenation failed — try string.format which is also listed as allowed
+    ok, plain = pcall(string.format, "%s", val)
+    if ok then
+        if issecretvalue and issecretvalue(plain) then
+            Utils.SecretStats.blocked = Utils.SecretStats.blocked + 1
+            return nil, true
+        end
+        if not issecretvalue then
+            local canCompare = pcall(function() return plain == plain end)
+            if not canCompare then
+                Utils.SecretStats.blocked = Utils.SecretStats.blocked + 1
+                return nil, true
+            end
+        end
+        return plain, false
+    end
+    -- Value is truly inaccessible
+    Utils.SecretStats.blocked = Utils.SecretStats.blocked + 1
+    return nil, true
+end
+
+--- Return a one-line summary of secret-value encounter stats for telemetry.
+---@return string
+function Utils.GetSecretReport()
+    local s = Utils.SecretStats
+    if s.total == 0 then return "Secrets: none encountered" end
+    return string.format("Secrets: %d encountered, %d blocked (%.0f%% blocked)",
+        s.total, s.blocked, (s.blocked / s.total) * 100)
+end
 
 -- Canonical quest phase constants (file-name safe short codes)
 Utils.QuestPhases = {
