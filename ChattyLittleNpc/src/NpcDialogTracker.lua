@@ -223,13 +223,17 @@ function NpcDialogTracker:HandleQuestTexts(event)
 end
 
 function NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
-    -- pcall-protect UnitGUID against potential secret values (WoW 12.0+).
+    -- Desecret UnitGUID against potential secret values (WoW 12.0+).
     local unitGuid
     do
         local raw = UnitGUID('npc')
         if type(raw) == "string" then
-            local gOk, plain = pcall(function() return "" .. raw end)
-            unitGuid = gOk and plain or nil
+            local blocked
+            unitGuid, blocked = CLN.Utils.Desecret(raw)
+            if blocked and CLN.Logger then
+                CLN.Logger:warn("Secret value blocked: UnitGUID in HandleItemTextReady",
+                    false, CLN.Utils.LogCategories.secrets)
+            end
         end
     end
     if (itemName and itemText and unitGuid) then
