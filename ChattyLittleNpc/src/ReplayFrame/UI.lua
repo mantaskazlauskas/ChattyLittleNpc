@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
+local IconAtlas = CLN.IconAtlas
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -15,7 +16,8 @@ function ReplayFrame:GetDisplayFrame()
     local frame = CreateFrame("Frame", "ChattyLittleNpcDisplayFrame", UIParent)
     frame:SetFrameStrata("MEDIUM")
     frame:SetClampedToScreen(true)
-    frame:EnableMouse(true)
+    -- Background should be click-through outside Edit Mode; interactive children handle their own mouse
+    frame:EnableMouse(false)
     frame:SetMovable(true)
     -- Resize only allowed in Edit Mode (will be enabled there)
     frame:SetResizable(false)
@@ -25,10 +27,24 @@ function ReplayFrame:GetDisplayFrame()
     self.expandedWidth = self.expandedWidth or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
     local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or 475)
     local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or 165
+    if defaultH < 80 then defaultH = 165 end
     frame:SetSize(defaultW, defaultH)
     if frame.SetResizeBounds then frame:SetResizeBounds(260, 120) end
 
     self.DisplayFrame = frame
+
+    -- Tooltip on hover: addon name + click to edit hint
+    frame:HookScript("OnEnter", function(f)
+        if not GameTooltip or not GameTooltip.SetOwner then return end
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine("Chatty Little NPC", 1,1,1)
+        GameTooltip:AddLine("Click to Edit", 0.9, 0.9, 0.9)
+        GameTooltip:Show()
+    end)
+    frame:HookScript("OnLeave", function()
+        if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
+    end)
 
     -- Build UI parts
     self:CreateContentFrame()
@@ -42,7 +58,159 @@ function ReplayFrame:GetDisplayFrame()
     -- Position after components exist
     if self.LoadFramePosition then self:LoadFramePosition() end
 
+    -- Apply frame scale if set
+    if CLN.db and CLN.db.profile and CLN.db.profile.frameScale then
+        frame:SetScale(CLN.db.profile.frameScale)
+    end
+
+    -- Edit mode glow overlay (hidden until edit mode activates)
+    local glow = frame:CreateTexture(nil, "OVERLAY")
+    glow:SetPoint("TOPLEFT", frame, "TOPLEFT", -4, 4)
+    glow:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 4, -4)
+    glow:SetTexture("Interface/Buttons/UI-ActionButton-Border")
+    glow:SetBlendMode("ADD")
+    glow:SetVertexColor(1.0, 0.82, 0.0, 0)
+    glow:Hide()
+    self.EditGlow = glow
+
+    self:_CreateDisplayFrameAnimations()
+
     return frame
+end
+
+function ReplayFrame:StartEditGlowPulse()
+    if not self.EditGlow then return end
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.editModeGlowHints
+    if not enabled then return end
+    -- Check if already shown enough times
+    local profile = CLN and CLN.db and CLN.db.profile
+    if profile and profile._glowHintShown then return end
+
+    self.EditGlow:Show()
+    self._glowPulseCount = 0
+    local maxCycles = 3
+
+    if not self._glowAnimGroup then
+        local ag = self.EditGlow:CreateAnimationGroup()
+        local fadeIn = ag:CreateAnimation("Alpha")
+        fadeIn:SetFromAlpha(0)
+        fadeIn:SetToAlpha(0.4)
+        fadeIn:SetDuration(1.0)
+        fadeIn:SetOrder(1)
+        local fadeOut = ag:CreateAnimation("Alpha")
+        fadeOut:SetFromAlpha(0.4)
+        fadeOut:SetToAlpha(0)
+        fadeOut:SetDuration(1.0)
+        fadeOut:SetOrder(2)
+        ag:SetLooping("REPEAT")
+        ag:SetScript("OnLoop", function()
+            self._glowPulseCount = (self._glowPulseCount or 0) + 1
+            if self._glowPulseCount >= maxCycles then
+                ag:Stop()
+                self.EditGlow:Hide()
+                -- Mark as shown in profile
+                if CLN and CLN.db and CLN.db.profile then
+                    CLN.db.profile._glowHintShown = true
+                end
+            end
+        end)
+        self._glowAnimGroup = ag
+    end
+
+    self._glowPulseCount = 0
+    self._glowAnimGroup:Play()
+end
+
+function ReplayFrame:StopEditGlowPulse()
+    if self._glowAnimGroup then self._glowAnimGroup:Stop() end
+    if self.EditGlow then self.EditGlow:Hide() end
+end
+
+--- Create fade-in/fade-out AnimationGroups on DisplayFrame.
+--- Called once from GetDisplayFrame after the frame is built.
+function ReplayFrame:_CreateDisplayFrameAnimations()
+    local frame = self.DisplayFrame
+    if not frame then return end
+
+    -- Fade In: 0 → 1 with ease-out
+    local fadeIn = frame:CreateAnimationGroup()
+    local fi = fadeIn:CreateAnimation("Alpha")
+    fi:SetFromAlpha(0)
+    fi:SetToAlpha(1)
+    local F = self.Config and self.Config.Fade
+    fi:SetDuration(F and F.frameFadeIn or 0.2)
+    fi:SetSmoothing("OUT")
+    fadeIn:SetScript("OnFinished", function()
+        frame:SetAlpha(1)
+    end)
+    self._frameFadeInAG = fadeIn
+
+    -- Fade Out: 1 → 0 with ease-in
+    local fadeOut = frame:CreateAnimationGroup()
+    local fo = fadeOut:CreateAnimation("Alpha")
+    fo:SetFromAlpha(1)
+    fo:SetToAlpha(0)
+    fo:SetDuration(F and F.frameFadeOut or 0.25)
+    fo:SetSmoothing("IN")
+    fadeOut:SetScript("OnFinished", function()
+        self._frameFadingOut = false
+        frame:SetAlpha(0)
+        frame:Hide()
+    end)
+    self._frameFadeOutAG = fadeOut
+end
+
+--- Smoothly show the main DisplayFrame with a fade-in.
+--- Idempotent: safe to call every frame from UpdateVisibility.
+function ReplayFrame:_DisplayFrameFadeIn()
+    local frame = self.DisplayFrame
+    if not frame then return end
+    -- Cancel any fade-out in progress
+    if self._frameFadingOut then
+        if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then
+            self._frameFadeOutAG:Stop()
+        end
+        self._frameFadingOut = false
+    end
+    -- Already playing fade-in? Let it continue
+    if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then
+        frame:Show()
+        return
+    end
+    -- Already fully visible? No-op
+    if frame:IsShown() and frame:GetAlpha() >= 1 then return end
+    -- Start fade-in
+    frame:SetAlpha(0)
+    frame:Show()
+    if self._frameFadeInAG then
+        self._frameFadeInAG:Play()
+    else
+        frame:SetAlpha(1)
+    end
+end
+
+--- Smoothly hide the main DisplayFrame with a fade-out.
+--- Idempotent: safe to call every frame from UpdateVisibility.
+--- On completion, calls frame:Hide() to fully remove the frame.
+function ReplayFrame:_DisplayFrameFadeOut()
+    local frame = self.DisplayFrame
+    if not frame or not frame:IsShown() then return end
+    -- Already fading out? Let it continue
+    if self._frameFadingOut then return end
+    -- Cancel any fade-in
+    if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then
+        self._frameFadeInAG:Stop()
+    end
+    -- Start fade-out
+    self._frameFadingOut = true
+    frame:SetAlpha(1)
+    if self._frameFadeOutAG then
+        self._frameFadeOutAG:Play()
+    else
+        self._frameFadingOut = false
+        frame:SetAlpha(0)
+        frame:Hide()
+    end
 end
 
 -- Create the minimized button that appears when frame is hidden
@@ -62,7 +230,12 @@ function ReplayFrame:EnsureMinimizedButton()
     -- circular masked icon
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetAllPoints()
-    tex:SetTexture("Interface/Icons/Ability_Warrior_BattleShout")
+    -- Portrait / brand icon placeholder via atlas
+    if IconAtlas then
+        tex:SetTexture(IconAtlas:Get(IconAtlas.keys.portrait))
+    else
+        tex:SetTexture("Interface/Icons/Ability_Warrior_BattleShout")
+    end
     local mask = btn:CreateMaskTexture(nil, "ARTWORK")
     mask:SetTexture("Interface/CharacterFrame/TempPortraitAlphaMask")
     mask:SetAllPoints(tex)
@@ -87,7 +260,7 @@ end
 -- Initialize the model container (delegate to ModelFrame if available)
 function ReplayFrame:InitializeModelContainer()
     self.npcModelFrameWidth = 220
-    self.npcModelFrameHeight = 140
+    self.npcModelFrameHeight = (CLN.db and CLN.db.profile and CLN.db.profile.npcModelFrameHeight) or 140
 
     -- Initialize the model container and model frame via extracted module (idempotent)
     if self.CreateModelUI and not (self.ModelContainer or self.NpcModelFrame) then
@@ -96,11 +269,12 @@ function ReplayFrame:InitializeModelContainer()
             self:LayoutModelArea(self.DisplayFrame)
         end
     elseif not (self.ModelContainer or self.NpcModelFrame) then
-        -- Fallback defaults if module hasn't loaded yet
-        local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
-        modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
-        modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
+        -- Fallback: standalone model container above DisplayFrame
+        local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", UIParent)
+        modelContainer:SetPoint("BOTTOMLEFT", self.DisplayFrame, "TOPLEFT", 0, 2)
+        modelContainer:SetPoint("BOTTOMRIGHT", self.DisplayFrame, "TOPRIGHT", 0, 2)
         modelContainer:SetHeight(self.npcModelFrameHeight)
+        modelContainer:SetClipsChildren(true)
         modelContainer:Hide()
         self.ModelContainer = modelContainer
 
@@ -118,7 +292,7 @@ end
 -- Create the content frame and all UI elements within it
 function ReplayFrame:CreateContentFrame()
     local this = self
-    
+
     -- Child frame: Content (quest queue and voiceover text)
     local contentFrame = CreateFrame("Frame", "ChattyLittleNpcContentFrame", self.DisplayFrame)
     contentFrame:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -5)
@@ -128,15 +302,15 @@ function ReplayFrame:CreateContentFrame()
 
     -- Create header and controls
     self:CreateHeaderElements(contentFrame)
-    
+
     -- Create header buttons
     self:CreateHeaderButtons(contentFrame)
     -- After buttons exist, constrain the header to end just before the buttons
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
-    
+
     -- Create the non-scrolling list for the conversation queue
     self:CreateScrollBox(contentFrame)
-    
+
     -- Setup CVar watcher for text scaling
     self:SetupCVarWatcher()
 end
@@ -148,6 +322,7 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     header:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -6)
     header:SetText("Conversations")
     header:SetTextColor(1.0, 0.82, 0.0) -- gold
+    if header.SetJustifyH then header:SetJustifyH("LEFT") end
     if header.SetWordWrap then header:SetWordWrap(false) end
     if header.SetMaxLines then header:SetMaxLines(1) end
     self.HeaderText = header
@@ -159,68 +334,524 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -10, -4)
     divider:SetHeight(1)
     self.HeaderDivider = divider
-end
--- Return the real available width (in pixels) that a row's text can use
-function ReplayFrame:GetRowTextAvailableWidth(row)
-    if not (row and row.text) then return 0 end
-    -- Preferred: compute from on-screen coordinates to include right anchor
-    local left = row.text.GetLeft and row.text:GetLeft() or nil
-    local right = row.GetRight and row:GetRight() or nil
-    if left and right then
-        local pad = 8 -- mirror the RIGHT -8 used in SetPoint
-        local w = (right - pad) - left
-        if w and w > 0 then return w end
-    end
-    -- Fallback to row width minus approximate bullet/left padding
-    local fallback = (row.GetWidth and row:GetWidth() or 0) - 28
-    return math.max(0, fallback)
-end
 
--- Fit a single row's text to its available width, appending ellipses if needed
-function ReplayFrame:FitRowText(row)
-    if not (row and row.text) then return end
-    local full = row._fullText or row.text:GetText() or ""
-    local available = self:GetRowTextAvailableWidth(row)
-    -- If layout not ready yet (no coordinates), try again next frame
-    if (not available) or available <= 0 then
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if row and row:IsShown() then self:FitRowText(row) end
-            end)
+    -- Subtitle display: shows current dialogue text below model area
+    local subtitleBg = CreateFrame("Frame", nil, contentFrame, "BackdropTemplate")
+    subtitleBg:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 4, -4)
+    subtitleBg:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -4, -4)
+    subtitleBg:SetHeight(36)
+    subtitleBg:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background" })
+    subtitleBg:SetBackdropColor(0, 0, 0, 0.5)
+    subtitleBg:SetFrameLevel((contentFrame.GetFrameLevel and contentFrame:GetFrameLevel() or 0) + 5)
+    subtitleBg:Hide()
+    self.SubtitleFrame = subtitleBg
+
+    local subtitleText = subtitleBg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    subtitleText:SetPoint("TOPLEFT", subtitleBg, "TOPLEFT", 8, -6)
+    subtitleText:SetPoint("BOTTOMRIGHT", subtitleBg, "BOTTOMRIGHT", -8, 4)
+    subtitleText:SetJustifyH("CENTER")
+    subtitleText:SetJustifyV("MIDDLE")
+    if subtitleText.SetWordWrap then subtitleText:SetWordWrap(true) end
+    subtitleText:SetTextColor(1.0, 1.0, 1.0, 0.95)
+    self.SubtitleText = subtitleText
+    self:_CreateSubtitleAnimations()
+
+    -- Queue count badge (hidden when <=1 queued)
+    local badge = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    badge:SetPoint("LEFT", header, "RIGHT", 8, -1)
+    badge:SetTextColor(0.9, 0.9, 0.9)
+    badge:Hide()
+    self.QueueBadge = badge
+    badge:SetText("[0]")
+    badge:SetScript("OnEnter", function(f)
+        if not GameTooltip or not GameTooltip.SetOwner then return end
+        GameTooltip:SetOwner(f, "ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        local q = CLN.questsQueue and #CLN.questsQueue or 0
+        GameTooltip:AddLine("Queued Quests", 1,1,1)
+        GameTooltip:AddLine("Total queued quest phases: " .. q, 0.85,0.85,0.85)
+        if q == 0 then
+            GameTooltip:AddLine("No pending quest audio.", 0.7,0.7,0.7)
         end
+        GameTooltip:Show()
+    end)
+    badge:SetScript("OnLeave", function()
+        if GameTooltip and GameTooltip:IsShown() then GameTooltip:Hide() end
+    end)
+end
+
+function ReplayFrame:ShowSubtitle(text)
+    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showSubtitles
+    if not enabled or not self.SubtitleFrame or not self.SubtitleText then return end
+    -- Cancel any existing subtitle timer
+    self:HideSubtitle()
+    if not text or text == "" then return end
+
+    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+
+    -- Split into sentences and reveal one at a time
+    local sentences = self.SplitTooltipIntoSentences and self:SplitTooltipIntoSentences(text) or { text }
+    self._subtitleSentences = sentences
+    self._subtitleIndex = 0
+    -- Generation token: prevents stale C_Timer callbacks from a prior
+    -- ShowSubtitle call from corrupting the new subtitle sequence.
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    local token = self._subtitleToken
+    self.SubtitleFrame:Show()
+    self.SubtitleFrame:SetAlpha(0)
+    -- Push header below subtitle to avoid overlap
+    if self.HeaderText then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+
+    local function showNext()
+        if token ~= self._subtitleToken then return end
+        if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
+        self._subtitleIndex = (self._subtitleIndex or 0) + 1
+        local idx = self._subtitleIndex
+        if idx > #sentences then
+            -- All sentences shown; hide visuals after a pause but keep
+            -- _subtitleSentences non-nil so UpdateAnimationsIfNeeded
+            -- won't re-trigger the same text while the voiceover plays.
+            local S = self.Config and self.Config.Subtitle
+            self._subtitleTimer = C_Timer and C_Timer.After(
+                S and S.lastSentencePause or 2.0, function()
+                if token ~= self._subtitleToken then return end
+                self._subtitleTimer = nil
+                self:_SubtitleFadeOut(token, function()
+                    if self.HeaderText and self.ContentFrame then
+                        self.HeaderText:ClearAllPoints()
+                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                    end
+                    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+                end)
+            end)
+            return
+        end
+        self.SubtitleText:SetText(sentences[idx])
+        self:_SubtitleFadeIn()
+        -- Duration scales with sentence length
+        local S = self.Config and self.Config.Subtitle
+        local dur = math.max(S and S.sentenceDurMin or 1.5,
+            math.min(S and S.sentenceDurMax or 5.0,
+                #sentences[idx] * (S and S.perCharCoeff or 0.07) * (S and S.durationMultiplier or 1.2)))
+        self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
+    end
+
+    -- Start first sentence after a brief fade-in delay
+    self._subtitleTimer = C_Timer and C_Timer.After(
+        self.Config and self.Config.Subtitle and self.Config.Subtitle.firstSentenceDelay or 0.3, showNext)
+end
+
+function ReplayFrame:HideSubtitle()
+    -- Invalidate any in-flight timer callbacks via generation token
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    -- Stop any in-progress subtitle fade animations.
+    -- Note: Stop() does not fire OnFinished, so any _SubtitleFadeOut callback
+    -- (including text-continuation onComplete) is intentionally dropped — the
+    -- cancel action that triggered HideSubtitle supersedes the old completion.
+    if self._subtitleFadeInAG and self._subtitleFadeInAG:IsPlaying() then
+        self._subtitleFadeInAG:Stop()
+    end
+    if self._subtitleFadeOutAG and self._subtitleFadeOutAG:IsPlaying() then
+        self._subtitleFadeOutAG:Stop()
+    end
+    self._subtitleTimer = nil
+    self._subtitleSentences = nil
+    self._subtitleIndex = nil
+    self._textContinuationActive = false
+    self._tcSentences = nil
+    self._tcStartIndex = nil
+    self._tcOnComplete = nil
+    if self.SubtitleFrame then self.SubtitleFrame:Hide() end
+    -- Restore header to original position
+    if self.HeaderText and self.ContentFrame then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+end
+
+--- Create fade-in/fade-out AnimationGroups on SubtitleFrame.
+--- Called once during CreateContent after SubtitleFrame is built.
+function ReplayFrame:_CreateSubtitleAnimations()
+    local frame = self.SubtitleFrame
+    if not frame then return end
+
+    -- Fade In: 0 → 1 with ease-out
+    local fadeIn = frame:CreateAnimationGroup()
+    local fi = fadeIn:CreateAnimation("Alpha")
+    fi:SetFromAlpha(0)
+    fi:SetToAlpha(1)
+    local F = self.Config and self.Config.Fade
+    fi:SetDuration(F and F.subtitleFadeIn or 0.15)
+    fi:SetSmoothing("OUT")
+    fadeIn:SetScript("OnFinished", function()
+        frame:SetAlpha(1)
+    end)
+    self._subtitleFadeInAG = fadeIn
+
+    -- Fade Out: 1 → 0 with ease-in
+    local fadeOut = frame:CreateAnimationGroup()
+    local fo = fadeOut:CreateAnimation("Alpha")
+    fo:SetFromAlpha(1)
+    fo:SetToAlpha(0)
+    fo:SetDuration(F and F.subtitleFadeOut or 0.2)
+    fo:SetSmoothing("IN")
+    self._subtitleFadeOutAG = fadeOut
+end
+
+--- Smoothly fade subtitle frame from current alpha to 1.
+--- If already fully visible, this is a no-op.
+function ReplayFrame:_SubtitleFadeIn()
+    local frame = self.SubtitleFrame
+    if not frame then return end
+    -- Stop any in-progress fade-out and lock alpha to 1 (Stop doesn't fire OnFinished)
+    if self._subtitleFadeOutAG and self._subtitleFadeOutAG:IsPlaying() then
+        self._subtitleFadeOutAG:Stop()
+        frame:SetAlpha(1)
         return
     end
-    local function fits(s)
-        row.text:SetText(s)
-        return (row.text:GetStringWidth() or 0) <= available
-    end
-    -- First try full text (this can undo a prior over-truncation)
-    if fits(full) then
-        row.text:SetText(full)
+    -- Stop an in-progress fade-in before restarting
+    if self._subtitleFadeInAG and self._subtitleFadeInAG:IsPlaying() then
+        self._subtitleFadeInAG:Stop()
+        frame:SetAlpha(1)
         return
     end
-    -- Binary search for the longest prefix that fits with "..."
-    local lo, hi, best = 1, #full, 0
-    while lo <= hi do
-        local mid = math.floor((lo + hi) / 2)
-        local candidate = string.sub(full, 1, mid) .. "..."
-        if fits(candidate) then best = mid; lo = mid + 1 else hi = mid - 1 end
-    end
-    if best > 0 then
-        row.text:SetText(string.sub(full, 1, best) .. "...")
+    -- Only animate if not already fully visible
+    if frame:GetAlpha() < 0.9 and self._subtitleFadeInAG then
+        self._subtitleFadeInAG:Play()
     else
-        row.text:SetText("...")
+        frame:SetAlpha(1)
     end
 end
 
+--- Smoothly fade subtitle frame from 1 to 0, then hide and invoke callback.
+--- Token-safe: the OnFinished handler bails if _subtitleToken has changed.
+---@param token number   Current _subtitleToken for stale-check.
+---@param callback function|nil  Called after fade completes and frame is hidden.
+function ReplayFrame:_SubtitleFadeOut(token, callback)
+    local frame = self.SubtitleFrame
+    if not frame or not frame:IsShown() then
+        if callback then callback() end
+        return
+    end
+    -- Stop any in-progress fade-in
+    if self._subtitleFadeInAG and self._subtitleFadeInAG:IsPlaying() then
+        self._subtitleFadeInAG:Stop()
+    end
+    if self._subtitleFadeOutAG then
+        self._subtitleFadeOutAG:SetScript("OnFinished", function()
+            if token ~= self._subtitleToken then return end
+            frame:SetAlpha(0)
+            frame:Hide()
+            if callback then callback() end
+        end)
+        frame:SetAlpha(1)
+        self._subtitleFadeOutAG:Play()
+    else
+        frame:SetAlpha(0)
+        frame:Hide()
+        if callback then callback() end
+    end
+end
 
--- Ensure the header fills all space up to the left of the right-side buttons
+--- Show remaining sentences as timed subtitles for text continuation mode.
+--- Displays a dimmed recap of the last-heard sentence, then reveals
+--- unheard sentences one at a time at reading speed (~200 WPM).
+---@param sentences string[]    Full sentence array from SplitTooltipIntoSentences.
+---@param startIndex number     1-based index of the first UNHEARD sentence.
+---@param onComplete function   Called when all sentences have been displayed.
+function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
+    if not self.SubtitleFrame or not self.SubtitleText then
+        if onComplete then onComplete() end
+        return
+    end
+    -- Cancel any existing subtitle sequence
+    self:HideSubtitle()
+    if not sentences or #sentences == 0 then
+        if onComplete then onComplete() end
+        return
+    end
+
+    startIndex = math.max(1, math.min(startIndex, #sentences))
+
+    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+
+    self._subtitleSentences = sentences
+    self._subtitleIndex = 0
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    local token = self._subtitleToken
+
+    self.SubtitleFrame:Show()
+    self.SubtitleFrame:SetAlpha(0)
+    -- Push header below subtitle to avoid overlap
+    if self.HeaderText then
+        self.HeaderText:ClearAllPoints()
+        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+    end
+    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+
+    -- "Show All" escape: click subtitle to instantly reveal remaining text
+    -- Store current state on self so the click handler always reads fresh values
+    self._tcSentences = sentences
+    self._tcStartIndex = startIndex
+    self._tcOnComplete = onComplete
+    if not self._subtitleClickHooked then
+        self.SubtitleFrame:EnableMouse(true)
+        self.SubtitleFrame:SetScript("OnMouseDown", function()
+            if not self._textContinuationActive then return end
+            local curToken = self._subtitleToken
+            local curSentences = self._tcSentences
+            local curOnComplete = self._tcOnComplete
+            if not curSentences then return end
+            -- Show all remaining sentences at once
+            local remaining = {}
+            local idx = self._subtitleIndex or 1
+            for i = idx, #curSentences do
+                remaining[#remaining + 1] = curSentences[i]
+            end
+            if #remaining > 0 then
+                self.SubtitleText:SetText(table.concat(remaining, " "))
+                self:_SubtitleFadeIn()
+            end
+            -- Cancel auto-advance timer and complete after a brief pause
+            self._subtitleTimer = nil
+            -- Adaptive pace: user clicked "Show All" → they read faster, nudge coefficient down
+            if CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient then
+                local coeff = CLN.db.profile.readingPaceCoefficient
+                CLN.db.profile.readingPaceCoefficient = math.max(0.5, coeff - 0.05)
+            end
+            -- Reset model to idle
+            local m = self.NpcModelFrame
+            if m and m.IsShown and m:IsShown() then
+                self:SetModelAnim(self._naturalAnimId or 0)
+            end
+            self._subtitleTimer = C_Timer and C_Timer.After(2.0, function()
+                if curToken ~= self._subtitleToken then return end
+                self._textContinuationActive = false
+                self:HideSubtitle()
+                if curOnComplete then curOnComplete() end
+            end)
+        end)
+        self._subtitleClickHooked = true
+    end
+
+    self._textContinuationActive = true
+
+    -- Build focus-mode context text: previous (grey) + current (yellow) + next (dim white)
+    local function buildFocusText(idx)
+        local parts = {}
+        -- Show previous sentence dimmed for context
+        if idx > 1 and sentences[idx - 1] then
+            parts[#parts + 1] = "|cFF666666" .. sentences[idx - 1] .. "|r"
+        end
+        -- Current sentence highlighted
+        if sentences[idx] then
+            parts[#parts + 1] = "|cFFFFFF00" .. sentences[idx] .. "|r"
+        end
+        -- Show next sentence dimmed for preview
+        if idx < #sentences and sentences[idx + 1] then
+            parts[#parts + 1] = "|cFF999999" .. sentences[idx + 1] .. "|r"
+        end
+        return table.concat(parts, " ")
+    end
+
+    -- Trigger NPC model talk animation for current sentence (lip-read mode)
+    local function triggerLipRead(sentence)
+        local m = self.NpcModelFrame
+        if not (m and m.IsShown and m:IsShown()) then return end
+        if self._npcIsDead then return end
+        local animId = self.ChooseTalkAnimIdForText
+            and self:ChooseTalkAnimIdForText(sentence) or 60
+        if self.SetModelAnim then
+            self:SetModelAnim(animId)
+        end
+    end
+
+    -- Calculate reading duration with combat multiplier and adaptive pace
+    local S = self.Config and self.Config.Subtitle
+    local function getReadDuration(sentence)
+        local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
+            and CLN.Utils.EstimateReadDuration(sentence)
+            or math.max(S and S.sentenceDurMin or 1.5, #sentence / 20)
+        -- Adaptive pace coefficient from SavedVariables
+        local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+        dur = dur * coeff
+        -- Combat multiplier: show text faster during combat (less distraction)
+        if UnitAffectingCombat and UnitAffectingCombat("player") then
+            dur = dur * (S and S.combatSpeedMult or 0.7)
+        end
+        return math.max(S and S.readingDurMin or 1.0, dur)
+    end
+
+    -- Inner function to advance through sentences
+    local function showNext()
+        if token ~= self._subtitleToken then return end
+        if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
+        self._subtitleIndex = (self._subtitleIndex or 0) + 1
+        local idx = self._subtitleIndex
+
+        if idx > #sentences then
+            -- Reset model to idle
+            local m = self.NpcModelFrame
+            if m and m.IsShown and m:IsShown() then
+                self:SetModelAnim(self._naturalAnimId or 0)
+            end
+            -- All sentences shown; complete after a brief pause
+            self._subtitleTimer = C_Timer and C_Timer.After(
+                S and S.lastSentencePause or 2.0, function()
+                if token ~= self._subtitleToken then return end
+                self._textContinuationActive = false
+                self._subtitleTimer = nil
+                self:_SubtitleFadeOut(token, function()
+                    if self.HeaderText and self.ContentFrame then
+                        self.HeaderText:ClearAllPoints()
+                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                    end
+                    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+                    if onComplete then onComplete() end
+                end)
+            end)
+            return
+        end
+
+        -- Skip already-heard sentences (before startIndex)
+        if idx < startIndex then
+            showNext()
+            return
+        end
+
+        -- Focus mode: show context window (previous + current + next)
+        self.SubtitleText:SetText(buildFocusText(idx))
+        self:_SubtitleFadeIn()
+        -- Lip-read: trigger talk animation on model
+        triggerLipRead(sentences[idx])
+        -- Reading-speed timing with combat + adaptive multipliers
+        local dur = getReadDuration(sentences[idx])
+        self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
+    end
+
+    -- Phase 1: Show recap of last-heard sentence (dimmed) if available
+    local recapIndex = startIndex - 1
+    if recapIndex >= 1 and sentences[recapIndex] then
+        self.SubtitleText:SetText("|cFF666666" .. sentences[recapIndex] .. "|r")
+        self:_SubtitleFadeIn()
+        self._subtitleIndex = startIndex - 1
+        self._subtitleTimer = C_Timer and C_Timer.After(
+            S and S.recapDuration or 1.5, function()
+            if token ~= self._subtitleToken then return end
+            self._subtitleIndex = startIndex - 1
+            showNext()
+        end)
+    else
+        -- No recap available; start directly
+        self._subtitleIndex = startIndex - 1
+        self._subtitleTimer = C_Timer and C_Timer.After(
+            S and S.firstSentenceDelay or 0.3, showNext)
+    end
+end
+
+--- Jump to a sentence by delta during text continuation (micro-scrub).
+--- delta: -1 to go back one sentence, +1 to go forward.
+---@param delta number  -1 or +1
+function ReplayFrame:ScrubSentence(delta)
+    if not self._textContinuationActive then return end
+    local sentences = self._tcSentences
+    local startIdx = self._tcStartIndex or 1
+    if not sentences or #sentences == 0 then return end
+
+    -- Cancel current auto-advance timer by invalidating its token
+    self._subtitleToken = (self._subtitleToken or 0) + 1
+    self._subtitleTimer = nil
+
+    local curIdx = self._subtitleIndex or startIdx
+    local newIdx = curIdx + delta
+    -- Clamp to valid range (startIndex to #sentences)
+    newIdx = math.max(startIdx, math.min(newIdx, #sentences))
+    self._subtitleIndex = newIdx
+
+    -- Build focus text for the new position
+    local parts = {}
+    if newIdx > 1 and sentences[newIdx - 1] then
+        parts[#parts + 1] = "|cFF666666" .. sentences[newIdx - 1] .. "|r"
+    end
+    if sentences[newIdx] then
+        parts[#parts + 1] = "|cFFFFFF00" .. sentences[newIdx] .. "|r"
+    end
+    if newIdx < #sentences and sentences[newIdx + 1] then
+        parts[#parts + 1] = "|cFF999999" .. sentences[newIdx + 1] .. "|r"
+    end
+    if self.SubtitleText then
+        self.SubtitleText:SetText(table.concat(parts, " "))
+        self:_SubtitleFadeIn()
+    end
+
+    -- Trigger lip-read animation
+    local m = self.NpcModelFrame
+    if m and m.IsShown and m:IsShown() and sentences[newIdx] then
+        if not self._npcIsDead then
+            local animId = self.ChooseTalkAnimIdForText
+                and self:ChooseTalkAnimIdForText(sentences[newIdx]) or 60
+            self:SetModelAnim(animId)
+        end
+    end
+
+    -- Restart auto-advance timer from this sentence
+    local token = self._subtitleToken
+    local S = self.Config and self.Config.Subtitle
+    local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
+        and CLN.Utils.EstimateReadDuration(sentences[newIdx])
+        or math.max(S and S.sentenceDurMin or 1.5, #sentences[newIdx] / 20)
+    local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+    dur = dur * coeff
+    if UnitAffectingCombat and UnitAffectingCombat("player") then
+        dur = dur * (S and S.combatSpeedMult or 0.7)
+    end
+    dur = math.max(S and S.readingDurMin or 1.0, dur)
+
+    self._subtitleTimer = C_Timer and C_Timer.After(dur, function()
+        if token ~= self._subtitleToken then return end
+        -- Continue auto-advancing from newIdx
+        -- Increment and show next, or complete if at end
+        self._subtitleIndex = newIdx
+        local nextIdx = newIdx + 1
+        if nextIdx > #sentences then
+            -- Complete
+            self._textContinuationActive = false
+            self._subtitleTimer = nil
+            if m and m.IsShown and m:IsShown() then self:SetModelAnim(self._naturalAnimId or 0) end
+            C_Timer.After(S and S.lastSentencePause or 2.0, function()
+                if token ~= self._subtitleToken then return end
+                self:_SubtitleFadeOut(token, function()
+                    if self.HeaderText and self.ContentFrame then
+                        self.HeaderText:ClearAllPoints()
+                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                    end
+                    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
+                    local cb = self._tcOnComplete
+                    if cb then cb() end
+                end)
+            end)
+        else
+            -- Auto-advance to next
+            self._subtitleIndex = newIdx
+            -- Re-trigger the next sentence via a recursive-like pattern
+            self:ScrubSentence(1)
+        end
+    end)
+end
+
+-- Return the real available width (in pixels) that a row's text can use
 function ReplayFrame:AnchorHeaderToButtons()
     if not (self.HeaderText and self.ContentFrame) then return end
     -- Prefer the left-most always-visible button as the right anchor (editBtn exists even when lock is hidden)
     local rightAnchor = self.EditModeButton or self.OptionsButton or self.ClearButton or self.CollapseButton
-    self.HeaderText:ClearAllPoints()
-    self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+    -- Only set the RIGHT anchor; preserve existing TOPLEFT (may be relative to SubtitleFrame)
     if rightAnchor then
         self.HeaderText:SetPoint("RIGHT", rightAnchor, "LEFT", -6, 0)
     else
@@ -229,7 +860,7 @@ function ReplayFrame:AnchorHeaderToButtons()
     end
 end
 
--- Truncate a fontstring's text to fit a given pixel width using "..."
+-- Update queue badge reflecting total queued quests (excluding currently playing)
 function ReplayFrame:TruncateToWidth(fs, text, maxWidth)
     if not (fs and text and maxWidth and maxWidth > 0) then return end
     fs:SetText(text)
@@ -251,45 +882,108 @@ function ReplayFrame:TruncateToWidth(fs, text, maxWidth)
     end
 end
 
+-- ============================================================================
+-- Unified Tracker-Style Icon Helper
+-- ============================================================================
+-- Provides a consistent golden, desaturated look matching the Objectives
+-- Tracker sidebar.  On hover icons brighten to full color; at rest they use a
+-- muted gold tint so they sit quietly beside the tracker headers.
+
+local ICON_NORMAL_ALPHA = 0.7
+local ICON_HOVER_ALPHA  = 1.0
+local ICON_GOLD_R, ICON_GOLD_G, ICON_GOLD_B = 1.0, 0.82, 0.0
+
+--- Apply the "at rest" golden treatment to a texture.
+local function ApplyTrackerIconRest(tex)
+    tex:SetDesaturated(true)
+    tex:SetVertexColor(ICON_GOLD_R, ICON_GOLD_G, ICON_GOLD_B, ICON_NORMAL_ALPHA)
+end
+
+--- Apply the "hovered" bright treatment to a texture.
+local function ApplyTrackerIconHover(tex)
+    tex:SetDesaturated(false)
+    tex:SetVertexColor(1, 1, 1, ICON_HOVER_ALPHA)
+end
+
+--- Create a tracker-style icon button with unified golden appearance.
+---@param parent Frame
+---@param size number
+---@param texturePath string
+---@param tooltip string|fun():string
+---@param onClick? function
+---@return Button
+local function CreateTrackerStyleIcon(parent, size, texturePath, tooltip, onClick)
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)
+
+    local tex = btn:CreateTexture(nil, "ARTWORK")
+    tex:SetPoint("CENTER")
+    tex:SetSize(size - 2, size - 2)
+    tex:SetTexture(texturePath)
+    ApplyTrackerIconRest(tex)
+    btn.tex = tex
+
+    btn:SetScript("OnEnter", function(self)
+        ApplyTrackerIconHover(self.tex)
+        if GameTooltip and GameTooltip.SetOwner then
+            GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+            local tip = type(tooltip) == "function" and tooltip() or tooltip
+            GameTooltip:SetText(tip)
+            GameTooltip:Show()
+        end
+    end)
+
+    btn:SetScript("OnLeave", function(self)
+        ApplyTrackerIconRest(self.tex)
+        if GameTooltip_Hide then GameTooltip_Hide() end
+    end)
+
+    if onClick then
+        btn:SetScript("OnClick", onClick)
+    end
+
+    return btn
+end
+
+-- Expose helpers so CompactBadge can reuse the same treatment
+ReplayFrame._ApplyTrackerIconRest  = ApplyTrackerIconRest
+ReplayFrame._ApplyTrackerIconHover = ApplyTrackerIconHover
+ReplayFrame._CreateTrackerStyleIcon = CreateTrackerStyleIcon
+
 -- Create all header buttons (collapse, clear, options, edit)
 function ReplayFrame:CreateHeaderButtons(contentFrame)
     local this = self
-    
-    -- Chevron expand/collapse toggle like Objectives tracker
-    local collapseBtn = CreateFrame("Button", nil, contentFrame)
-    collapseBtn:SetSize(18, 18)
+
+    -- Chevron expand/collapse toggle (tracker minimize style)
+    local expandTex  = IconAtlas and IconAtlas:Get(IconAtlas.keys.expand)  or "Interface/Buttons/UI-Panel-ExpandButton-Up"
+    local collapseTex = IconAtlas and IconAtlas:Get(IconAtlas.keys.collapse) or "Interface/Buttons/UI-Panel-CollapseButton-Up"
+
+    local collapseBtn = CreateTrackerStyleIcon(contentFrame, 18, expandTex,
+        function() return collapseBtn._collapsed and "Expand" or "Collapse" end)
     collapseBtn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -6, -6)
-    collapseBtn.tex = collapseBtn:CreateTexture(nil, "ARTWORK")
-    collapseBtn.tex:SetAllPoints()
-    
-    local function SetChevron(expanded)
-        if expanded then
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-ExpandButton-Up") -- down chevron (expanded)
-        else
-            collapseBtn.tex:SetTexture("Interface/Buttons/UI-Panel-CollapseButton-Up") -- right chevron (collapsed)
-        end
-    end
-    
-    collapseBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText(self._collapsed and "Expand" or "Collapse")
-        GameTooltip:Show()
-    end)
-    collapseBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
     collapseBtn._collapsed = false
-    SetChevron(true)
-    
+
+    local function SetChevron(expanded)
+        collapseBtn.tex:SetTexture(expanded and expandTex or collapseTex)
+        ApplyTrackerIconRest(collapseBtn.tex)
+    end
+
     collapseBtn:SetScript("OnClick", function(self)
         local targetCollapsed = not self._collapsed
         self._collapsed = targetCollapsed
         SetChevron(not targetCollapsed)
         if ReplayFrame.AnimateCollapse then
-            ReplayFrame:AnimateCollapse(targetCollapsed, 0.2)
+            local CC = ReplayFrame.Config and ReplayFrame.Config.Collapse
+            ReplayFrame:AnimateCollapse(targetCollapsed, CC and CC.duration or 0.2)
         else
             -- Instant fallback
             local frame = this.DisplayFrame
             if targetCollapsed then
-                if frame and frame.GetHeight then this._preCollapseHeight = frame:GetHeight() end
+                if frame and frame.GetHeight then
+                    local curH = frame:GetHeight()
+                    if curH >= 80 then this._preCollapseHeight = curH end
+                end
+                if this.HideSubtitle then this:HideSubtitle() end
                 if this.QueueScrollBox then this.QueueScrollBox:Hide() end
                 if this.HeaderDivider then this.HeaderDivider:Hide() end
                 if frame and frame.SetHeight then
@@ -303,7 +997,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
             else
                 if this.HeaderDivider then this.HeaderDivider:Show() end
                 if this.QueueScrollBox then this.QueueScrollBox:Show() end
-                if frame and frame.SetHeight and this._preCollapseHeight then frame:SetHeight(this._preCollapseHeight) end
+                if frame and frame.SetHeight then frame:SetHeight(this.GetSafeExpandHeight and this:GetSafeExpandHeight() or 165) end
             end
             if this.UpdateDisplayFrame then this:UpdateDisplayFrame() end
             if this.Relayout then this:Relayout() end
@@ -312,91 +1006,60 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     self.CollapseButton = collapseBtn
 
     -- Clear button
-    local clearBtn = CreateFrame("Button", nil, contentFrame)
-    clearBtn:SetSize(18, 18)
+    local clearBtn = CreateTrackerStyleIcon(contentFrame, 18,
+        IconAtlas and IconAtlas:Get(IconAtlas.keys.clear) or "Interface/RAIDFRAME/ReadyCheck-NotReady",
+        "Stop playback and clear all queued voiceovers",
+        function()
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+            ReplayFrame.userHidden = false
+            ReplayFrame:UpdateDisplayFrameState()
+        end)
     clearBtn:SetPoint("RIGHT", collapseBtn, "LEFT", -6, 0)
-    local clearTex = clearBtn:CreateTexture(nil, "ARTWORK")
-    clearTex:SetAllPoints()
-    clearTex:SetTexture("Interface/Buttons/UI-GroupLoot-Pass-Up")
-    clearBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Stop playback and clear all queued voiceovers")
-        GameTooltip:Show()
-    end)
-    clearBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    clearBtn:SetScript("OnClick", function()
-        -- Stop current sound and clear the entire queue
-        CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
-        ReplayFrame.userHidden = false
-        ReplayFrame:UpdateDisplayFrameState()
-    end)
     self.ClearButton = clearBtn
 
     -- Options button
-    local optionsBtn = CreateFrame("Button", nil, contentFrame)
-    optionsBtn:SetSize(18, 18)
+    local optionsBtn = CreateTrackerStyleIcon(contentFrame, 18,
+        IconAtlas and IconAtlas:Get(IconAtlas.keys.options) or "Interface/Buttons/UI-OptionsButton",
+        "Open Chatty Little NPC options",
+        function()
+            if CLN.Options and CLN.Options.OpenSettings then
+                CLN.Options:OpenSettings()
+            end
+        end)
     optionsBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
-    local optionsTex = optionsBtn:CreateTexture(nil, "ARTWORK")
-    optionsTex:SetAllPoints()
-    optionsTex:SetTexture("Interface/Buttons/UI-OptionsButton")
-    optionsBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Open Chatty Little Npc options")
-        GameTooltip:Show()
-    end)
-    optionsBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    optionsBtn:SetScript("OnClick", function()
-        -- Use the new Options module
-        if CLN.Options and CLN.Options.OpenSettings then
-            CLN.Options:OpenSettings()
-        end
-    end)
     self.OptionsButton = optionsBtn
 
     -- Edit Mode toggle button
-    local editBtn = CreateFrame("Button", nil, contentFrame)
-    editBtn:SetSize(18, 18)
+    local editBtn = CreateTrackerStyleIcon(contentFrame, 18,
+        "Interface/CURSOR/UI-Cursor-Move",
+        function() return ReplayFrame._editMode and "Exit Edit Mode" or "Enter Edit Mode (move/resize)" end,
+        function()
+            if not ReplayFrame._editMode then
+                if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
+            else
+                if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
+            end
+        end)
     editBtn:SetPoint("RIGHT", optionsBtn, "LEFT", -6, 0)
-    local editTex = editBtn:CreateTexture(nil, "ARTWORK")
-    editTex:SetAllPoints()
-    editTex:SetTexture("Interface/CURSOR/UI-Cursor-Move")
-    editBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Toggle Edit Mode (move/resize)")
-        GameTooltip:Show()
-    end)
-    editBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    editBtn:SetScript("OnClick", function()
-        if not ReplayFrame._editMode then
-            if ReplayFrame.BeginManualEdit then ReplayFrame:BeginManualEdit() else ReplayFrame:SetEditMode(true) end
-        else
-            if ReplayFrame.EndManualEdit then ReplayFrame:EndManualEdit() else ReplayFrame:SetEditMode(false) end
-        end
-    end)
     self.EditModeButton = editBtn
 
     -- Lock toggle button (visible in Edit Mode; appears on hover)
-    local lockBtn = CreateFrame("Button", nil, contentFrame)
-    lockBtn:SetSize(18, 18)
+    local lockBtn = CreateTrackerStyleIcon(contentFrame, 18,
+        IconAtlas and IconAtlas:Get(IconAtlas.keys.lock) or "Interface/Buttons/LockButton-Locked",
+        function()
+            if ReplayFrame:IsFrameLocked() then
+                return "Unlock window (allow moving)"
+            else
+                return "Lock window (prevent moving)"
+            end
+        end,
+        function()
+            ReplayFrame:SetFrameLocked(not ReplayFrame:IsFrameLocked())
+            ReplayFrame:UpdateLockUI()
+        end)
     lockBtn:SetPoint("RIGHT", editBtn, "LEFT", -6, 0)
-    local lockTex = lockBtn:CreateTexture(nil, "ARTWORK")
-    lockTex:SetAllPoints()
-    lockBtn._tex = lockTex
     lockBtn:Hide()
-    lockBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        if ReplayFrame:IsFrameLocked() then
-            GameTooltip:SetText("Unlock window (allow moving)")
-        else
-            GameTooltip:SetText("Lock window (prevent moving)")
-        end
-        GameTooltip:Show()
-    end)
-    lockBtn:SetScript("OnLeave", function() GameTooltip_Hide() end)
-    lockBtn:SetScript("OnClick", function()
-        ReplayFrame:SetFrameLocked(not ReplayFrame:IsFrameLocked())
-        ReplayFrame:UpdateLockUI()
-    end)
+    lockBtn._tex = lockBtn.tex
     self.LockButton = lockBtn
     if self.UpdateLockUI then self:UpdateLockUI() end
 
@@ -404,47 +1067,26 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 end
 
--- Tooltip helpers: width and smart sentence splitting
-function ReplayFrame:GetTooltipMaxWidth()
-    -- Base width; scale slightly with accessibility/text scale
-    local base = 420
-    base = math.floor(base * 1.25) -- 25% wider
-    local a11y = self.GetAccessibilityTextScale and (self:GetAccessibilityTextScale() or 1) or 1
-    local scaled = math.floor(base * math.max(0.9, math.min(1.3, a11y)))
-    return scaled
-end
+-- =============================================
+-- Compact Badge (Collapsed Mode) Implementation
+-- =============================================
+-- =============================================================
+-- Animated collapse / expand (fade + subtle scale) for badge UI
+-- =============================================================
 
-function ReplayFrame:SplitTooltipIntoSentences(text)
-    local lines = {}
-    if not text then return lines end
-    if type(text) ~= "string" then text = tostring(text) end
-    -- Normalize whitespace
-    text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
-    if #text == 0 then return lines end
-    -- Split on sentence-ending punctuation while keeping it
-    for chunk, punc in text:gmatch("([^%.%!%?]+)([%.%!%?]*)%s*") do
-        local s = (chunk or ""):gsub("^%s+", ""):gsub("%s+$", "")
-        local seg = s .. (punc or "")
-        if #seg > 0 then table.insert(lines, seg) end
-    end
-    -- Fallback if nothing matched
-    if #lines == 0 then table.insert(lines, text) end
-    return lines
-end
-
--- Create the resize grip in the bottom-right corner
+-- Safe fallback height when _preCollapseHeight is nil (clamped to minimum expanded size)
 function ReplayFrame:CreateResizeGrip()
     local this = self
-    
+
     local resizeGrip = CreateFrame("Frame", nil, self.DisplayFrame)
     resizeGrip:SetSize(16, 16)
     resizeGrip:SetPoint("BOTTOMRIGHT", ReplayFrame.DisplayFrame, "BOTTOMRIGHT", -2, 2)
     resizeGrip:EnableMouse(true)
-    
+
     local gripTex = resizeGrip:CreateTexture(nil, "ARTWORK")
     gripTex:SetAllPoints()
     gripTex:SetTexture("Interface/CHATFRAME/UI-ChatIM-SizeGrabber-Up")
-    
+
     resizeGrip:SetScript("OnEnter", function(self)
         self:GetRegions():SetTexture("Interface/CHATFRAME/UI-ChatIM-SizeGrabber-Highlight")
     end)
@@ -466,7 +1108,7 @@ function ReplayFrame:CreateResizeGrip()
         if this.SaveFramePosition then this:SaveFramePosition() end
         this._isResizing = false
     end)
-    
+
     resizeGrip.texture = gripTex
     self.ResizeGrip = resizeGrip
     -- Resize only allowed in Edit Mode; keep grip hidden by default
@@ -487,224 +1129,12 @@ function ReplayFrame:UpdateLockUI()
     if not self.LockButton then return end
     local locked = self:IsFrameLocked()
     if locked then
-        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Locked")
+        self.LockButton._tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.lock) or "Interface/Buttons/LockButton-Locked")
     else
-        self.LockButton._tex:SetTexture("Interface/Buttons/LockButton-Unlocked")
+        self.LockButton._tex:SetTexture(IconAtlas and IconAtlas:Get(IconAtlas.keys.unlock) or "Interface/Buttons/LockButton-Unlocked")
     end
-end
-
--- Smoothly animate collapse/expand of the display frame
-function ReplayFrame:AnimateCollapse(collapse, duration)
-    local frame = self.DisplayFrame
-    if not frame then return end
-    duration = duration or 0.2
-
-    -- Compute header-only target height
-    local function HeaderOnlyHeight()
-        local base = 44
-        if self.HeaderText and self.HeaderText.GetStringHeight then
-            local h = math.ceil(self.HeaderText:GetStringHeight() or 18)
-            base = math.max(36, h + 24)
-        end
-        return base
-    end
-
-    -- Record pre-collapse height if needed
-    if collapse then
-        if frame.GetHeight then self._preCollapseHeight = frame:GetHeight() end
-    end
-
-    local startH = frame:GetHeight() or 0
-    local endH = collapse and HeaderOnlyHeight() or (self._preCollapseHeight or startH)
-    if endH <= 0 then endH = startH end
-
-    -- Simple tween via OnUpdate
-    frame._animatingCollapse = true
-    frame._animStart = GetTime and GetTime() or 0
-    frame._animDur = duration
-    frame._animStartH = startH
-    frame._animEndH = endH
-    frame._animCollapse = collapse
-
-    if not frame._collapseOnUpdate then
-        frame._collapseOnUpdate = function()
-            local tNow = GetTime and GetTime() or 0
-            local t = 0
-            if frame._animDur > 0 then
-                t = math.min(1, (tNow - (frame._animStart or 0)) / frame._animDur)
-            else
-                t = 1
-            end
-            local h = (frame._animStartH or startH) + ((frame._animEndH or endH) - (frame._animStartH or startH)) * t
-            if frame.SetHeight then frame:SetHeight(h) end
-            if self.QueueScrollBox and self.QueueScrollBox.SetAlpha then
-                local alpha = frame._animCollapse and (1 - t) or t
-                self.QueueScrollBox:SetAlpha(alpha)
-            end
-            if self.HeaderDivider and self.HeaderDivider.SetAlpha then
-                local alpha = frame._animCollapse and (1 - t) or t
-                self.HeaderDivider:SetAlpha(alpha)
-            end
-            if t >= 1 then
-                frame:SetScript("OnUpdate", nil)
-                frame._animatingCollapse = false
-                -- finalize
-                if frame._animCollapse then
-                    if self.QueueScrollBox then self.QueueScrollBox:Hide() end
-                    if self.HeaderDivider then self.HeaderDivider:Hide() end
-                else
-                    if self.HeaderDivider then self.HeaderDivider:Show() end
-                    if self.QueueScrollBox then self.QueueScrollBox:Show() end
-                end
-                if self.QueueScrollBox and self.QueueScrollBox.SetAlpha then self.QueueScrollBox:SetAlpha(1) end
-                if self.HeaderDivider and self.HeaderDivider.SetAlpha then self.HeaderDivider:SetAlpha(1) end
-                if self.UpdateDisplayFrame then self:UpdateDisplayFrame() end
-            end
-        end
-    end
-    frame:SetScript("OnUpdate", frame._collapseOnUpdate)
-end
-
--- Create the scroll box for the conversation queue
-function ReplayFrame:CreateScrollBox(contentFrame)
-    -- Manual, non-scrolling fixed-row list replacing ScrollBox
-    local this = self
-    local list = CreateFrame("Frame", "ChattyLittleNpcQueueList", contentFrame)
-    if self.HeaderDivider then
-        list:SetPoint("TOPLEFT", self.HeaderDivider, "BOTTOMLEFT", 0, -6)
-        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
-    else
-        list:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 10, -36)
-        list:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -8, -2)
-    end
-    list:SetPoint("BOTTOMLEFT", contentFrame, "BOTTOMLEFT", 8, 8)
-    self.QueueListFrame = list
-    self.QueueRowHeight = 24
-    self.QueueRows = {}
-
-    function this:EnsureQueueRows(n)
-        local created = 0
-        while #self.QueueRows < n do
-            local index = #self.QueueRows + 1
-            local row = CreateFrame("Button", nil, self.QueueListFrame)
-            row:SetHeight(self.QueueRowHeight)
-            row:SetPoint("TOPLEFT", self.QueueListFrame, "TOPLEFT", 0, - (index - 1) * self.QueueRowHeight)
-            row:SetPoint("TOPRIGHT", self.QueueListFrame, "TOPRIGHT", 0, - (index - 1) * self.QueueRowHeight)
-            row:EnableMouse(true)
-
-            local hl = row:CreateTexture(nil, "ARTWORK")
-            hl:SetAllPoints()
-            hl:SetTexture("Interface/QuestFrame/UI-QuestTitleHighlight")
-            hl:SetAlpha(0.15)
-            hl:Hide()
-            row._hl = hl
-
-            local bulletTex = row:CreateTexture(nil, "ARTWORK")
-            bulletTex:SetPoint("LEFT", 8, 0)
-            bulletTex:SetSize(4, 4)
-            bulletTex:SetColorTexture(1.0, 0.82, 0.0, 0.9)
-            row.bulletTex = bulletTex
-
-            local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            text:SetPoint("LEFT", bulletTex, "RIGHT", 8, 0)
-            text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-            text:SetJustifyH("LEFT")
-            if text.SetWordWrap then text:SetWordWrap(false) end
-            text:SetTextColor(0.95, 0.86, 0.20)
-            row.text = text
-
-            row:SetScript("OnMouseUp", function(selfBtn, button)
-                local e = selfBtn._element
-                if not e then return end
-                if button == "LeftButton" then
-                    if e.isPlaying then
-                        -- Stop current sound but don't clear the queue - let it continue to next
-                        CLN.VoiceoverPlayer:StopCurrentSound()
-                        this.userHidden = false
-                        this:UpdateDisplayFrameState()
-                    elseif e.queueIndex then
-                        -- Remove this specific item from the queue
-                        table.remove(CLN.questsQueue, e.queueIndex)
-                        if this.MarkQueueDirty then this:MarkQueueDirty() end
-                        this:UpdateDisplayFrameState()
-                    end
-                end
-            end)
-
-            row:SetScript("OnEnter", function(selfBtn)
-                if selfBtn._hl then selfBtn._hl:Show() end
-                if not selfBtn._isActive and selfBtn.text then
-                    selfBtn.text:SetTextColor(1.0, 1.0, 1.0)
-                end
-                local e = selfBtn._element
-                if e and e.tooltip then
-                    GameTooltip:SetOwner(selfBtn, "ANCHOR_LEFT")
-                    -- Prefer smart sentence split with multiple AddLine calls to improve wrapping
-                    local maxW = ReplayFrame.GetTooltipMaxWidth and ReplayFrame:GetTooltipMaxWidth() or 420
-                    if GameTooltip.SetMaximumWidth then GameTooltip:SetMaximumWidth(maxW) end
-                    local lines = ReplayFrame.SplitTooltipIntoSentences and ReplayFrame:SplitTooltipIntoSentences(e.tooltip) or { e.tooltip }
-                    GameTooltip:ClearLines()
-                    for i, line in ipairs(lines) do
-                        if i == 1 then
-                            GameTooltip:AddLine(line, 0.9, 0.9, 0.9, true)
-                        else
-                            GameTooltip:AddLine(line, 0.8, 0.8, 0.8, true)
-                        end
-                    end
-                    GameTooltip:Show()
-                end
-            end)
-            row:SetScript("OnLeave", function(selfBtn)
-                if selfBtn._hl then selfBtn._hl:Hide() end
-                if not selfBtn._isActive and selfBtn.text then
-                    selfBtn.text:SetTextColor(0.95, 0.86, 0.20)
-                end
-                GameTooltip_Hide()
-            end)
-
-            table.insert(self.QueueRows, row)
-            created = created + 1
-        end
-        return created
-    end
-
-    function this:SetQueueData(entries)
-        entries = entries or {}
-        local h = self.QueueListFrame:GetHeight() or 0
-        local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
-        local toShow = math.min(#entries, maxRows)
-        self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil end
-        for i = 1, toShow do
-            local row = self.QueueRows[i]
-            local element = entries[i]
-            row._element = element
-            row._isActive = element.isPlaying
-            row:Show()
-            local label = element.label or "Unknown"
-            row._fullText = label
-            -- Apply coloring
-            if element.isPlaying then
-                row.text:SetTextColor(0.2, 1.0, 0.2)
-            else
-                row.text:SetTextColor(0.95, 0.86, 0.20)
-            end
-            -- Only update text/fit if content or available width changed
-            local avail = self:GetRowTextAvailableWidth(row)
-            if row._lastLabel ~= label or row._lastAvail ~= avail then
-                row.text:SetText(label)
-                if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-                self:FitRowText(row)
-                row._lastLabel = label
-                row._lastAvail = avail
-            end
-            if row.bulletTex then row.bulletTex:Show() end
-        end
-    end
-
-    -- Backwards compat naming so other code can Hide/Show this container
-    self.QueueScrollBox = self.QueueListFrame
-    self.QueueScrollBar = nil
+    -- Re-apply tracker-style tint after texture swap
+    if self._ApplyTrackerIconRest then self._ApplyTrackerIconRest(self.LockButton._tex) end
 end
 
 -- Setup CVar watcher for accessibility text scaling
@@ -738,7 +1168,7 @@ end
 -- Setup frame resize handling
 function ReplayFrame:SetupFrameResize()
     local this = self
-    
+
     -- Dynamic scaling on resize (layout only; bounds handled by SetResizeBounds)
     self.DisplayFrame:SetScript("OnSizeChanged", function(frame, newWidth, newHeight)
         local width, height = newWidth, newHeight
@@ -768,32 +1198,19 @@ function ReplayFrame:SetupFrameResize()
             return
         end
 
-        if this.ModelContainer then
-            this.ModelContainer:ClearAllPoints()
-            this.ModelContainer:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -8)
-            this.ModelContainer:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -8)
-            this.ModelContainer:SetHeight(this.npcModelFrameHeight or 140)
-            if hasModel then this.ModelContainer:Show() else this.ModelContainer:Hide() end
-        end
-        
-        -- Layout the model area via extracted module
+        -- Layout the model area via extracted module (separate frame above DisplayFrame)
         if this.LayoutModelArea then this:LayoutModelArea(frame) end
 
+        -- ContentFrame always fills DisplayFrame (model is a separate frame above)
         if this.ContentFrame then
             this.ContentFrame:ClearAllPoints()
-            if hasModel and this.ModelContainer then
-                -- content directly below full-width model container
-                this.ContentFrame:SetPoint("TOPLEFT", this.ModelContainer, "BOTTOMLEFT", 0, -6)
-                this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-            else
-                this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
-                this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
-            end
+            this.ContentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 5, -5)
+            this.ContentFrame:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -5, -5)
             this.ContentFrame:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 5, 5)
         end
 
         CLN.db.profile.expandedWidth = width
-        
+
         -- Scale header font size based on height
         if this.HeaderText then
             local headerFontSize = math.max(10, math.min(20, math.floor((height) / 8)))
@@ -805,12 +1222,12 @@ function ReplayFrame:SetupFrameResize()
                 this:TruncateToWidth(this.HeaderText, this.HeaderText:GetText() or "", maxW)
             end
         end
-        
+
         if this.ApplyQueueTextScale then this:ApplyQueueTextScale() end
 
     -- Recompute visible rows for manual list using centralized provider
     if this.RefreshQueueDataProvider then this:RefreshQueueDataProvider() end
-        
+
         if this.SaveSizeForActiveLayout then this:SaveSizeForActiveLayout() end
     end)
 end

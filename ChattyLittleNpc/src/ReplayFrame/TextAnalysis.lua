@@ -140,12 +140,12 @@ local function ta_getLexicons()
         -- night elf
         "elune adore","goddess watch over you","elune-adore","ishnu-alah",
         -- blood elf/high elf
-        "salama ashal'anore","anu belore dela'na","belore'doranei","shorel'aran",
+        "salama ashal'anore","anu belore dela'na","belore'doranei","shorel'aran","glory to the sin'dorei",
         -- tauren
         "may the eternal sun shine upon you","an'she guide you","peace friend",
         "earth mother be with you","walk with the earth mother",
         -- orc
-        "lok'tar ogar","strength and honor","blood and thunder",
+        "lok'tar ogar","lok'tar","loktar","strength and honor","blood and thunder","victory or death",
         -- troll
         "hey mon","how ya doin mon","how ya doin', mon","how you doin mon",
         "stay away from da voodoo","darkspear never die",
@@ -242,15 +242,14 @@ function ReplayFrame:HasGreetingInFirstWords(text, limit)
         local animId = self:ChooseTalkAnimIdForText(firstSentence)
         if animId == 60 and #firstSentence < 100 then
             -- Additional heuristics for potential greetings missed by patterns
+            -- Require greeting indicators in the first few words to reduce false positives
             local lowerFirst = firstSentence:lower()
-            local hasGreetingIndicators = lowerFirst:find("welcome") or 
-                                        lowerFirst:find("you") or
-                                        lowerFirst:find("what") or
-                                        lowerFirst:find("how") or
-                                        lowerFirst:find("come") or
-                                        lowerFirst:find("need") or
-                                        lowerFirst:find("help") or
-                                        lowerFirst:find("seek")
+            local firstWords = lowerFirst:match("^(%S+%s+%S+%s+%S+)") or lowerFirst
+            local hasGreetingIndicators = firstWords:find("welcome") or 
+                                        firstWords:find("come") or
+                                        firstWords:find("seek") or
+                                        firstWords:find("need") or
+                                        firstWords:find("help")
             if hasGreetingIndicators then
                 return true
             end
@@ -332,6 +331,87 @@ function ReplayFrame:GetGreetingConfidence(text, limit)
     return math.min(1.0, confidence)
 end
 
+-- Detect reverential/formal language that warrants a bow emote instead of a wave.
+-- Returns a confidence score [0..1]. Triggers on royalty titles, formal address, religious contexts.
+function ReplayFrame:GetReverenceConfidence(text, limit)
+    limit = limit or 15
+    local words = self:TA_Tokenize(text)
+    if #words == 0 then return 0 end
+    local n = math.min(limit, #words)
+    local segment = table.concat(words, " ", 1, n)
+    local confidence = 0
+
+    -- Royalty/nobility titles
+    local royaltyWords = {
+        king = 0.7, queen = 0.7, prince = 0.5, princess = 0.5,
+        lord = 0.4, lady = 0.4, majesty = 0.8, highness = 0.7,
+        emperor = 0.7, empress = 0.7, sovereign = 0.6, liege = 0.6,
+    }
+    for i = 1, n do
+        local bonus = royaltyWords[words[i]]
+        if bonus then confidence = confidence + bonus; break end
+    end
+
+    -- Formal/archaic address
+    local formalWords = {
+        thou = 0.3, thee = 0.3, thy = 0.3, thine = 0.3,
+        sire = 0.5, milord = 0.5, milady = 0.5,
+    }
+    for i = 1, n do
+        local bonus = formalWords[words[i]]
+        if bonus then confidence = confidence + bonus; break end
+    end
+
+    -- Reverence phrases
+    local revPhrases = {
+        "your majesty", "your highness", "your grace", "your lordship",
+        "your ladyship", "my lord", "my lady", "my liege", "my king",
+        "my queen", "at your service", "honor to", "kneel before",
+        "bow before", "humble servant",
+    }
+    for _, p in ipairs(revPhrases) do
+        if segment:find(p, 1, true) then
+            confidence = confidence + 0.6
+            break
+        end
+    end
+
+    return math.min(1.0, confidence)
+end
+
+-- Detect emphatic/dramatic text that warrants a point gesture mid-conversation.
+-- Returns a confidence score [0..1]. Triggers on commands, exclamations, dramatic imperatives.
+function ReplayFrame:GetEmphasisConfidence(text)
+    if not text or type(text) ~= "string" or #text == 0 then return 0 end
+    local confidence = 0
+
+    -- Heavy exclamation mark usage
+    local exclCount = 0
+    for _ in text:gmatch("!") do exclCount = exclCount + 1 end
+    if exclCount >= 3 then
+        confidence = confidence + 0.4
+    elseif exclCount >= 1 then
+        confidence = confidence + 0.2
+    end
+
+    -- Command/imperative words in first few words
+    local lower = text:lower()
+    local firstChunk = lower:sub(1, math.min(60, #lower))
+    local imperatives = {
+        "look", "behold", "listen", "hear me", "mark my words",
+        "go now", "charge", "attack", "defend", "stop", "halt",
+        "silence", "enough", "now", "there",
+    }
+    for _, w in ipairs(imperatives) do
+        if firstChunk:find(w, 1, true) then
+            confidence = confidence + 0.3
+            break
+        end
+    end
+
+    return math.min(1.0, confidence)
+end
+
 -- Convenience summary for animation logic or UI
 function ReplayFrame:AnalyzeText(text)
     local words = self:TA_Tokenize(text)
@@ -340,12 +420,16 @@ function ReplayFrame:AnalyzeText(text)
     local sentenceCount = self:TA_CountSentences(text)
     local hasGreet = self:HasGreetingInFirstWords(text, 10)
     local greetConfidence = self:GetGreetingConfidence(text, 10)
+    local revConfidence = self:GetReverenceConfidence(text, 15)
+    local emphConfidence = self:GetEmphasisConfidence(text)
     local hasExcl = self:TA_HasExclamation(text)
     local hasQuest = self:TA_HasQuestion(text)
     
     -- Determine animation recommendation
     local animationHint = "talk"
-    if hasGreet and greetConfidence > 0.5 then
+    if revConfidence > 0.5 then
+        animationHint = "bow_then_talk"
+    elseif hasGreet and greetConfidence > 0.5 then
         animationHint = "wave_then_talk"
     elseif hasExcl then
         animationHint = "talk_exclamation"
@@ -359,10 +443,11 @@ function ReplayFrame:AnalyzeText(text)
         firstSegment = first10,
         hasGreeting = hasGreet,
         greetingConfidence = greetConfidence,
+        reverenceConfidence = revConfidence,
+        emphasisConfidence = emphConfidence,
         hasExclamation = hasExcl,
         hasQuestion = hasQuest,
         animationHint = animationHint,
-        -- Additional metadata for future features
         textComplexity = wordCount > 20 and "high" or (wordCount > 8 and "medium" or "low"),
         isFormal = first10:find("thou") or first10:find("thee") or first10:find("thy"),
     }

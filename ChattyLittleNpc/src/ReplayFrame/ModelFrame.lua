@@ -4,53 +4,80 @@ local CLN = _G.ChattyLittleNpc
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
 
--- Creates a full-width container for the NPC model and a PlayerModel that spans the full width (fixed height).
--- The model itself isn't changed; we just give it more horizontal space for animations.
+-- Creates a full-width container for the NPC model as a standalone frame above the conversations.
+-- Anchored above DisplayFrame by default; moves with it via anchoring.
 function ReplayFrame:CreateModelUI()
-    -- Prevent duplicate creation
     if self.ModelContainer or self.NpcModelFrame then return end
-    -- Defaults if not already set
     self.npcModelFrameWidth = self.npcModelFrameWidth or 220
-    -- Avoid compounding height increases across multiple calls
     self.npcModelFrameHeight = self.npcModelFrameHeight or math.floor(140 * 1.15)
 
-    -- Container spans the width; used as a row above the queue
-    local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", self.DisplayFrame)
-    modelContainer:SetPoint("TOPLEFT", self.DisplayFrame, "TOPLEFT", 5, -8)
-    modelContainer:SetPoint("TOPRIGHT", self.DisplayFrame, "TOPRIGHT", -5, -8)
+    -- Standalone frame anchored above DisplayFrame (or independently positioned)
+    local modelContainer = CreateFrame("Frame", "ChattyLittleNpcModelContainer", UIParent)
+    modelContainer:SetClipsChildren(true)
     modelContainer:SetHeight(self.npcModelFrameHeight)
+    modelContainer:SetMovable(true)
+    modelContainer:SetClampedToScreen(true)
     modelContainer:Hide()
     self.ModelContainer = modelContainer
+    -- Match strata and level near DisplayFrame
+    if self.DisplayFrame then
+        modelContainer:SetFrameStrata(self.DisplayFrame:GetFrameStrata() or "MEDIUM")
+        if modelContainer.SetFrameLevel and self.DisplayFrame.GetFrameLevel then
+            modelContainer:SetFrameLevel(self.DisplayFrame:GetFrameLevel() + 2)
+        end
+    end
 
-    -- Model spans full container width; keep a fixed height
-    local modelFrame = CreateFrame("PlayerModel", "ChattyLittleNpcModelFrame", modelContainer)
-    modelFrame:ClearAllPoints()
-    modelFrame:SetPoint("TOPLEFT", modelContainer, "TOPLEFT", 0, 0)
-    modelFrame:SetPoint("TOPRIGHT", modelContainer, "TOPRIGHT", 0, 0)
-    modelFrame:SetHeight(self.npcModelFrameHeight)
-    modelFrame:Hide()
-    self.NpcModelFrame = modelFrame
+    -- Model host: prefers ModelScene+Actor, falls back to PlayerModel
+    local host = self.CreateModelHost and self:CreateModelHost(modelContainer) or CreateFrame("Frame", "ChattyLittleNpcModelHost", modelContainer)
+    host:ClearAllPoints()
+    host:SetPoint("TOPLEFT", modelContainer, "TOPLEFT", 0, 0)
+    host:SetPoint("TOPRIGHT", modelContainer, "TOPRIGHT", 0, 0)
+    host:SetHeight(self.npcModelFrameHeight)
+    if host.SetFrameLevel and modelContainer and modelContainer.GetFrameLevel then
+        host:SetFrameLevel(modelContainer:GetFrameLevel() + 1)
+    end
+    host:Hide()
+    self.NpcModelFrame = host
 end
 
--- Position the full-width model container and fixed-size model; show/hide based on state
+-- =========================
+-- Debug helpers
+-- =========================
+
+-- Toggle: make animation calls no-op to simplify camera debugging
+function ReplayFrame:SetNoAnimDebug(enabled)
+    self._debugNoAnim = enabled and true or false
+end
+
+function ReplayFrame:_NoAnimDebugEnabled()
+    if self._debugNoAnim ~= nil then return self._debugNoAnim end
+    local prof = CLN and CLN.db and CLN.db.profile
+    return (prof and prof.debugNoAnim) and true or false
+end
+
+function ReplayFrame:_CameraAnimsDisabled()
+    return (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations)
+        or self:_NoAnimDebugEnabled()
+end
+
+-- Position the standalone model container above DisplayFrame; show/hide based on state
 function ReplayFrame:LayoutModelArea(frame)
     local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
     local hasModel = self._hasValidModel and not compact
 
-    -- Ensure we react to the display frame visibility to stop model rendering off-screen
+    -- Sync visibility with DisplayFrame
     if frame and not self._hookedDisplayFrame then
         if frame.HookScript then
             frame:HookScript("OnHide", function()
-                -- Hide and clear model to avoid rendering costs while window is hidden
+                if self._editMode or self._blizzardEditMode then return end
                 if self.NpcModelFrame then
-                    if self.NpcModelFrame.ClearModel then pcall(self.NpcModelFrame.ClearModel, self.NpcModelFrame) end
                     self.NpcModelFrame:Hide()
                 end
                 if self.ModelContainer then self.ModelContainer:Hide() end
+                self._hasValidModel = false
                 if self.ResetAnimationState then self:ResetAnimationState() end
             end)
             frame:HookScript("OnShow", function()
-                -- Re-evaluate model only when window becomes visible
                 if self.CheckAndShowModel then self:CheckAndShowModel() end
             end)
         end
@@ -59,45 +86,150 @@ function ReplayFrame:LayoutModelArea(frame)
 
     if self.ModelContainer then
         self.ModelContainer:ClearAllPoints()
-    -- Anchor ABOVE the frame: container bottom sits at frame top
-    self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 5, 6)
-    self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -5, 6)
-        self.ModelContainer:SetHeight(self.npcModelFrameHeight or 140)
-    if self.ModelContainer.SetFrameStrata then self.ModelContainer:SetFrameStrata("HIGH") end
+        local undocked = self:IsModelUndocked()
+        if undocked then
+            -- Independent mode: anchor to UIParent using saved position
+            self:LoadModelPosition()
+        else
+            -- Docked mode: anchor above DisplayFrame (default)
+            self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+            self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+        end
+        self.ModelContainer:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
 
     if self.NpcModelFrame then
         self.NpcModelFrame:ClearAllPoints()
-        self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, 0)
-        self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, 0)
-        self.NpcModelFrame:SetHeight(self.npcModelFrameHeight or 140)
-        if hasModel then self.NpcModelFrame:Show() else self.NpcModelFrame:Hide() end
+        -- Shift model 10% lower inside the container; the container clips overflow.
+        local h = self.npcModelFrameHeight or math.floor(140 * 1.15)
+        local dropPx = math.floor(h * 0.10)
+        self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, -dropPx)
+        self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, -dropPx)
+        self.NpcModelFrame:SetHeight(h + dropPx)
+        if self.NpcModelFrame.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
+            self.NpcModelFrame:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
+        end
+        if hasModel then
+            self.NpcModelFrame:Show()
+            local backend = self.NpcModelFrame._backend
+            if backend and backend.kind == "scene" and backend.frame and backend.frame.SetCameraPosition then
+                if self.NpcModelFrame._lastCamSnapshot then
+                    if self.NpcModelFrame.FitDistanceForCurrentTarget then
+                        pcall(self.NpcModelFrame.FitDistanceForCurrentTarget, self.NpcModelFrame, 0.12)
+                    end
+                elseif self.NpcModelFrame.PointCameraAtHead then
+                    pcall(self.NpcModelFrame.PointCameraAtHead, self.NpcModelFrame)
+                end
+            end
+        else
+            self.NpcModelFrame:Hide()
+        end
+    end
+end
+
+-- Recreate the model host to honor a changed backend preference
+function ReplayFrame:RebuildModelHost()
+    if not self.ModelContainer then return end
+    -- Hide and remove old host
+    if self.NpcModelFrame then
+        pcall(self.NpcModelFrame.Hide, self.NpcModelFrame)
+        -- Clear children to avoid multiple model frames; we'll create a fresh host
+        local children = { self.ModelContainer:GetChildren() }
+        for _, child in ipairs(children) do
+            if child and child ~= self.NpcModelFrame then child:Hide() end
+        end
+    end
+    -- Create a new host using current preference
+    local host = self.CreateModelHost and self:CreateModelHost(self.ModelContainer) or CreateFrame("Frame", "ChattyLittleNpcModelHost", self.ModelContainer)
+    host:ClearAllPoints()
+    host:SetPoint("TOPLEFT", self.ModelContainer, "TOPLEFT", 0, 0)
+    host:SetPoint("TOPRIGHT", self.ModelContainer, "TOPRIGHT", 0, 0)
+    host:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
+    if host.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
+        host:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
+    end
+    host:Hide()
+    self.NpcModelFrame = host
+    self._unitModelLoaded = false
+    self._lastUnitNpcId = nil
+    self._lastDisplayID = nil
+    self._naturalAnimId = nil
+    self._npcIsDead = false
+    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    if cur and cur.npcId then
+        self:UpdateNpcModelDisplay(cur.npcId)
+    end
+    -- Re-apply layout to ensure camera defaults
+    if self.DisplayFrame and self.LayoutModelArea then
+        self:LayoutModelArea(self.DisplayFrame)
     end
 end
 
 -- Build/update the model with npcId and handle container visibility
+function ReplayFrame:ResolveNpcDisplayID(npcId)
+    local currentlyPlaying = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    if currentlyPlaying and currentlyPlaying.npcId == npcId and currentlyPlaying.displayID then
+        return currentlyPlaying.displayID
+    end
+    -- Static DB lookup
+    local staticId = NpcDisplayIdDB and NpcDisplayIdDB[npcId] or nil
+    if staticId then return staticId end
+    -- Persistent metadata cache fallback
+    if CLN.NpcMetadataCache then
+        local cached = CLN.NpcMetadataCache:Lookup(npcId)
+        if cached and cached.displayID then return cached.displayID end
+    end
+    return nil
+end
+
+-- Extract creature NPC ID from a GUID string ("Creature-0-...-NPCID-..." or "Vehicle-0-...-NPCID-...")
+local function npcIdFromGuid(guid)
+    if not guid or type(guid) ~= "string" then return nil end
+    -- GUID format: "Type-0-serverID-instanceID-zoneUID-npcID-spawnUID"
+    -- Valid NPC types: Creature, Vehicle
+    local guidType = guid:match("^(%a+)%-")
+    if guidType ~= "Creature" and guidType ~= "Vehicle" then return nil end
+    local id = select(6, strsplit("-", guid))
+    return id and tonumber(id) or nil
+end
+
+-- Check if the "npc" unit token currently points to the expected NPC
+local function isNpcTokenValidFor(expectedNpcId)
+    if not (UnitExists and UnitExists("npc")) then return false end
+    if not expectedNpcId then return true end -- no expectation, trust the token
+    local ok, guid = pcall(UnitGUID, "npc")
+    if not ok or not guid then return false end
+    local tokenNpcId = npcIdFromGuid(guid)
+    return tokenNpcId == expectedNpcId
+end
+
 function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if (not self.NpcModelFrame) then return end
     -- Skip any model work if the window itself is hidden
     if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         return
     end
-    -- Defensive: ensure we only have one PlayerModel child
+    -- Defensive: hide orphaned model frames from prior RebuildModelHost calls
+    -- (WoW frames can't be destroyed, only hidden). Only act when duplicates exist.
     if self.ModelContainer and self.ModelContainer.GetChildren then
-        local count = 0
         local children = { self.ModelContainer:GetChildren() }
+        local modelChildren = {}
         for _, child in ipairs(children) do
-            if child and child.GetObjectType and child:GetObjectType() == "PlayerModel" then
-                count = count + 1
+            if child and child.GetObjectType then
+                local otype = child:GetObjectType()
+                if otype == "PlayerModel" or otype == "ModelScene" or otype == "Frame" then
+                    table.insert(modelChildren, child)
+                end
             end
         end
-        if count > 1 then
-            -- hide any extras just in case
-            for _, child in ipairs(children) do
-                if child ~= self.NpcModelFrame and child and child.GetObjectType and child:GetObjectType() == "PlayerModel" then
+        if #modelChildren > 1 then
+            for _, child in ipairs(modelChildren) do
+                if child ~= self.NpcModelFrame then
+                    if child.ClearModel then pcall(child.ClearModel, child) end
                     child:Hide()
                 end
             end
@@ -106,38 +238,114 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     if self:IsCompactModeEnabled() then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         self:ContractForNpcModel()
         return
     end
 
     local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
-    if (not (self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId == npcId)) then
+    if not (currentlyPlaying and currentlyPlaying.npcId == npcId) then
         if self.ModelContainer then self.ModelContainer:Hide() end
         self.NpcModelFrame:Hide()
+        self._hasValidModel = false
         self:ContractForNpcModel()
         return
     end
 
-    local displayID = NpcDisplayIdDB[npcId]
+    -- Detect whether the NPC we're about to display is dead.
+    -- Check the "npc" dialog unit first; fall back to "target" if it matches our npcId.
+    self._npcIsDead = false
+    if UnitIsDead then
+        if isNpcTokenValidFor(npcId) and UnitIsDead("npc") then
+            self._npcIsDead = true
+        elseif UnitExists and UnitExists("target") and UnitIsDead("target") then
+            local ok, targetGUID = pcall(UnitGUID, "target")
+            if ok and targetGUID and npcIdFromGuid(targetGUID) == tonumber(npcId) then
+                self._npcIsDead = true
+            end
+        end
+    end
+
+    local displayID = self:ResolveNpcDisplayID(npcId)
     if (displayID) then
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))
+        end
         -- If model changed, reset animation state to avoid stale loops from previous model
         if self._lastDisplayID ~= displayID then
             if self.ResetAnimationState then self:ResetAnimationState() end
             self._lastDisplayID = displayID
+            self._lastUnitNpcId = nil
+            -- Infer the NPC's world animation (e.g. sitting, kneeling) even on
+            -- the displayID path so the portrait mirrors the NPC's actual pose.
+            local infer = ReplayFrame.AnimationInfer
+            self._naturalAnimId = (infer and infer.Infer and isNpcTokenValidFor(npcId))
+                and infer.Infer("npc") or nil
+        else
+            -- Same displayID: skip full reload if model is still loaded
+            local be = self.NpcModelFrame and self.NpcModelFrame._backend
+            local stillLoaded = false
+            if be and be.actor and be.actor.IsLoaded then
+                stillLoaded = be.actor:IsLoaded()
+            elseif be and be.kind == "player" then
+                -- GetModelFileID can return 0 during same-frame transitions;
+                -- trust _unitModelLoaded first (matches SetUnit path at ~line 349).
+                stillLoaded = self._unitModelLoaded
+                if not stillLoaded and be.frame then
+                    local fid = be.frame.GetModelFileID and be.frame:GetModelFileID()
+                    stillLoaded = fid and fid ~= 0
+                end
+            end
+            if stillLoaded then
+                if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
+                    self.NpcModelFrame:Show()
+                end
+                if self.ModelContainer and self.ModelContainer.IsShown and not self.ModelContainer:IsShown() then
+                    self.ModelContainer:Show()
+                end
+                self._hasValidModel = true
+                if self.Relayout then self:Relayout() end
+                return
+            end
+            -- Model no longer loaded; fall through to full reload
         end
-        self.NpcModelFrame:ClearModel()
-        self.NpcModelFrame:SetDisplayInfo(displayID)
-        -- Slightly zoomed out for more headroom so tall models aren't clipped
-    self.NpcModelFrame:SetPortraitZoom(0.65)
-    self._currentZoom = 0.65
-        -- Nudge model lower in viewport; negative Z lowers the model
-        if self.NpcModelFrame.SetPosition then
-            -- cache and reuse the chosen offset
-            self.modelZOffset = self.modelZOffset or -0.08
-            pcall(self.NpcModelFrame.SetPosition, self.NpcModelFrame, 0, 0, self.modelZOffset)
-            self._currentZOffset = self.modelZOffset
+    self.NpcModelFrame:ClearModel()
+    self._unitModelLoaded = false
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
         end
-        self.NpcModelFrame:SetRotation(0.3)
+    -- Show container before SetDisplayInfo so the ModelScene frame is visible during init
+    if self.ModelContainer then self.ModelContainer:Show() end
+    self.NpcModelFrame:Show()
+    self.NpcModelFrame:SetDisplayInfo(displayID, currentlyPlaying and currentlyPlaying.creatureType or nil)
+    self._unitModelLoaded = true -- prevent same-frame re-clear
+        -- For ModelScene actors, model load can be async; poll briefly to apply fit/anim
+        local be = self.NpcModelFrame._backend
+        if be and be.kind == "scene" and be.actor and C_Timer and C_Timer.After then
+            local tries = 0
+            local capturedBackend = be
+            local function tryApply()
+                -- Guard: abort if model frame was destroyed or backend changed
+                if not (self.NpcModelFrame and self.NpcModelFrame._backend == capturedBackend) then return end
+                -- Abort if display ID changed since we started polling
+                local hostDisplayID = self.NpcModelFrame._currentDisplayID or self.NpcModelFrame._lastRequestArg
+                if hostDisplayID ~= nil and hostDisplayID ~= displayID then return end
+                tries = tries + 1
+                local loaded = (be.actor.IsLoaded and be.actor:IsLoaded()) or false
+                if loaded then
+                    -- Build metadata once and apply default fit
+                    if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(displayID) end
+                    if self.ApplyDefaultFit then self:ApplyDefaultFit(displayID) end
+                    return -- done
+                end
+                if tries < 30 then C_Timer.After(0.05, tryApply) end
+            end
+            C_Timer.After(0.01, tryApply)
+        else
+            -- PlayerModel or no async load; still attempt meta + default fit
+            if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(displayID) end
+            if self.ApplyDefaultFit then self:ApplyDefaultFit(displayID) end
+        end
         -- If audio is playing for this NPC, set talk immediately; otherwise idle
         local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
         local isPlaying = cur and cur.isPlaying and cur:isPlaying() and cur.npcId == npcId
@@ -151,22 +359,139 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         else
             -- Ensure any conversation loop is stopped when not playing
             if self.StopEmoteLoop then self:StopEmoteLoop() end
-            self:SetModelAnim(0) -- Idle
+            self:SetModelAnim(self._naturalAnimId or 0)
         end
-        self._hasValidModel = true
-        if self.ModelContainer then self.ModelContainer:Show() end
-        self.NpcModelFrame:Show()
-        if self.SetupModelAnimations then self:SetupModelAnimations() end
+    -- Ensure hooks are attached before showing so OnShow fires
+    if self.SetupModelAnimations then self:SetupModelAnimations() end
+    self._hasValidModel = true
+    if self.ModelContainer then self.ModelContainer:Show() end
+    self.NpcModelFrame:Show()
+    -- Do not call old auto-fit here; default fit applied above
     else
-        self.NpcModelFrame:ClearModel()
-        self.NpcModelFrame:Hide()
-        if self.ModelContainer then self.ModelContainer:Hide() end
-        self._hasValidModel = false
+        -- Fallback: when we don't have a mapping, try using the live unit to display the model
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
+        end
+        if self._lastUnitNpcId == npcId then
+            local be = self.NpcModelFrame and self.NpcModelFrame._backend
+            local stillLoaded = false
+            if be and be.actor and be.actor.IsLoaded then
+                stillLoaded = be.actor:IsLoaded()
+            elseif be and be.kind == "player" then
+                -- PlayerModel retains its model in GPU memory after SetUnit even when
+                -- the unit token becomes invalid (e.g. after GOSSIP_CLOSED).
+                -- GetModelFileID can return 0 during same-frame ClearModel→SetUnit
+                -- transitions, so trust our own tracking flag instead.
+                stillLoaded = self._unitModelLoaded
+            end
+            if stillLoaded then
+                if self.NpcModelFrame and self.NpcModelFrame.IsShown and not self.NpcModelFrame:IsShown() then
+                    self.NpcModelFrame:Show()
+                end
+                if self.ModelContainer and self.ModelContainer.IsShown and not self.ModelContainer:IsShown() then
+                    self.ModelContainer:Show()
+                end
+                self._hasValidModel = true
+                if self.Relayout then self:Relayout() end
+                return
+            end
+        end
+        local canUseUnit = UnitExists and UnitExists("npc") and isNpcTokenValidFor(npcId)
+        if canUseUnit and self.NpcModelFrame and self.NpcModelFrame.SetUnit then
+            self.NpcModelFrame:ClearModel()
+            self._unitModelLoaded = false
+            -- Show container before SetUnit so the ModelScene frame is visible during init
+            if self.ModelContainer then self.ModelContainer:Show() end
+            self.NpcModelFrame:Show()
+            pcall(self.NpcModelFrame.SetUnit, self.NpcModelFrame, "npc")
+            self._unitModelLoaded = true
+            -- Capture the model's natural idle animation so we can return to it later.
+            -- Blacklist transient animations (talk, emotes, one-shots) so they never
+            -- become the "idle" that gets poked every 4 seconds.
+            local TRANSIENT_ANIMS = {
+                [25] = true,   -- Point
+                [60] = true,   -- Talk
+                [64] = true,   -- TalkExclamation
+                [65] = true,   -- TalkQuestion
+                [66] = true,   -- Bow
+                [67] = true,   -- Wave
+                [68] = true,   -- Cheer
+                [69] = true,   -- Dance
+                [70] = true,   -- Kneel
+                [113] = true,  -- Salute
+                [185] = true,  -- Yes (nod)
+                [186] = true,  -- No (headshake)
+            }
+            -- Use the dedicated animation probe (hidden PlayerModel) for
+            -- reliable detection regardless of rendering backend.  The probe
+            -- mirrors the NPC's world pose via SetUnit which works even when
+            -- the main renderer is ModelScene.
+            local natAnim = 0
+            local infer = ReplayFrame.AnimationInfer
+            if infer and infer.Infer then
+                natAnim = infer.Infer("npc")
+            elseif self.NpcModelFrame.GetAnimation then
+                -- Fallback: read from host (works for PlayerModel backend)
+                local ok, a = pcall(self.NpcModelFrame.GetAnimation, self.NpcModelFrame)
+                if ok and type(a) == "number" and not TRANSIENT_ANIMS[a] then
+                    natAnim = a
+                end
+            end
+            self._naturalAnimId = natAnim
+            self._lastUnitNpcId = npcId
+            -- Snapshot displayID from the live unit so that same-NPC queue
+            -- transitions can match _lastDisplayID and skip ClearModel.
+            local unitDid = UnitCreatureDisplayID and UnitCreatureDisplayID("npc") or nil
+            self._lastDisplayID = unitDid
+            if unitDid and currentlyPlaying and not currentlyPlaying.displayID then
+                currentlyPlaying.displayID = unitDid
+            end
+            -- Build metadata and apply default fit when unit is loaded
+            if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(nil) end
+            if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
+            -- Show container + model
+            if self.ModelContainer then self.ModelContainer:Show() end
+            self.NpcModelFrame:Show()
+            -- Do not auto-fit here; default fit already applied
+            -- Mark as having a model so animation path can proceed
+            self._hasValidModel = true
+        else
+            -- Unit gone but we may have a cached displayID from currentlyPlaying
+            local cpDid = currentlyPlaying and currentlyPlaying.displayID
+            if cpDid and self.NpcModelFrame and self.NpcModelFrame.SetDisplayInfo then
+                self.NpcModelFrame:ClearModel()
+                self._unitModelLoaded = false
+                if self.ModelContainer then self.ModelContainer:Show() end
+                self.NpcModelFrame:Show()
+                self.NpcModelFrame:SetDisplayInfo(cpDid, currentlyPlaying and currentlyPlaying.creatureType or nil)
+                self._unitModelLoaded = true -- prevent same-frame re-clear
+                self._lastDisplayID = cpDid
+                self._lastUnitNpcId = nil
+                -- Infer animation from the live NPC unit if still available
+                local infer = ReplayFrame.AnimationInfer
+                self._naturalAnimId = (infer and infer.Infer and isNpcTokenValidFor(npcId))
+                    and infer.Infer("npc") or nil
+                if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(cpDid) end
+                if self.ApplyDefaultFit then self:ApplyDefaultFit(cpDid) end
+                self._hasValidModel = true
+            else
+                if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
+                end
+                self.NpcModelFrame:ClearModel()
+                self._unitModelLoaded = false
+                self.NpcModelFrame:Hide()
+                if self.ModelContainer then self.ModelContainer:Hide() end
+                self._lastUnitNpcId = nil
+                self._hasValidModel = false
+            end
+        end
     end
     if self.Relayout then self:Relayout() end
 end
 
 function ReplayFrame:CheckAndShowModel()
+    if self._editMode or self._blizzardEditMode then return end
     local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
     -- Do nothing if the window is hidden
     if self.DisplayFrame and self.DisplayFrame.IsShown and (not self.DisplayFrame:IsShown()) then
@@ -175,27 +500,108 @@ function ReplayFrame:CheckAndShowModel()
         return
     end
     if (not self:IsCompactModeEnabled() and self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
+    -- Update model first (sets _hasValidModel), then expand frame, then show container
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
+    if self._hasValidModel then
+        self:ExpandForNpcModel()
+        if self.ModelContainer and not self.ModelContainer:IsShown() then self.ModelContainer:Show() end
+    end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then 
-            CLN.Utils:LogAnimDebug("CheckAndShowModel - showing model, letting OnShow hook handle animation")
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
+            local c = self.ModelContainer
+            local m = self.NpcModelFrame
+            local cShown = c and c.IsShown and c:IsShown() or false
+            local cVis = c and c.IsVisible and c:IsVisible() or false
+            local mShown = m and m.IsShown and m:IsShown() or false
+            local mVis = m and m.IsVisible and m:IsVisible() or false
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("CheckAndShowModel - showing (cShown=%s,cVis=%s,mShown=%s,mVis=%s) - letting OnShow hook handle animation", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
         end
     else
         if (self.NpcModelFrame) then self.NpcModelFrame:Hide() end
         if (self.ModelContainer) then self.ModelContainer:Hide() end
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-            CLN.Utils:LogAnimDebug("CheckAndShowModel - hiding model")
+        self._hasValidModel = false
+        self:ContractForNpcModel()
+        -- Relayout so ContentFrame collapses into the model's former space
+        if self.Relayout then self:Relayout() end
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            local c = self.ModelContainer
+            local m = self.NpcModelFrame
+            local cShown = c and c.IsShown and c:IsShown() or false
+            local cVis = c and c.IsVisible and c:IsVisible() or false
+            local mShown = m and m.IsShown and m:IsShown() or false
+            local mVis = m and m.IsVisible and m:IsVisible() or false
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("CheckAndShowModel - hiding (cShown=%s,cVis=%s,mShown=%s,mVis=%s)", tostring(cShown), tostring(cVis), tostring(mShown), tostring(mVis)))
         end
     end
 end
 
-function ReplayFrame:ExpandForNpcModel() end
-function ReplayFrame:ContractForNpcModel() end
+-- Auto-expand frame height when model is visible so content has enough room
+-- Legacy expand/contract: no-op since model is now a separate frame above DisplayFrame
+function ReplayFrame:ExpandForNpcModel()
+    -- Model container is no longer inside DisplayFrame, no expansion needed
+end
+
+function ReplayFrame:ContractForNpcModel()
+    -- Model container is no longer inside DisplayFrame, no contraction needed
+    self._preModelHeight = nil
+end
 
 -- =========================
 -- Simple animation helpers
 -- =========================
+
+-- Build metadata once for the current model/displayID; safe to call multiple times
+function ReplayFrame:BuildModelMetadataOnce(displayID)
+    self._modelMeta = self._modelMeta or {}
+    local key = self:ResolveModelMetaKey(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil)
+    if not key then return end
+    if self._modelMeta[key] and self._modelMeta[key]._built then return end
+    local host = self.NpcModelFrame
+    if not (host and host.GetBounds) then return end
+    local b = host:GetBounds()
+    if not (b and b.min and b.max) then return end
+    local minX, minY, minZ = b.min.x or 0, b.min.y or 0, b.min.z or 0
+    local maxX, maxY, maxZ = b.max.x or 0, b.max.y or 0, b.max.z or 0
+    local sizeW = math.abs(maxX - minX)
+    local sizeH = math.abs(maxZ - minZ)
+    local sizeD = math.abs(maxY - minY)
+    local center = { x = (minX + maxX) * 0.5, y = (minY + maxY) * 0.5, z = (minZ + maxZ) * 0.5 }
+    local meta = self:GetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, true) or {}
+    meta.bounds = b
+    meta.size = { w = sizeW, h = sizeH, d = sizeD }
+    meta.center = center
+    meta.topZ = math.max(minZ, maxZ)
+    meta.bottomZ = math.min(minZ, maxZ)
+    meta.defaultYaw = meta.defaultYaw or 0
+    meta.distance = meta.distance or 10
+    meta.fovV = host.GetFovV and host:GetFovV() or (meta.fovV or math.rad(60))
+    meta.aspect = host.GetAspect and host:GetAspect() or (meta.aspect or 1.0)
+    meta.scaleD10 = ReplayFrame.Framer.FitScale(meta, 10, 0.05)
+    -- Store canonical bbox and morphology class in meta if available
+    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached and tonumber(displayID) and MS.CanonicalBbox.GetCached(displayID)
+    if canonEntry then
+        meta.canonicalBbox = canonEntry.bbox
+        meta.morphologyClass = canonEntry.class
+    end
+    meta._built = true
+    self:SetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, meta)
+    -- Log once
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing") then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing", string.format("Meta built dID=%s H=%.2f W=%.2f fovV=%.3f aspect=%.2f scaleD10=%.3f",
+            tostring(displayID or "unit"), meta.size.h or -1, meta.size.w or -1, meta.fovV or -1, meta.aspect or -1, meta.scaleD10 or -1))
+    end
+end
+
+-- Apply the default fit based on cached meta
+function ReplayFrame:ApplyDefaultFit(displayID)
+    local host = self.NpcModelFrame
+    if not host then return end
+    -- Defer to renderer's FitDefault which handles scale, composition bias,
+    -- projector-based corrections, and clipping in one coherent step.
+    if host.FitDefault then host:FitDefault() end
+end
 
 -- Ensure a gentle idle animation and subtle rotation sway are active when the model is shown
 function ReplayFrame:SetupModelAnimations()
@@ -225,11 +631,12 @@ function ReplayFrame:SetupModelAnimations()
 
             -- Conversation emote loop is now external and timer-driven; no per-frame checks
 
-            -- Some models stop animating after loads; poke idle periodically only when idling
-            if frame.SetAnimation and ((r._lastAppliedAnimId == 0) or not sameHandle) then
+            -- Some models stop animating after loads; poke idle periodically
+            local idleAnim = r._npcIsDead and (r:_ResolveDeadAnim()) or (r._naturalAnimId or 0)
+            if frame.SetAnimation and ((r._lastAppliedAnimId == idleAnim) or not sameHandle) then
                 frame._poke = (frame._poke or 0) + (elapsed or 0)
-                if frame._poke > 4.0 then
-                    pcall(frame.SetAnimation, frame, 0)
+                if frame._poke > (r.Config and r.Config.Timings and r.Config.Timings.idlePokeInterval or 4.0) then
+                    pcall(frame.SetAnimation, frame, idleAnim)
                     frame._poke = 0
                 end
             end
@@ -253,7 +660,7 @@ function ReplayFrame:SetupModelAnimations()
                         -- Safety: if we expect a talk animation but the model isn't playing it, reapply occasionally
                         if frame.SetAnimation and r and r._lastAppliedAnimId and (r._lastAppliedAnimId == 60 or r._lastAppliedAnimId == 64 or r._lastAppliedAnimId == 65) then
                             frame._talkPoke = (frame._talkPoke or 0) + (elapsed or 0)
-                            if frame._talkPoke > 1.2 then
+                            if frame._talkPoke > (r.Config and r.Config.Timings and r.Config.Timings.talkPokeInterval or 1.2) then
                                 frame._talkPoke = 0
                                 if frame.GetAnimation then
                                     local ok, curAnim = pcall(frame.GetAnimation, frame)
@@ -301,22 +708,26 @@ function ReplayFrame:SetupModelAnimations()
             local r = ReplayFrame
             local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
             local isPlaying = cur and cur.isPlaying and cur:isPlaying()
-            if isPlaying then
-                local talkId = 60
-                if r and r.ChooseTalkAnimIdForText and cur.title then
-                    talkId = r:ChooseTalkAnimIdForText(cur.title)
+            if not (r and r:_NoAnimDebugEnabled()) then
+                if isPlaying then
+                    local talkId = 60
+                    if r and r.ChooseTalkAnimIdForText and cur.title then
+                        talkId = r:ChooseTalkAnimIdForText(cur.title)
+                    end
+                    -- Set base anim, defer loop and camera to FSM
+                    r:SetModelAnim(talkId)
+                else
+                    r:SetModelAnim(r._naturalAnimId or 0)
                 end
-                -- Set base anim, defer loop and camera to FSM
-                r:SetModelAnim(talkId)
-            else
-                r:SetModelAnim(0)
             end
 
             -- Let the Director refine (wave vs talk) as needed
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug() then
-                CLN.Utils:LogAnimDebug("ModelFrame OnShow hook - calling UpdateConversationAnimation")
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame OnShow hook - calling UpdateConversationAnimation")
             end
-            if r and r.UpdateConversationAnimation then r:UpdateConversationAnimation() end
+            if r and r.UpdateConversationAnimation and not (r:_NoAnimDebugEnabled()) then
+                r:UpdateConversationAnimation()
+            end
         end)
         m:HookScript("OnHide", function(f)
             if f.SetScript then f:SetScript("OnUpdate", nil) end
@@ -328,8 +739,16 @@ function ReplayFrame:SetupModelAnimations()
         m._hookedAnim = true
     end
 
-    -- If already shown, start updates immediately
-    if m:IsShown() and self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+    -- If already shown, start updates immediately and kick conversation animation once
+    if m:IsShown() then
+        if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+    if self.UpdateConversationAnimation and not self:_NoAnimDebugEnabled() then
+            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame already shown - calling UpdateConversationAnimation immediately")
+            end
+            self:UpdateConversationAnimation()
+        end
+    end
 end
 
 -- =========================
@@ -338,6 +757,7 @@ end
 
 -- Determine if the model needs a per-frame OnUpdate (active anims or emote loop)
 function ReplayFrame:_ModelNeedsOnUpdate()
+    if self:_NoAnimDebugEnabled() then return false end
     local m = self.NpcModelFrame
     if not (m and m.IsShown and m:IsShown()) then return false end
     if self._anims and #self._anims > 0 then return true end
@@ -361,21 +781,9 @@ function ReplayFrame:_UpdateModelOnUpdateHook()
     local need = self:_ModelNeedsOnUpdate()
     local isAttached = m.GetScript and (m:GetScript("OnUpdate") ~= nil)
     
-    -- Log only when state changes to avoid spam
-    do
-        local count = (self._anims and #self._anims or 0)
-        local last = self._lastUpdateHookState or {}
-        if last.need ~= need or last.attached ~= isAttached or last.count ~= count then
-            CLN.Utils:LogAnimDebug("_UpdateModelOnUpdateHook: need=" .. tostring(need) .. ", isAttached=" .. tostring(isAttached) .. ", anims=" .. tostring(count))
-            self._lastUpdateHookState = { need = need, attached = isAttached, count = count }
-        end
-    end
-    
     if need and not isAttached and m._animOnUpdate and m.SetScript then
-        CLN.Utils:LogAnimDebug("Attaching OnUpdate handler to model")
         m:SetScript("OnUpdate", m._animOnUpdate)
     elseif (not need) and isAttached and m.SetScript then
-        CLN.Utils:LogAnimDebug("Detaching OnUpdate handler from model")
         m:SetScript("OnUpdate", nil)
     end
 end
@@ -397,7 +805,7 @@ end
 function ReplayFrame:SetIdleLoop()
     local m = self.NpcModelFrame
     if not m then return end
-    self:SetModelAnim(0)
+    self:SetModelAnim(self._naturalAnimId or 0)
 end
 
 function ReplayFrame:UpdateTalkAnimation()
@@ -408,7 +816,7 @@ function ReplayFrame:UpdateTalkAnimation()
     local inGrace = false
     if cur and cur.startTime and GetTime then
         local dt = GetTime() - (cur.startTime or 0)
-        inGrace = dt >= 0 and dt < 0.6
+        inGrace = dt >= 0 and dt < (self.Config and self.Config.Timings and self.Config.Timings.recentlyStartedWindow or 0.6)
     end
     if not (cur and (cur.title or cur.questId) and (playing or inGrace)) then
         self:SetIdleLoop()
@@ -422,6 +830,7 @@ end
 
 -- Public: update model animation based on current playback state
 function ReplayFrame:UpdateConversationAnimation()
+    if self:_NoAnimDebugEnabled() then return end
     -- Only act when model is visible to avoid hidden-frame churn
     if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then 
         -- if CLN.Utils and CLN.Utils.LogAnimDebug then CLN.Utils:LogAnimDebug("UpdateConversationAnimation - ModelFrame not shown") end
@@ -436,7 +845,7 @@ function ReplayFrame:UpdateConversationAnimation()
     if handle and self._lastAnimDecision and self._lastAnimDecision.handle == handle 
         and self._lastAnimDecision.title == title then
         -- If we just decided very recently (< 0.2s), skip
-        if (nowT - (self._lastAnimDecision.t or 0)) < 0.2 then
+        if (nowT - (self._lastAnimDecision.t or 0)) < (self.Config and self.Config.Timings and self.Config.Timings.animDecisionDebounce or 0.2) then
             return
         end
     end
@@ -445,9 +854,9 @@ function ReplayFrame:UpdateConversationAnimation()
     local recentlyStarted = false
     if cur and cur.startTime and GetTime then
         local dt = nowT - (cur.startTime or 0)
-        recentlyStarted = dt >= 0 and dt < 0.6
-        if CLN.Utils:ShouldLogAnimDebug() then 
-            CLN.Utils:LogAnimDebug("UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
+        recentlyStarted = dt >= 0 and dt < (self.Config and self.Config.Timings and self.Config.Timings.recentlyStartedWindow or 0.6)
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then 
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
         end
     end
     
@@ -464,15 +873,26 @@ function ReplayFrame:UpdateConversationAnimation()
 end
 
 -- Public: when conversation stops, revert to idle
-function ReplayFrame:OnConversationStop()
+function ReplayFrame:OnConversationStop(explicitLastMsg)
     -- Don't run stop animations if the model isn't visible
     if not (self.NpcModelFrame and self.NpcModelFrame:IsShown()) then
         self:ResetAnimationState()
         return
     end
-    -- Route through FSM for consistent stop handling
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-    local lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
+    -- In combat the FSM bails (InCombatLockdown guard), so fall back to
+    -- direct reset to ensure emote loops / watchers are torn down.
+    if InCombatLockdown and InCombatLockdown() then
+        self:ResetAnimationState()
+        return
+    end
+    -- Route through FSM for consistent stop handling.
+    -- Prefer explicit lastMsg (from ForceStopCurrentSound where cp is about
+    -- to be cleared) over reading currentlyPlaying which may already be nil.
+    local lastMsg = explicitLastMsg
+    if not lastMsg then
+        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
+    end
     if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
 end
 
@@ -502,6 +922,25 @@ function ReplayFrame:ResetAnimationState()
         pcall(self.NpcModelFrame.SetPosition, self.NpcModelFrame, 0, 0, self.modelZOffset)
         self._currentZOffset = self.modelZOffset
     end
+    -- Clear stale breathing state so it re-captures from the new model
+    self._breathBaseZoom = nil
+    self._breathBaseZ = nil
+    self._breathLastAppliedZoom = nil
+    self._breathLastAppliedZ = nil
+end
+
+-- Dead NPC animation constants
+local ANIM_DEAD = 6   -- Static corpse pose (looping)
+local ANIM_STAND = 0  -- Idle/stand fallback
+
+-- Resolve the best dead animation this model supports.
+-- Prefers Dead (6), falls back to Stand (0) — skips Death (1) since
+-- it is a one-shot transition that the idle poke would keep re-firing.
+function ReplayFrame:_ResolveDeadAnim()
+    if self.ModelHasAnimation then
+        if self:ModelHasAnimation(ANIM_DEAD) then return ANIM_DEAD end
+    end
+    return ANIM_STAND
 end
 
 -- Centralized model animation setter; prevents redundant sets and ensures sheathed
@@ -509,6 +948,21 @@ function ReplayFrame:SetModelAnim(animId)
     local m = self.NpcModelFrame
     if not (m and m.SetAnimation) then return end
     if animId == nil then return end
+    -- Dead NPC gate: force dead animation regardless of what callers request
+    if self._npcIsDead then
+        animId = self:_ResolveDeadAnim()
+    end
+    -- Debug gate: do not drive animations when no-op mode is enabled
+    if self:_NoAnimDebugEnabled() then
+        self._lastAppliedAnimId = animId
+        -- Ensure any watcher is disabled in this mode
+        self._watchAnimActive = false
+        self._watchAnimId = nil
+        self._watchStartedAt = nil
+        self._watchTimeout = nil
+        if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
+        return
+    end
     -- Query current animation if available to avoid false "already applied" when it didn't take
     local curAnim
     if m.GetAnimation then
@@ -518,8 +972,8 @@ function ReplayFrame:SetModelAnim(animId)
     -- Skip only if both our cached value and the model's actual state match
     if self._lastAppliedAnimId == animId and curAnim == animId then return end
     -- If switching between different one-shots, clear watcher and cancel any sequence before applying new one
-    local wasOneShot = self._lastAppliedAnimId == 67 or self._lastAppliedAnimId == 185 or self._lastAppliedAnimId == 186
-    local willBeOneShot = animId == 67 or animId == 185 or animId == 186
+    local wasOneShot = self._lastAppliedAnimId == 67 or self._lastAppliedAnimId == 185 or self._lastAppliedAnimId == 186 or self._lastAppliedAnimId == 66 or self._lastAppliedAnimId == 25
+    local willBeOneShot = animId == 67 or animId == 185 or animId == 186 or animId == 66 or animId == 25
     if wasOneShot and (animId ~= self._lastAppliedAnimId) then
         -- Clear one-shot watcher and any pending emote to avoid overlap/races
         self._watchAnimActive = false
@@ -535,7 +989,7 @@ function ReplayFrame:SetModelAnim(animId)
 
     -- Start/stop one-shot finish watcher for specific non-looping emotes when visible
     local visible = m and m.IsShown and m:IsShown()
-    local isOneShot = (animId == 67) or (animId == 185) or (animId == 186)
+    local isOneShot = (animId == 67) or (animId == 185) or (animId == 186) or (animId == 66) or (animId == 25)
     if visible and isOneShot then
         self._watchAnimActive = true
         self._watchAnimId = animId

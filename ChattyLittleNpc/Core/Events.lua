@@ -1,4 +1,4 @@
--- Events.lua - Event handling system to replace AceEvent
+-- Events.lua - Event handling system
 -- Provides RegisterEvent, UnregisterEvent, and a message bus for custom events (SendMessage/RegisterMessage)
 
 ---@class EventSystem
@@ -62,10 +62,25 @@ end
 ---@param event string Event name
 ---@param ... any Event arguments
 function EventSystem:DispatchEvent(event, ...)
-    if not self.events[event] then return end
+    local cbs = self.events[event]
+    if not cbs then return end
     
-    for _, callback in ipairs(self.events[event]) do
-        callback(event, ...)
+    -- Fast path: single callback (common case) avoids snapshot allocation
+    if #cbs == 1 then
+        local ok, err = pcall(cbs[1], event, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Event callback error [" .. tostring(event) .. "]: " .. tostring(err))
+        end
+        return
+    end
+    
+    -- Snapshot the callback list so unregisters during dispatch don't skip entries
+    local snapshot = {unpack(cbs)}
+    for _, callback in ipairs(snapshot) do
+        local ok, err = pcall(callback, event, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Event callback error [" .. tostring(event) .. "]: " .. tostring(err))
+        end
     end
 end
 
@@ -104,10 +119,25 @@ end
 ---@param message string Message name
 ---@param ... any Message arguments
 function EventSystem:SendMessage(message, ...)
-    if not self.messages[message] then return end
+    local cbs = self.messages[message]
+    if not cbs then return end
     
-    for _, callback in ipairs(self.messages[message]) do
-        callback(message, ...)
+    -- Fast path: single callback (common case) avoids snapshot allocation
+    if #cbs == 1 then
+        local ok, err = pcall(cbs[1], message, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Message callback error [" .. tostring(message) .. "]: " .. tostring(err))
+        end
+        return
+    end
+    
+    -- Snapshot the callback list so unregisters during dispatch don't skip entries
+    local snapshot = {unpack(cbs)}
+    for _, callback in ipairs(snapshot) do
+        local ok, err = pcall(callback, message, ...)
+        if not ok and _G.ChattyLittleNpc and _G.ChattyLittleNpc.Logger then
+            _G.ChattyLittleNpc.Logger:error("Message callback error [" .. tostring(message) .. "]: " .. tostring(err))
+        end
     end
 end
 

@@ -128,9 +128,9 @@ function CLN:RunMD5TestCases()
     }
 
     for _, text in ipairs(testCases) do
-        CLN:Print("Original Text: ", text)
+    if CLN and CLN.Logger then CLN.Logger:info("Original Text: " .. tostring(text), true, CLN.Utils.LogCategories.misc) end
         local hash = self.MD5:GenerateHash(text)
-        CLN:Print("MD5 Hash: ", hash)
+    if CLN and CLN.Logger then CLN.Logger:info("MD5 Hash: " .. tostring(hash), true, CLN.Utils.LogCategories.misc) end
     end
 end
 

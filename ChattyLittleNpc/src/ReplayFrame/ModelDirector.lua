@@ -35,7 +35,7 @@ local RECENT_INTERACT_TTL = 120 -- seconds
 -- Pattern-based greeting detection (lowercased, Lua patterns allowed)
 local GREETING_PATTERNS = {
     "greetings", "greetings, traveler", "well met", "hail",
-    "hello", "^hello", "good day", "good day to you",
+    "hello", "good day", "good day to you",
     "light be with you", "king's honor", "elune", "ishnu",
     "strength and honor", "blood and thunder", "lok.?tar", "victory or death",
     "peace[, ]?friend", "how may i aid you", "winds guide you",
@@ -79,13 +79,15 @@ function Director:LooksLikeGreeting(msg)
         
         -- if it's normal talk, likely a greeting; add soft keyword+length check
         if animId == TALK_ANIM_NORMAL then
-            local hasCommonGreetingWords = string.find(firstPart, "welcome") or 
-                                         string.find(firstPart, "come") or
-                                         string.find(firstPart, "you") or
-                                         string.find(firstPart, "what") or
-                                         string.find(firstPart, "how")
+            -- Restrict match to first 3 words to reduce false positives
+            local firstWords = firstPart:match("^(%S+%s+%S+%s+%S+)") or firstPart
+            local hasCommonGreetingWords = string.find(firstWords, "welcome") or 
+                                         string.find(firstWords, "%f[%a]come%f[%A]") or
+                                         string.find(firstWords, "need") or
+                                         string.find(firstWords, "help")
             if CLN.Utils and CLN.Utils.LogAnimDebug then 
-                CLN.Utils:LogAnimDebug("Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
+                local cat = CLN.Utils.LogCategories and CLN.Utils.LogCategories.fsm or "fsm"
+                CLN.Utils:LogAnimDebug(cat, "Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
             end
             if hasCommonGreetingWords and #firstPart < GREETING_HEURISTIC_MAX_LEN then
                 if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Heuristic detected greeting") end
@@ -99,12 +101,35 @@ function Director:LooksLikeGreeting(msg)
 end
 
 local lastWaveBy = {}
+local lastInteractBy = {}
+local MAX_CACHE_ENTRIES = 200
+
+-- Prune expired entries from a timestamp table to prevent unbounded growth
+local function pruneStaleEntries(tbl, ttl)
+    local count = 0
+    for _ in pairs(tbl) do count = count + 1 end
+    if count <= MAX_CACHE_ENTRIES then return end
+    local now = GetTime and GetTime() or 0
+    for k, v in pairs(tbl) do
+        if (now - v) > ttl then tbl[k] = nil end
+    end
+end
 
 local function getWaveKey()
-    -- prefer GUID if available, otherwise npcId from playback
+    -- Always normalize to npcId so the same NPC uses a consistent key
+    -- regardless of whether UnitGUID("npc") is available at call time.
+    -- pcall-protect UnitGUID + comparisons/strsplit against secret values (WoW 12.0+).
     if UnitGUID then
-        local guid = UnitGUID("npc") or UnitGUID("target")
-        if guid and guid ~= "" then return guid end
+        local ok, key = pcall(function()
+            local guid = UnitGUID("npc") or UnitGUID("target")
+            if guid and guid ~= "" then
+                local npcId = select(6, strsplit("-", guid))
+                if npcId and npcId ~= "" then return npcId end
+                return guid
+            end
+            return nil
+        end)
+        if ok and key then return key end
     end
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId then return tostring(cur.npcId) end
@@ -129,10 +154,9 @@ function Director:MarkWaved()
     local key = getWaveKey() or "unknown"
     local now = GetTime and GetTime() or 0
     lastWaveBy[key] = now
+    pruneStaleEntries(lastWaveBy, WAVE_COOLDOWN)
     if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("MarkWaved - starting cooldown for key:", key, "at:", now) end
 end
-
-local lastInteractBy = {}
 
 local function getInteractKey()
     return getWaveKey() or "unknown"
@@ -151,6 +175,7 @@ function Director:MarkInteracted()
     local key = getInteractKey()
     local now = GetTime and GetTime() or 0
     lastInteractBy[key] = now
+    pruneStaleEntries(lastInteractBy, RECENT_INTERACT_TTL)
 end
 
 -- Farewell detection removed

@@ -1,4 +1,4 @@
--- Database.lua - Saved variables system to replace AceDB-3.0
+-- Database.lua - Saved variables system
 -- Provides profile management and change callbacks
 
 ---@class Database
@@ -41,7 +41,11 @@ function Database:New(savedVarName, defaults, defaultProfile)
     -- Create profile accessor
     instance.profile = setmetatable({}, {
         __index = function(t, key)
-            local profileData = instance.sv.profiles[instance.sv.currentProfile]
+            local profiles = instance.sv and instance.sv.profiles
+            local profileData = profiles and profiles[instance.sv.currentProfile]
+            if type(profileData) ~= "table" then
+                return instance.defaults.profile and instance.defaults.profile[key]
+            end
             if profileData[key] ~= nil then
                 return profileData[key]
             end
@@ -49,7 +53,12 @@ function Database:New(savedVarName, defaults, defaultProfile)
             return instance.defaults.profile and instance.defaults.profile[key]
         end,
         __newindex = function(t, key, value)
-            instance.sv.profiles[instance.sv.currentProfile][key] = value
+            local profiles = instance.sv and instance.sv.profiles
+            if not profiles then return end
+            if not profiles[instance.sv.currentProfile] then
+                profiles[instance.sv.currentProfile] = {}
+            end
+            profiles[instance.sv.currentProfile][key] = value
         end
     })
     
@@ -59,20 +68,29 @@ function Database:New(savedVarName, defaults, defaultProfile)
     return instance
 end
 
+-- Recursively merge defaults into target, filling only missing keys
+---@param target table
+---@param defaults table
+function Database:MergeDefaults(target, defaults)
+    for key, value in pairs(defaults) do
+        if target[key] == nil then
+            if type(value) == "table" then
+                target[key] = self:DeepCopy(value)
+            else
+                target[key] = value
+            end
+        elseif type(value) == "table" and type(target[key]) == "table" then
+            self:MergeDefaults(target[key], value)
+        end
+    end
+end
+
 -- Apply default values to current profile
 function Database:ApplyDefaults()
     if not self.defaults.profile then return end
     
     local profileData = self.sv.profiles[self.sv.currentProfile]
-    for key, value in pairs(self.defaults.profile) do
-        if profileData[key] == nil then
-            if type(value) == "table" then
-                profileData[key] = self:DeepCopy(value)
-            else
-                profileData[key] = value
-            end
-        end
-    end
+    self:MergeDefaults(profileData, self.defaults.profile)
 end
 
 -- Deep copy a table

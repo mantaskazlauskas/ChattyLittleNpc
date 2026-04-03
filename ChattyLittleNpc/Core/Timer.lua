@@ -1,4 +1,4 @@
--- Timer.lua - Timer utility to replace AceTimer
+-- Timer.lua - Timer utility
 -- Provides C_Timer wrappers for delayed and repeating timers
 
 ---@class TimerUtil
@@ -19,36 +19,37 @@ end
 ---@param callback function Function to call repeatedly
 ---@return table timer Timer handle (can be used to cancel)
 function TimerUtil:ScheduleRepeatingTimer(interval, callback)
-    local timer = {
-        cancelled = false,
-        interval = interval,
-        callback = callback
-    }
-    
-    local function tick()
-        if timer.cancelled then return end
-        callback()
-        C_Timer.After(interval, tick)
-    end
-    
-    C_Timer.After(interval, tick)
-    table.insert(self.activeTimers, timer)
-    
-    return timer
+    local ticker = C_Timer.NewTicker(interval, callback)
+    table.insert(self.activeTimers, ticker)
+    return ticker
 end
 
 -- Cancel a repeating timer
 ---@param timer table Timer handle returned from ScheduleRepeatingTimer
 function TimerUtil:CancelTimer(timer)
     if timer then
-        timer.cancelled = true
+        if timer.Cancel then
+            timer:Cancel()
+        elseif timer.cancelled ~= nil then
+            timer.cancelled = true
+        end
+        for i = #self.activeTimers, 1, -1 do
+            if self.activeTimers[i] == timer then
+                table.remove(self.activeTimers, i)
+                break
+            end
+        end
     end
 end
 
 -- Cancel all timers
 function TimerUtil:CancelAllTimers()
     for _, timer in ipairs(self.activeTimers) do
-        timer.cancelled = true
+        if timer.Cancel then
+            timer:Cancel()
+        elseif timer.cancelled ~= nil then
+            timer.cancelled = true
+        end
     end
     wipe(self.activeTimers)
 end

@@ -49,7 +49,7 @@ Editor.Frame.gossipSearchButton:SetScript("OnClick", function()
     Editor.GossipText = "Gossip ID not found."
     Editor.GossipId = Editor.Frame.gossipIDInput:GetText()
 
-    for id, npcData in pairs(NpcInfoDB) do
+    for id, npcData in pairs(NpcInfoDB or {}) do
         if npcData[Editor.Locale] and npcData[Editor.Locale].gossipOptions[Editor.GossipId] then
             Editor.GossipText = npcData[Editor.Locale].gossipOptions[Editor.GossipId]
             Editor.NpcId = id
@@ -89,10 +89,10 @@ Editor.Frame.gossipTextSearchButton:SetScript("OnClick", function()
     Editor.searchResults = {}
     Editor.currentResultIndex = 1
 
-    for id, npcData in pairs(NpcInfoDB) do
+    for id, npcData in pairs(NpcInfoDB or {}) do
         if npcData[Editor.Locale] then
             for gossipId, gossipText in pairs(npcData[Editor.Locale].gossipOptions) do
-                if string.find(gossipText, searchText) then
+                if string.find(gossipText, searchText, 1, true) then
                     table.insert(Editor.searchResults, {id = id, gossipId = gossipId, gossipText = gossipText, npcName = npcData[Editor.Locale].name})
                 end
             end
@@ -224,6 +224,7 @@ Editor.Frame.saveButton:SetSize(100, 25)
 Editor.Frame.saveButton:SetPoint("BOTTOMLEFT", 10, 10)
 Editor.Frame.saveButton:SetText("Save")
 Editor.Frame.saveButton:SetScript("OnClick", function()
+    if not Editor.NpcId then return end
     CLN.NpcDialogTracker:StoreGossipOptionsInfo(Editor.NpcId, Editor.GossipText, true, Editor.GossipId)
 end)
 
@@ -233,10 +234,10 @@ Editor.Frame.generateIdButton:SetSize(100, 25)
 Editor.Frame.generateIdButton:SetPoint("BOTTOMRIGHT", -10, 10)
 Editor.Frame.generateIdButton:SetText("Generate id")
 Editor.Frame.generateIdButton:SetScript("OnClick", function()
+    if not Editor.NpcId then return end
     local generatedID = CLN.MD5:GenerateHash(Editor.NpcId .. Editor.GossipText)
-    local ngramSizes = {2, 3}
-    local simhash = CLN.SimHash64:GenerateHash(Editor.GossipText, ngramSizes, true)
-    CLN:Print("Generated ID: " .. generatedID .. " Simhash: " .. simhash)
+    local simhash = CLN.SimHash64:GenerateHash(Editor.GossipText, 3, true)
+    if CLN and CLN.Logger then CLN.Logger:info("Generated ID: " .. tostring(generatedID) .. " Simhash: " .. tostring(simhash), false, CLN.Utils.LogCategories.misc) end
     Editor.Frame.generatedIDLabel:SetText("Generated ID: " .. generatedID)
 end)
 
