@@ -223,8 +223,7 @@ function M.Attach(host, backend)
         if self._frameDiagOverlay.Show then
             self._frameDiagOverlay:Show()
         end
-        -- Temporary probe: confirm overlay code path is reached at runtime
-        if print then print("|cff00ff00CLN DiagOverlay|r shown, strata=TOOLTIP, lines=" .. tostring(select(2, text:gsub("\n","")) + 1)) end
+        self:_DebugLog("diag", "DiagOverlay shown, strata=TOOLTIP, lines=%d", (select(2, text:gsub("\n","")) + 1))
     end
 
     function host:_RefreshFrameDiagnostics(regionName, source, distance, tx, ty, tz)
