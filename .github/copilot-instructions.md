@@ -16,3 +16,12 @@ After implementing a fix or change, **never declare it fixed or working**. This 
 - **Ask the user to test in-game** — after making changes, tell the user what to verify and how (e.g. "/reload", open a specific UI, trigger a specific action).
 - **Describe what should look different** — be specific about what the user should see if the fix worked, and what they'd see if it didn't.
 - **Wait for confirmation** — do not move on to the next task or commit a "fix" message until the user confirms it works. Use phrasing like "please test this in-game" rather than "this should now work" or "this is fixed".
+
+## Reversibility — Never Destroy History
+
+All changes must be reversible. Never perform destructive operations that cannot be undone:
+
+- **No force pushes** (`git push --force`) or history rewrites (`git rebase`, `git reset --hard`, `git commit --amend` on pushed commits).
+- **Use `git revert`** to undo changes, never `git reset --hard`.
+- **Every deletion must be a tracked commit** with a clear message explaining what was removed and why.
+- **No destructive file operations** — always use git-tracked removals (`git rm`) so the history preserves what was deleted.
