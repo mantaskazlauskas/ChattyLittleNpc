@@ -47,9 +47,9 @@ Atlas.keys = {
 
 -- Mapping: logical key -> texture path (placeholders referencing existing Blizzard icons until custom art arrives)
 Atlas.textures = {
-    [Atlas.keys.play] = P("Chatty_PlayPlaceholder"),      -- TODO provide Chatty_PlayPlaceholder.png
+    [Atlas.keys.play] = BASE .. "speech-bubble-border.png",
     [Atlas.keys.stop] = P("Chatty_StopPlaceholder"),      -- TODO provide Chatty_StopPlaceholder.png
-    [Atlas.keys.glow] = P("Chatty_GlowPlaceholder"),      -- TODO provide Chatty_GlowPlaceholder.png
+    [Atlas.keys.glow] = BASE .. "speech-bubble-border-glow.png",
     [Atlas.keys.clear] = "Interface/RAIDFRAME/ReadyCheck-NotReady", -- clean X mark (unified gold tint applied at render)
     [Atlas.keys.options] = "Interface/Buttons/UI-OptionsButton",
     [Atlas.keys.collapse] = "Interface/Buttons/UI-Panel-CollapseButton-Up",
