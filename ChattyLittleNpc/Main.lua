@@ -264,26 +264,32 @@ function CLN:OnEnable()
         return true
     end
     if not tryAttachQuestLogButtons() then
-        -- Use modern EventUtil if available (WoW 11.x+), with ADDON_LOADED fallback
-        if EventUtil and EventUtil.ContinueOnAddOnLoaded then
-            EventUtil.ContinueOnAddOnLoaded("Blizzard_QuestLog", function()
-                tryAttachQuestLogButtons()
-            end)
+        -- Classic clients (BC Anniversary, Classic Era) use QuestLogFrame instead
+        -- of QuestMapFrame. Attach buttons to the classic frames directly.
+        if _G["QuestLogFrame"] or _G["QuestLogDetailFrame"] then
+            self.PlayButton:AttachQuestLogAndDetailsButtons()
         else
-            local waitFrame = CreateFrame("Frame")
-            waitFrame:RegisterEvent("ADDON_LOADED")
-            waitFrame:SetScript("OnEvent", function(f, event, addonName)
-                if addonName == "Blizzard_QuestLog" or QuestMapFrame then
-                    f:UnregisterEvent("ADDON_LOADED")
-                    f:SetScript("OnEvent", nil)
-                    -- Defer one frame to allow lazy initialization
-                    if C_Timer and C_Timer.After then
-                        C_Timer.After(0, tryAttachQuestLogButtons)
-                    else
-                        tryAttachQuestLogButtons()
+            -- Use modern EventUtil if available (WoW 11.x+), with ADDON_LOADED fallback
+            if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+                EventUtil.ContinueOnAddOnLoaded("Blizzard_QuestLog", function()
+                    tryAttachQuestLogButtons()
+                end)
+            else
+                local waitFrame = CreateFrame("Frame")
+                waitFrame:RegisterEvent("ADDON_LOADED")
+                waitFrame:SetScript("OnEvent", function(f, event, addonName)
+                    if addonName == "Blizzard_QuestLog" or QuestMapFrame then
+                        f:UnregisterEvent("ADDON_LOADED")
+                        f:SetScript("OnEvent", nil)
+                        -- Defer one frame to allow lazy initialization
+                        if C_Timer and C_Timer.After then
+                            C_Timer.After(0, tryAttachQuestLogButtons)
+                        else
+                            tryAttachQuestLogButtons()
+                        end
                     end
-                end
-            end)
+                end)
+            end
         end
     end
 

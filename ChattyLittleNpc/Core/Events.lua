@@ -27,7 +27,11 @@ end
 function EventSystem:RegisterEvent(event, callback)
     if not self.events[event] then
         self.events[event] = {}
-        self.frame:RegisterEvent(event)
+        local ok = pcall(self.frame.RegisterEvent, self.frame, event)
+        if not ok then
+            self.events[event] = nil
+            return
+        end
     end
     table.insert(self.events[event], callback)
 end

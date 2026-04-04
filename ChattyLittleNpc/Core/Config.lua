@@ -192,12 +192,17 @@ function ConfigSystem:CreateMultiselect(parent, info)
     return container
 end
 
+-- Auto-incrementing counter for unique slider names (required by Classic OptionsSliderTemplate)
+ConfigSystem._sliderCounter = 0
+
 -- Create a slider setting
 ---@param parent table Parent category or frame
 ---@param info table Setting info {name, desc, min, max, step, get, set, disabled}
 ---@return table
 function ConfigSystem:CreateSlider(parent, info)
-    local slider = CreateFrame("Slider", nil, parent, "OptionsSliderTemplate")
+    ConfigSystem._sliderCounter = ConfigSystem._sliderCounter + 1
+    local sliderName = "CLNConfigSlider" .. ConfigSystem._sliderCounter
+    local slider = CreateFrame("Slider", sliderName, parent, "OptionsSliderTemplate")
     slider.tooltipText = info.desc
     
     -- Set a reasonable width to prevent text cutoff
@@ -252,15 +257,58 @@ function ConfigSystem:CreateSlider(parent, info)
     
     attachTooltip(slider, info)
     
+    -- Arrow buttons for stepping the slider by one step.
+    -- Parented to the slider's parent so they aren't clipped by the slider frame.
+    local stepSize = info.step
+    local sliderParent = slider:GetParent()
+
+    local leftBtn = CreateFrame("Button", nil, sliderParent)
+    leftBtn:SetSize(20, 20)
+    leftBtn:SetPoint("RIGHT", slider, "LEFT", -2, 0)
+    leftBtn:SetFrameLevel(slider:GetFrameLevel() + 2)
+    leftBtn:SetNormalFontObject("GameFontNormalSmall")
+    leftBtn:SetHighlightFontObject("GameFontHighlightSmall")
+    leftBtn:SetText("<")
+    leftBtn:GetFontString():SetPoint("CENTER")
+    leftBtn:SetScript("OnClick", function()
+        if evalField(info.disabled) then return end
+        local cur = slider:GetValue()
+        local newVal = math.max(info.min, cur - stepSize)
+        slider:SetValue(newVal)
+    end)
+
+    local rightBtn = CreateFrame("Button", nil, sliderParent)
+    rightBtn:SetSize(20, 20)
+    rightBtn:SetPoint("LEFT", slider, "RIGHT", 2, 0)
+    rightBtn:SetFrameLevel(slider:GetFrameLevel() + 2)
+    rightBtn:SetNormalFontObject("GameFontNormalSmall")
+    rightBtn:SetHighlightFontObject("GameFontHighlightSmall")
+    rightBtn:SetText(">")
+    rightBtn:GetFontString():SetPoint("CENTER")
+    rightBtn:SetScript("OnClick", function()
+        if evalField(info.disabled) then return end
+        local cur = slider:GetValue()
+        local newVal = math.min(info.max, cur + stepSize)
+        slider:SetValue(newVal)
+    end)
+
+    slider._leftBtn = leftBtn
+    slider._rightBtn = rightBtn
+
     return slider
 end
+
+-- Auto-incrementing counter for unique dropdown names (required by Classic UIDropDownMenu)
+ConfigSystem._dropdownCounter = 0
 
 -- Create a dropdown setting
 ---@param parent table Parent category or frame
 ---@param info table Setting info {name, desc, values, get, set, disabled}
 ---@return table
 function ConfigSystem:CreateDropdown(parent, info)
-    local dropdown = CreateFrame("Frame", nil, parent, "UIDropDownMenuTemplate")
+    ConfigSystem._dropdownCounter = ConfigSystem._dropdownCounter + 1
+    local dropdownName = "CLNConfigDropdown" .. ConfigSystem._dropdownCounter
+    local dropdown = CreateFrame("Frame", dropdownName, parent, "UIDropDownMenuTemplate")
     
     -- Store the info for later use
     dropdown.info = info
@@ -515,7 +563,7 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                                     yOffset = yOffset - 18
                                     contentHeight = contentHeight + 18
                                 end
-                                control:SetPoint("TOPLEFT", 6, yOffset)
+                                control:SetPoint("TOPLEFT", opt.type == "range" and 26 or 6, yOffset)
                                 table.insert(content._trackedControls, { control = control, opt = opt })
                                 if opt.type == "range" then
                                     yOffset = yOffset - 50

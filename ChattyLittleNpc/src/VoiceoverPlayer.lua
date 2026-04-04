@@ -286,7 +286,10 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
         state = VoiceoverPlayer.State.IDLE,
         title = nil,
         isPlaying = function (self)
-            return self.soundHandle and C_Sound.IsPlaying(self.soundHandle) or false
+            return self.soundHandle
+                and C_Sound and type(C_Sound.IsPlaying) == "function"
+                and C_Sound.IsPlaying(self.soundHandle)
+                or false
         end,
     }
 end
@@ -1102,7 +1105,7 @@ function VoiceoverPlayer:StopCurrentSound()
         self:SetPlaybackState(cp, self.State.DROPPED)
         self:PushToHistory(cp)
     end
-    if cp and cp.soundHandle and cp:isPlaying() then
+    if cp and cp.soundHandle then
         StopSound(cp.soundHandle)
     end
 

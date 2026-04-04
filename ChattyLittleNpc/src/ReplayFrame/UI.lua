@@ -1181,7 +1181,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
         IconAtlas and IconAtlas:Get(IconAtlas.keys.clear) or "Interface/RAIDFRAME/ReadyCheck-NotReady",
         "Stop playback and clear all queued voiceovers",
         function()
-            CLN.VoiceoverPlayer:ForceStopCurrentSound(true)
+            CLN.VoiceoverPlayer:ForceStopCurrentSound(true, true)
             ReplayFrame.userHidden = false
             ReplayFrame:UpdateDisplayFrameState()
         end)
