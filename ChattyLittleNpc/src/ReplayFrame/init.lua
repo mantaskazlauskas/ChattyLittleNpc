@@ -503,20 +503,37 @@ function ReplayFrame:BuildQueueEntries()
         local tooltip = ReplayFrame.Pure.FormatEntryTooltip(npcName, content)
 
         if item.kind == "current" then
+            -- Get duration from currentlyPlaying object
+            local cp = player and player.currentlyPlaying
             table.insert(entries, {
                 isPlaying = true,
                 state = item.state,
                 label = label,
                 tooltip = tooltip,
                 entryType = item.entryType or (isQuest and "quest" or "unknown"),
+                duration = cp and cp._estimatedDuration or nil,
+                hasPackDuration = cp and cp._hasPackDuration or false,
             })
         else
+            -- Look up duration for queued items
+            local qDur, qIsPack
+            if item.questId and item.phase then
+                local fn = item.questId .. "_" .. item.phase .. ".ogg"
+                qDur, qIsPack = player:GetBestDuration(fn, item.title)
+            elseif item.npcId and item.title and item.entryType then
+                local qHashes = CLN.Utils and CLN.Utils.GetHashes and CLN.Utils:GetHashes(item.npcId, item.title)
+                local qFn = qHashes and qHashes[1]
+                    and (item.npcId .. "_" .. item.entryType .. "_" .. qHashes[1] .. ".ogg") or nil
+                qDur, qIsPack = player:GetBestDuration(qFn, item.title)
+            end
             table.insert(entries, {
                 queueIndex = item.queueIndex,
                 state = item.state,
                 label = label,
                 tooltip = tooltip,
                 entryType = item.entryType or (isQuest and "quest" or "unknown"),
+                duration = qDur,
+                hasPackDuration = qIsPack or false,
             })
         end
     end

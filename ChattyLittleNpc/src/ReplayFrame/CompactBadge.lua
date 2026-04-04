@@ -147,6 +147,22 @@ function ReplayFrame:EnsureCompactBadge()
     progressLine:Hide()
     badge.ProgressLine = progressLine
 
+    -- Time text ("0:23 / 1:45") shown when pack-provided duration is available
+    local timeText = badge:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    timeText:SetPoint("BOTTOMRIGHT", badge, "BOTTOMRIGHT", -6, 4)
+    timeText:SetJustifyH("RIGHT")
+    timeText:SetTextColor(0.75, 0.75, 0.75, 0.8)
+    timeText:Hide()
+    badge.TimeText = timeText
+
+    -- Helper: format seconds as "M:SS"
+    local function FormatTime(seconds)
+        if not seconds or seconds < 0 then return "0:00" end
+        local m = math.floor(seconds / 60)
+        local s = math.floor(seconds % 60)
+        return string.format("%d:%02d", m, s)
+    end
+
     -- Progress updater: animate ProgressLine width per-frame while playing
     badge._progressOnUpdate = function(_, _)
         local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
@@ -170,20 +186,29 @@ function ReplayFrame:EnsureCompactBadge()
             local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
             local progress = math.min(1, math.max(0, elapsed / duration))
             progressLine:SetWidth(math.max(1, maxW * progress))
+            if badge.TimeText then badge.TimeText:Hide() end
             return
         end
 
-        -- Normal audio mode: progress based on audio duration
+        -- Normal audio mode: use stored duration (pack-provided or text estimate)
         if not (cp.startTime and cp.title) then return end
         local elapsed = GetTime() - cp.startTime
-        local bodyText = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.GetQuestBodyText
-            and CLN.VoiceoverPlayer:GetQuestBodyText(cp)
-        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration
-            and CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
+        local estimated = cp._estimatedDuration or 0
         if estimated <= 0 then return end
         local maxW = math.max(1, (badge:GetWidth() or 200) - 6)
         local progress = math.min(1, math.max(0, elapsed / estimated))
         progressLine:SetWidth(math.max(1, maxW * progress))
+
+        -- Show elapsed / total time when pack duration is available
+        if badge.TimeText then
+            if cp._hasPackDuration then
+                local displayElapsed = math.min(elapsed, estimated)
+                badge.TimeText:SetText(FormatTime(displayElapsed) .. " / " .. FormatTime(estimated))
+                badge.TimeText:Show()
+            else
+                badge.TimeText:Hide()
+            end
+        end
     end
 
     -- Speaker glow pulse animation
@@ -224,9 +249,10 @@ function ReplayFrame:UpdatePauseButton()
                 -- Check if we're past the text continuation threshold (Smart Resume)
                 local cp = player and player.currentlyPlaying
                 local showReadIcon = false
-                if cp and cp._elapsedAtPause and cp.title and CLN.Utils then
-                    local bodyText = player and player.GetQuestBodyText and player:GetQuestBodyText(cp)
-                    local estimated = CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
+                if cp and cp._elapsedAtPause and cp.title then
+                    local estimated = cp._estimatedDuration
+                        or (CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title))
+                        or 0
                     local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
                     local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
                     if enabled and estimated > 0 and (cp._elapsedAtPause / estimated) >= threshold then
@@ -325,6 +351,7 @@ function ReplayFrame:UpdateCompactBadge(force)
         if badge.GlowAnim and badge.GlowAnim:IsPlaying() then badge.GlowAnim:Stop() end
         if badge.IconGlow then badge.IconGlow:Hide() end
         if badge.ProgressLine then badge.ProgressLine:Hide() end
+        if badge.TimeText then badge.TimeText:Hide() end
         if badge.ScrubBackBtn then badge.ScrubBackBtn:Hide() end
         if badge.ScrubFwdBtn then badge.ScrubFwdBtn:Hide() end
         badge:SetScript("OnUpdate", nil)

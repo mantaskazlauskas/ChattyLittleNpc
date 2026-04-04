@@ -201,11 +201,21 @@ function ReplayFrame:CreateScrollBox(contentFrame)
 
             local text = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
             text:SetPoint("LEFT", typeIcon, "RIGHT", 4, 0)
-            text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
             text:SetJustifyH("LEFT")
             if text.SetWordWrap then text:SetWordWrap(false) end
             text:SetTextColor(0.95, 0.86, 0.20)
             row.text = text
+
+            -- Duration label (right-aligned, only shown when pack duration available)
+            local durText = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+            durText:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+            durText:SetJustifyH("RIGHT")
+            durText:SetTextColor(0.6, 0.6, 0.6, 0.8)
+            durText:Hide()
+            row.durationText = durText
+
+            -- Title RIGHT edge anchors to durationText when visible, else row edge
+            text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
 
             row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
             row:SetScript("OnMouseUp", function(selfBtn, button)
@@ -325,7 +335,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local maxRows = math.max(1, math.floor(h / self.QueueRowHeight))
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
-        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; r:SetScript("OnUpdate", nil) end
+        for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.durationText then r.durationText:Hide() end; r:SetScript("OnUpdate", nil) end
         local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
@@ -464,6 +474,51 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     self:FitRowText(row)
                     row._lastLabel = label
                     row._lastAvail = avail
+                end
+
+                -- Show duration to the right of the title when available
+                if row.durationText then
+                    if element.duration and element.hasPackDuration then
+                        local totalDur = element.duration
+                        local function formatTime(sec)
+                            if not sec or sec < 0 then return "0:00" end
+                            return string.format("%d:%02d", math.floor(sec / 60), math.floor(sec % 60))
+                        end
+                        -- Re-anchor title RIGHT to leave room for duration
+                        row.text:ClearAllPoints()
+                        row.text:SetPoint("LEFT", row.typeIcon, "RIGHT", 4, 0)
+                        row.text:SetPoint("RIGHT", row.durationText, "LEFT", -4, 0)
+                        if element.isPlaying then
+                            -- Live timer: show "elapsed / total" updated per-frame
+                            local function updateTimer()
+                                local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                                if not (cp and cp.startTime and GetTime) then return end
+                                local elapsed = math.min(GetTime() - cp.startTime, totalDur)
+                                row.durationText:SetText(formatTime(elapsed) .. " / " .. formatTime(totalDur))
+                            end
+                            updateTimer()
+                            row.durationText:Show()
+                            row:SetScript("OnUpdate", function(_, _)
+                                local now = GetTime and GetTime() or 0
+                                if (row._durLastUpdate or 0) + 0.25 > now then return end
+                                row._durLastUpdate = now
+                                updateTimer()
+                            end)
+                        else
+                            -- Queued: just show total duration
+                            row.durationText:SetText(formatTime(totalDur))
+                            row.durationText:Show()
+                            row:SetScript("OnUpdate", nil)
+                        end
+                        self:FitRowText(row)
+                        row._lastLabel = nil  -- invalidate so re-truncation works
+                    else
+                        row.durationText:Hide()
+                        row.text:ClearAllPoints()
+                        row.text:SetPoint("LEFT", row.typeIcon, "RIGHT", 4, 0)
+                        row.text:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                        row:SetScript("OnUpdate", nil)
+                    end
                 end
             end
         end

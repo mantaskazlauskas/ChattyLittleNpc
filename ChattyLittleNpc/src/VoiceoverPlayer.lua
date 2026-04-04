@@ -286,10 +286,22 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
         state = VoiceoverPlayer.State.IDLE,
         title = nil,
         isPlaying = function (self)
-            return self.soundHandle
-                and C_Sound and type(C_Sound.IsPlaying) == "function"
-                and C_Sound.IsPlaying(self.soundHandle)
-                or false
+            if self.soundHandle and C_Sound and type(C_Sound.IsPlaying) == "function" then
+                return C_Sound.IsPlaying(self.soundHandle)
+            end
+            -- Fallback for clients without C_Sound (e.g. BC Anniversary):
+            -- trust the explicit state, but use estimated duration to detect
+            -- natural completion so the watcher can advance the queue.
+            if self.soundHandle and self.state == VoiceoverPlayer.State.PLAYING then
+                if self.startTime and self._estimatedDuration and GetTime then
+                    local elapsed = GetTime() - self.startTime
+                    if elapsed > self._estimatedDuration * 1.3 then
+                        return false
+                    end
+                end
+                return true
+            end
+            return false
         end,
     }
 end
@@ -297,6 +309,36 @@ end
 VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
 VoiceoverPlayer.queueProcessed = false
 VoiceoverPlayer._suspendedPlayback = nil
+
+--- Look up the pre-computed duration (in seconds) for a voiceover filename
+--- from the voiceover pack's VoiceoverDurations table.
+---@param fileName string  The .ogg filename (e.g. "5741_Desc.ogg")
+---@return number|nil duration  Seconds, or nil if not available
+function VoiceoverPlayer:LookupFileDuration(fileName)
+    if not fileName then return nil end
+    for _, packData in pairs(CLN.VoiceoverPacks) do
+        if packData.VoiceoverDurations then
+            local dur = packData.VoiceoverDurations[fileName]
+            if dur then return dur end
+        end
+    end
+    return nil
+end
+
+--- Get the best available duration for a voiceover entry.
+--- Prefers pack-provided duration, falls back to text-based estimate.
+---@param fileName string|nil  The .ogg filename to look up
+---@param fallbackText string|nil  Text to estimate from if no pack duration
+---@return number|nil duration  Seconds, or nil if nothing available
+---@return boolean isPackDuration  True if the duration came from a voiceover pack
+function VoiceoverPlayer:GetBestDuration(fileName, fallbackText)
+    local packDur = self:LookupFileDuration(fileName)
+    if packDur then return packDur, true end
+    if fallbackText and CLN.Utils and CLN.Utils.EstimateVODuration then
+        return CLN.Utils.EstimateVODuration(fallbackText), false
+    end
+    return nil, false
+end
 
 --- Look up the quest body text from NpcInfoDB for a playing/queued entry.
 --- Returns the full dialogue text that the voiceover audio is based on,
@@ -606,12 +648,12 @@ function VoiceoverPlayer:PausePlayback()
         return
     end
 
-    -- If the VO is almost finished, let it play out instead of pausing
-    if cp and cp.soundHandle and cp.startTime and cp.title and GetTime then
+    -- If the VO is almost finished, let it play out instead of pausing.
+    -- Only skip when we have a pack-provided duration (accurate); text estimates
+    -- are too unreliable for this guard.
+    if cp and cp.soundHandle and cp.startTime and cp._hasPackDuration and cp._estimatedDuration and GetTime then
         local elapsed = GetTime() - cp.startTime
-        local bodyText = self:GetQuestBodyText(cp)
-        local estimated = CLN.Utils and CLN.Utils.EstimateVODuration
-            and CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
+        local estimated = cp._estimatedDuration
         if estimated > 0 then
             local remaining = estimated - elapsed
             if remaining >= 0 and remaining < 1.5 then
@@ -688,14 +730,15 @@ function VoiceoverPlayer:ResumePlayback()
 
         -- Text continuation: if paused near the end, show remaining text
         -- instead of replaying audio from the start.
+        -- Only use text continuation when we have a pack-provided duration;
+        -- text estimates are too unreliable for progress calculation.
         local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
         local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
-        if enabled and cp._elapsedAtPause and cp.title and CLN.Utils then
-            local bodyText = self:GetQuestBodyText(cp)
-            local estimated = CLN.Utils.EstimateVODuration(bodyText or cp.title) or 0
+        if enabled and cp._hasPackDuration and cp._elapsedAtPause and cp._estimatedDuration and cp.title then
+            local estimated = cp._estimatedDuration
             if estimated > 0 then
                 local progress = cp._elapsedAtPause / estimated
-                if progress >= threshold then
+                if progress >= threshold and progress < 1.0 then
                     self:StartTextContinuation(cp, progress)
                     if CLN and CLN.Logger then
                         CLN.Logger:debug("Text continuation at " .. string.format("%.0f%%", progress * 100), false, CLN.Utils.LogCategories.loader)
@@ -836,6 +879,21 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         self.currentlyPlaying.creatureType = cp.creatureType
         self.currentlyPlaying.cantBeInterrupted = cp.cantBeInterrupted
         if GetTime then self.currentlyPlaying.startTime = GetTime() end
+        -- Store duration: prefer pack-provided, fall back to text estimate
+        local replayFileName = cp._voiceoverFileName
+            or (cp.questId and cp.phase and (cp.questId .. "_" .. cp.phase .. ".ogg"))
+            or nil
+        local estBody = self:GetQuestBodyText(self.currentlyPlaying)
+        local replayDur, replayIsPack = self:GetBestDuration(replayFileName, estBody or self.currentlyPlaying.title)
+        self.currentlyPlaying._estimatedDuration = replayDur
+        self.currentlyPlaying._hasPackDuration = replayIsPack
+        self.currentlyPlaying._voiceoverFileName = replayFileName
+        if CLN.db.profile.debugMode and CLN.Logger then
+            CLN.Logger:debug("Replaying: " .. tostring(replayFileName)
+                .. " | duration: " .. (replayDur and string.format("%.1fs", replayDur) or "unknown")
+                .. (replayIsPack and " (pack)" or " (estimate)"),
+                false, CLN.Utils.LogCategories.loader)
+        end
         self:SetPlaybackState(self.currentlyPlaying, self.State.PLAYING)
         -- Don't touch the queue — the paused item was never in it
         self:NotifyQueueDirty()
@@ -1329,6 +1387,18 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
             end
+            -- Store duration: prefer pack-provided, fall back to text estimate
+            VoiceoverPlayer.currentlyPlaying._voiceoverFileName = fileName
+            local estBody = self:GetQuestBodyText(VoiceoverPlayer.currentlyPlaying)
+            local questDur, questIsPack = self:GetBestDuration(fileName, estBody or VoiceoverPlayer.currentlyPlaying.title)
+            VoiceoverPlayer.currentlyPlaying._estimatedDuration = questDur
+            VoiceoverPlayer.currentlyPlaying._hasPackDuration = questIsPack
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Playing: " .. tostring(fileName)
+                    .. " | duration: " .. (questDur and string.format("%.1fs", questDur) or "unknown")
+                    .. (questIsPack and " (pack)" or " (estimate)"),
+                    false, CLN.Utils.LogCategories.loader)
+            end
             self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
 
             -- Always start fresh for new playback to avoid stale state
@@ -1532,6 +1602,20 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
             -- Mark playback start time for animation gating
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
+            end
+            -- Store duration: prefer pack-provided, fall back to text estimate
+            local nqHashes = CLN.Utils:GetHashes(npcId, text)
+            local nqFileName = nqHashes and nqHashes[1]
+                and (npcId .. "_" .. soundType .. "_" .. nqHashes[1] .. ".ogg") or nil
+            VoiceoverPlayer.currentlyPlaying._voiceoverFileName = nqFileName
+            local nqDur, nqIsPack = self:GetBestDuration(nqFileName, text)
+            VoiceoverPlayer.currentlyPlaying._estimatedDuration = nqDur
+            VoiceoverPlayer.currentlyPlaying._hasPackDuration = nqIsPack
+            if CLN.db.profile.debugMode and CLN.Logger then
+                CLN.Logger:debug("Playing: " .. tostring(nqFileName)
+                    .. " | duration: " .. (nqDur and string.format("%.1fs", nqDur) or "unknown")
+                    .. (nqIsPack and " (pack)" or " (estimate)"),
+                    false, CLN.Utils.LogCategories.loader)
             end
             self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
 
