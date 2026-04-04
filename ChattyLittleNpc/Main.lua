@@ -58,9 +58,11 @@ local defaults = {
         logToChat = false,
         overwriteExistingGossipValues = false,
         showReplayFrame = true,
-        alwaysShowReplayFrame = false,
+        alwaysShowReplayFrame = true, -- legacy: kept for saved variable compat, not user-facing
         showSpeakButton = true,
         compactMode = false,
+        idleFadeDelay = 10,     -- seconds before frame fades to idle opacity
+        idleFadeOpacity = 0.1,  -- target opacity when idle (0 = invisible, 1 = fully opaque)
         queueTextScale = 1.0,
         frameScale = 1.0,
         npcModelFrameHeight = 140,
@@ -301,8 +303,6 @@ function CLN:OnEnable()
                 self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "showReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
                 self.ReplayFrame:UpdateDisplayFrameState()
-            elseif key == "alwaysShowReplayFrame" and self.ReplayFrame and self.ReplayFrame.UpdateDisplayFrameState then
-                self.ReplayFrame:UpdateDisplayFrameState()
             elseif key == "combatAutoCollapse" and self.ReplayFrame then
                 local inCombat = (self._inCombat == true) or (InCombatLockdown and InCombatLockdown())
                 if inCombat and self.db.profile.combatAutoCollapse and self.ReplayFrame.OnCombatStart then
@@ -373,7 +373,6 @@ function CLN:OnEnable()
             applyKey("queueTextScale")
             applyKey("compactMode")
             applyKey("showReplayFrame")
-            applyKey("alwaysShowReplayFrame")
             applyKey("debugNoAnim")
             applyKey("combatAutoCollapse")
             applyKey("showSubtitles")
@@ -383,10 +382,10 @@ function CLN:OnEnable()
             applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("alwaysShowReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
         end)
         self._dbProfileHooked = true
     end

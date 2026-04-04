@@ -647,29 +647,14 @@ end
 -- Show/hide frame, user-hidden/minimized handling; returns true if visible and should continue
 function ReplayFrame:UpdateVisibility()
     local forced = self._forceShow
-    local alwaysShow = CLN and CLN.db and CLN.db.profile and CLN.db.profile.alwaysShowReplayFrame
     -- Grace period: treat deferred playback (C_Timer.After gap) as "playing"
     -- to avoid a fade-out/fade-in flicker between GOSSIP_SHOW and audio start.
     local playbackPending = CLN._playbackPendingAt and GetTime
         and (GetTime() - CLN._playbackPendingAt) < 1.0
-    if (not forced) and (not alwaysShow) and (not playbackPending) and (not self:IsShowReplayFrameToggleIsEnabled() or not CLN.VoiceoverPlayer.currentlyPlaying) then
-        if (self.DisplayFrame) then self:_DisplayFrameFadeOut() end
-        if self.MinButton then self.MinButton:Hide() end
-        if self.HideSubtitle then self:HideSubtitle() end
-        self.userHidden = false
-        return false
-    end
 
-    if (not forced) and (not alwaysShow) and (not playbackPending) and (not self:IsVoiceoverCurrenltyPlaying() and self:IsQuestQueueEmpty()) then
+    -- Master toggle off: fully hide the frame
+    if (not forced) and (not self:IsShowReplayFrameToggleIsEnabled()) then
         if (self.DisplayFrame) then self:_DisplayFrameFadeOut() end
-        if self.MinButton then self.MinButton:Hide() end
-        if self.HideSubtitle then self:HideSubtitle() end
-        self.userHidden = false
-        return false
-    end
-
-    if (not forced) and (not alwaysShow) and (self:IsDisplayFrameHideNeeded()) then
-        if self.DisplayFrame then self:_DisplayFrameFadeOut() end
         if self.MinButton then self.MinButton:Hide() end
         if self.HideSubtitle then self:HideSubtitle() end
         self.userHidden = false
@@ -685,7 +670,15 @@ function ReplayFrame:UpdateVisibility()
     end
 
     self:UpdateParent()
-    if self.DisplayFrame then self:_DisplayFrameFadeIn() end
+    -- Show frame (idle-fade system handles opacity when nothing is playing)
+    if self.DisplayFrame then
+        if not self.DisplayFrame:IsShown() then
+            self:_DisplayFrameFadeIn()
+        elseif playbackPending or self:IsVoiceoverCurrenltyPlaying() then
+            -- Playback active: ensure full opacity
+            if self._IdleFadeTouch then self:_IdleFadeTouch() end
+        end
+    end
     -- Clear stuck animation flag on frame show
     self._animatingCollapse = false
     if self._collapseAnimFrame and self._collapseAnimFrame.SetScript then
@@ -715,6 +708,7 @@ function ReplayFrame:OnCombatStart()
         -- Cancel any in-progress fade animations for instant combat hide
         if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then self._frameFadeInAG:Stop() end
         if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then self._frameFadeOutAG:Stop() end
+        if self._IdleFadeCancel then self:_IdleFadeCancel() end
         self._frameFadingOut = false
         self.DisplayFrame:SetAlpha(1)
         self.DisplayFrame:Hide()

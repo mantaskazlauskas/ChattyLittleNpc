@@ -365,23 +365,8 @@ local options = {
                         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
                     end,
                 },
-                alwaysShowReplayFrame = {
-                    order = 2,
-                    type = 'toggle',
-                    width = 'full',
-                    name = 'Always Show Frame',
-                    desc = 'Keep the voiceover frame visible even when no voiceover is playing.',
-                    disabled = function() return not CLN.db.profile.showReplayFrame end,
-                    get = function(info) return CLN.db.profile.alwaysShowReplayFrame end,
-                    set = function(info, value)
-                        CLN.db.profile.alwaysShowReplayFrame = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateVisibility then
-                            CLN.ReplayFrame:UpdateVisibility()
-                        end
-                    end,
-                },
                 compactMode = {
-                    order = 3,
+                    order = 2,
                     type = 'toggle',
                     width = 'full',
                     name = 'Compact Mode',
@@ -400,6 +385,35 @@ local options = {
                     desc = 'Automatically hide the voiceover frame when you enter combat and restore it when combat ends.',
                     get = function(info) return CLN.db.profile.combatAutoCollapse end,
                     set = function(info, value) CLN.db.profile.combatAutoCollapse = value end,
+                },
+                idleFadeDelay = {
+                    order = 4.1,
+                    type = 'range',
+                    width = 'double',
+                    name = 'Idle Fade Delay',
+                    desc = 'Seconds of inactivity before the frame fades to idle opacity.',
+                    min = 1,
+                    max = 60,
+                    step = 1,
+                    get = function(info) return CLN.db.profile.idleFadeDelay or 10 end,
+                    set = function(info, value)
+                        CLN.db.profile.idleFadeDelay = value
+                    end,
+                },
+                idleFadeOpacity = {
+                    order = 4.2,
+                    type = 'range',
+                    width = 'double',
+                    name = 'Idle Opacity',
+                    desc = 'How opaque the frame remains when faded (0%% = invisible, 100%% = fully visible).',
+                    min = 0,
+                    max = 1,
+                    step = 0.05,
+                    isPercent = true,
+                    get = function(info) return CLN.db.profile.idleFadeOpacity or 0.1 end,
+                    set = function(info, value)
+                        CLN.db.profile.idleFadeOpacity = value
+                    end,
                 },
                 showQuestTypeBadges = {
                     order = 5,

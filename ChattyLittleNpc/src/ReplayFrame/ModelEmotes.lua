@@ -155,6 +155,10 @@ ReplayFrame.Config = ReplayFrame.Config or {
         collapseDur        = 0.2,
         badgeGlowPulseDur  = 0.8,
         badgeGlowMaxAlpha  = 0.35,
+        idleDelay          = 10,     -- seconds after last hover before fading to idle alpha
+        idleAlpha          = 0.1,    -- target alpha when idle (no hover, nothing playing)
+        idleFadeOut        = 0.8,    -- duration of fade to idle alpha
+        idleFadeIn         = 0.25,   -- duration of fade back from idle alpha on hover
     },
 
     Throttle = {

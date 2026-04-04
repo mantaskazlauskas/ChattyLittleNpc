@@ -230,7 +230,7 @@ ChattyLittleNpcDB = {
 
         -- UI Display
         showReplayFrame = true,
-        alwaysShowReplayFrame = false,
+        alwaysShowReplayFrame = true, -- legacy (not user-facing; frame always uses idle-fade)
         compactMode = false,
         highContrastMode = false,
 

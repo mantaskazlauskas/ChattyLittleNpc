@@ -74,6 +74,16 @@ function ReplayFrame:GetDisplayFrame()
     self.EditGlow = glow
 
     self:_CreateDisplayFrameAnimations()
+    self:_IdleFadeInit()
+
+    -- Idle-fade hover detection ticker (throttled to every 0.2s)
+    local idleTickElapsed = 0
+    frame:HookScript("OnUpdate", function(_, dt)
+        idleTickElapsed = idleTickElapsed + dt
+        if idleTickElapsed < 0.2 then return end
+        idleTickElapsed = 0
+        self:_IdleFadeTick()
+    end)
 
     return frame
 end
@@ -165,6 +175,10 @@ end
 function ReplayFrame:_DisplayFrameFadeIn()
     local frame = self.DisplayFrame
     if not frame then return end
+    -- Cancel idle-fade if active — playback/visibility is restoring
+    if self._idleFadeState and self._idleFadeState ~= "active" then
+        self:_IdleFadeRestore()
+    end
     -- Cancel any fade-out in progress
     if self._frameFadingOut then
         if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then
@@ -201,6 +215,8 @@ function ReplayFrame:_DisplayFrameFadeOut()
     if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then
         self._frameFadeInAG:Stop()
     end
+    -- Cancel idle-fade if in progress (we're doing a full hide)
+    self:_IdleFadeCancel()
     -- Start fade-out
     self._frameFadingOut = true
     frame:SetAlpha(1)
@@ -210,6 +226,160 @@ function ReplayFrame:_DisplayFrameFadeOut()
         self._frameFadingOut = false
         frame:SetAlpha(0)
         frame:Hide()
+    end
+end
+
+-- ============================================================================
+-- IDLE-FADE SYSTEM
+-- The frame is always visible when enabled.  When nothing is playing and the
+-- mouse is not hovering, it fades to a low alpha.  Hovering or starting
+-- playback restores full opacity.
+-- ============================================================================
+
+--- Initialize idle-fade state.  Called once from GetDisplayFrame.
+function ReplayFrame:_IdleFadeInit()
+    self._idleFadeState = "active" -- "active" | "idle" | "fading_out" | "fading_in"
+    self._idleLastActivity = GetTime()
+    self._idleHovered = false
+end
+
+--- Record activity (hover, playback start) — resets the idle timer.
+function ReplayFrame:_IdleFadeTouch()
+    self._idleLastActivity = GetTime()
+    if self._idleFadeState == "idle" or self._idleFadeState == "fading_out" then
+        self:_IdleFadeRestore()
+    end
+    self._idleFadeState = "active"
+end
+
+--- Cancel idle fade entirely (used before a full hide).
+function ReplayFrame:_IdleFadeCancel()
+    if self._idleFadingOutAG and self._idleFadingOutAG:IsPlaying() then
+        self._idleFadingOutAG:Stop()
+    end
+    if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then
+        self._idleFadingInAG:Stop()
+    end
+    self._idleFadeState = "active"
+end
+
+--- Smoothly fade frame to idle alpha.
+function ReplayFrame:_IdleFadeToIdle()
+    local frame = self.DisplayFrame
+    if not frame or not frame:IsShown() then return end
+    if self._idleFadeState == "idle" or self._idleFadeState == "fading_out" then return end
+
+    local F = self.Config and self.Config.Fade
+    local p = CLN and CLN.db and CLN.db.profile
+    local targetAlpha = (p and p.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    local dur = F and F.idleFadeOut or 0.8
+
+    -- Cancel any in-progress idle-fade-in
+    if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then
+        self._idleFadingInAG:Stop()
+    end
+
+    -- Create animation group on first use
+    if not self._idleFadingOutAG then
+        local ag = frame:CreateAnimationGroup()
+        local anim = ag:CreateAnimation("Alpha")
+        anim:SetSmoothing("IN")
+        ag._anim = anim
+        ag:SetScript("OnFinished", function()
+            if frame:IsShown() then
+                frame:SetAlpha(targetAlpha)
+            end
+            self._idleFadeState = "idle"
+        end)
+        self._idleFadingOutAG = ag
+    end
+
+    -- Configure from current alpha to target
+    local curAlpha = frame:GetAlpha()
+    self._idleFadingOutAG._anim:SetFromAlpha(curAlpha)
+    self._idleFadingOutAG._anim:SetToAlpha(targetAlpha)
+    self._idleFadingOutAG._anim:SetDuration(dur * (curAlpha - targetAlpha) / (1 - targetAlpha + 0.01))
+
+    self._idleFadeState = "fading_out"
+    self._idleFadingOutAG:Play()
+end
+
+--- Smoothly restore frame from idle alpha to full opacity.
+function ReplayFrame:_IdleFadeRestore()
+    local frame = self.DisplayFrame
+    if not frame or not frame:IsShown() then return end
+
+    local F = self.Config and self.Config.Fade
+    local dur = F and F.idleFadeIn or 0.25
+
+    -- Cancel any in-progress idle-fade-out
+    if self._idleFadingOutAG and self._idleFadingOutAG:IsPlaying() then
+        self._idleFadingOutAG:Stop()
+    end
+
+    -- Create animation group on first use
+    if not self._idleFadingInAG then
+        local ag = frame:CreateAnimationGroup()
+        local anim = ag:CreateAnimation("Alpha")
+        anim:SetSmoothing("OUT")
+        ag._anim = anim
+        ag:SetScript("OnFinished", function()
+            if frame:IsShown() then
+                frame:SetAlpha(1)
+            end
+            self._idleFadeState = "active"
+        end)
+        self._idleFadingInAG = ag
+    end
+
+    local curAlpha = frame:GetAlpha()
+    local p2 = CLN and CLN.db and CLN.db.profile
+    local targetAlpha = (p2 and p2.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    self._idleFadingInAG._anim:SetFromAlpha(curAlpha)
+    self._idleFadingInAG._anim:SetToAlpha(1)
+    self._idleFadingInAG._anim:SetDuration(dur * (1 - curAlpha) / (1 - targetAlpha + 0.01))
+
+    self._idleFadeState = "fading_in"
+    self._idleFadingInAG:Play()
+end
+
+--- OnUpdate tick for idle-fade hover detection and timer.
+--- Attached to DisplayFrame; fades frame to idle alpha when nothing is playing.
+function ReplayFrame:_IdleFadeTick()
+    local frame = self.DisplayFrame
+    if not frame or not frame:IsShown() then return end
+
+    -- Detect hover via IsMouseOver (works even with EnableMouse(false))
+    local hovered = frame.IsMouseOver and frame:IsMouseOver()
+    if hovered and not self._idleHovered then
+        -- Mouse entered
+        self:_IdleFadeTouch()
+    end
+    self._idleHovered = hovered
+
+    -- Don't fade while something is playing, or during edit mode
+    local isPlaying = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        and CLN.VoiceoverPlayer.IsEffectivelyPlaying
+        and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+    if isPlaying or self._editMode or self._blizzardEditMode then
+        if self._idleFadeState ~= "active" then
+            self:_IdleFadeTouch()
+        end
+        return
+    end
+
+    -- If hovered, stay active
+    if hovered then return end
+
+    -- Check idle timer
+    if self._idleFadeState == "active" then
+        local F = self.Config and self.Config.Fade
+        local p = CLN and CLN.db and CLN.db.profile
+        local delay = (p and p.idleFadeDelay) or (F and F.idleDelay) or 10
+        local elapsed = GetTime() - (self._idleLastActivity or 0)
+        if elapsed >= delay then
+            self:_IdleFadeToIdle()
+        end
     end
 end
 
@@ -958,7 +1128,8 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     local expandTex  = IconAtlas and IconAtlas:Get(IconAtlas.keys.expand)  or "Interface/Buttons/UI-Panel-ExpandButton-Up"
     local collapseTex = IconAtlas and IconAtlas:Get(IconAtlas.keys.collapse) or "Interface/Buttons/UI-Panel-CollapseButton-Up"
 
-    local collapseBtn = CreateTrackerStyleIcon(contentFrame, 18, expandTex,
+    local collapseBtn
+    collapseBtn = CreateTrackerStyleIcon(contentFrame, 18, expandTex,
         function() return collapseBtn._collapsed and "Expand" or "Collapse" end)
     collapseBtn:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -6, -6)
     collapseBtn._collapsed = false
