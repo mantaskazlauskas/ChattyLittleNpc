@@ -90,6 +90,9 @@ local function pushLine(cat, text, sess, src, lvl)
     if LW._frame and LW._frame:IsShown() and LW._auto then LW:_Refresh() end
 end
 
+-- Expose pushLine so Logger can route to the buffer without going through CLN:Print
+CLN._pushLogLine = pushLine
+
 -- Insert a visible bookmark separator into the log buffer
 LW._markCount = LW._markCount or 0
 function LW:Mark(label)

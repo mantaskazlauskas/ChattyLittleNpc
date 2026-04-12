@@ -86,16 +86,18 @@ function Logger:log(message, includeInChat, category, level)
 	else prefix = "|cffcccccc[INFO]|r" end
 	local line = string.format("%s[%s] %s", prefix, cat, text)
 
-	-- Always send to addon print (captured by LogsWindow via hook).
-	if CLN and CLN.Print then
+	-- Always push to the LogsWindow buffer so logs are captured regardless of chat setting.
+	if CLN._pushLogLine then
+		CLN._pushLogLine(cat, text, nil, "addon", lvl)
+	elseif CLN and CLN.Print then
+		-- Fallback if LogsWindow buffer not yet available
 		CLN:Print(line)
 	end
 
-	-- Optional chat mirroring when explicitly requested and allowed by prefs
-	if includeInChat and shouldPrint(lvl, cat) then
-		-- Bypass our CLN.Print hook by writing directly to DEFAULT_CHAT_FRAME
+	-- Mirror to chat frame only when user has enabled log-to-chat
+	if shouldPrint(lvl, cat) then
 		if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
-			DEFAULT_CHAT_FRAME:AddMessage("ChattyLittleNpc: " .. line)
+			DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[Chatty Little NPC]|r " .. line)
 		end
 	end
 end
