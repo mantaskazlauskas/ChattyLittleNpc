@@ -98,6 +98,7 @@ Fitting computes the distance needed so the actor’s height or width fits insid
 - Missing/zero bounds: some models report incomplete bounds; FitDefault falls back gracefully but framing may be conservative.
 - Animation-dependent bounds: ActiveBoundingBox changes with animations; brief pops are possible when switching animations immediately after load.
 - Units vs display IDs: SetModelByUnit may apply equipment; not all units are available out of combat or in every scene.
+- ReplayFrame alpha sync: `ModelContainer` is a standalone frame parented to `UIParent`, so it does not inherit `DisplayFrame` alpha. Fade paths in `src/ReplayFrame/UI.lua` therefore sync alpha across container + host + backend frame/actor (`_SetModelVisualAlpha`, `_FadeModelTo`) to prevent a fully opaque "floating" portrait during queue/frame fade-out.
 - Angles: yaw/pitch use radians; RotateBy takes degrees for convenience.
 - Aspect changes: resizing the frame changes aspect; camera is re-applied automatically.
 

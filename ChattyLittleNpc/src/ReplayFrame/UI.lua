@@ -76,6 +76,10 @@ function ReplayFrame:GetDisplayFrame()
     self:_CreateDisplayFrameAnimations()
     self:_IdleFadeInit()
 
+    -- Start hidden; UpdateVisibility() is the sole gatekeeper for showing.
+    frame:Hide()
+    frame:SetAlpha(0)
+
     -- Idle-fade hover detection ticker (throttled to every 0.2s)
     local idleTickElapsed = 0
     frame:HookScript("OnUpdate", function(_, dt)
@@ -162,6 +166,7 @@ function ReplayFrame:_CreateDisplayFrameAnimations()
     fo:SetToAlpha(0)
     fo:SetDuration(F and F.frameFadeOut or 0.25)
     fo:SetSmoothing("IN")
+    fadeOut._anim = fo
     fadeOut:SetScript("OnFinished", function()
         self._frameFadingOut = false
         frame:SetAlpha(0)
@@ -201,6 +206,13 @@ function ReplayFrame:_DisplayFrameFadeIn()
     else
         frame:SetAlpha(1)
     end
+    -- Sync ModelContainer alpha
+    local F2 = self.Config and self.Config.Fade
+    self:_CancelModelFade()
+    if self.ModelContainer and self.ModelContainer:IsShown() then
+        self:_SetModelVisualAlpha(0)
+        self:_FadeModelTo(1, F2 and F2.frameFadeIn or 0.2)
+    end
 end
 
 --- Smoothly hide the main DisplayFrame with a fade-out.
@@ -217,16 +229,32 @@ function ReplayFrame:_DisplayFrameFadeOut()
     end
     -- Cancel idle-fade if in progress (we're doing a full hide)
     self:_IdleFadeCancel()
-    -- Start fade-out
+    -- Start fade-out from current alpha (avoid flash when idle-faded)
     self._frameFadingOut = true
-    frame:SetAlpha(1)
+    local curAlpha = frame:GetAlpha()
+    if curAlpha < 0.01 then
+        -- Already invisible — skip animation, just hide immediately
+        self._frameFadingOut = false
+        frame:SetAlpha(0)
+        frame:Hide()
+        self:_SetModelVisualAlpha(0)
+        if self.ModelContainer then self.ModelContainer:Hide() end
+        return
+    end
     if self._frameFadeOutAG then
+        self._frameFadeOutAG._anim:SetFromAlpha(curAlpha)
+        self._frameFadeOutAG._anim:SetDuration((self.Config and self.Config.Fade and self.Config.Fade.frameFadeOut or 0.25) * curAlpha)
         self._frameFadeOutAG:Play()
     else
         self._frameFadingOut = false
         frame:SetAlpha(0)
         frame:Hide()
     end
+    -- Sync ModelContainer alpha
+    local F2 = self.Config and self.Config.Fade
+    self:_FadeModelTo(0, F2 and F2.frameFadeOut or 0.25, function()
+        if self.ModelContainer then self.ModelContainer:Hide() end
+    end)
 end
 
 -- ============================================================================
@@ -260,7 +288,92 @@ function ReplayFrame:_IdleFadeCancel()
     if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then
         self._idleFadingInAG:Stop()
     end
+    self:_CancelModelFade()
     self._idleFadeState = "active"
+end
+
+-- ============================================================================
+-- MODEL-CONTAINER ALPHA SYNC
+-- ModelContainer is parented to UIParent (for independent positioning), so it
+-- does not inherit DisplayFrame's alpha.  These helpers mirror fade operations
+-- onto ModelContainer using a simple OnUpdate lerp.
+-- ============================================================================
+
+--- Apply alpha to all model-rendering layers.
+--- ModelScene rendering can bypass parent alpha in some states, so we drive
+--- container, host, backend frame, and actor in sync.
+function ReplayFrame:_SetModelVisualAlpha(alpha)
+    local a = tonumber(alpha) or 1
+    if a < 0 then a = 0 elseif a > 1 then a = 1 end
+
+    if self.ModelContainer and self.ModelContainer.SetAlpha then
+        self.ModelContainer:SetAlpha(a)
+    end
+
+    local host = self.NpcModelFrame
+    if host and host.SetAlpha then
+        host:SetAlpha(a)
+    end
+
+    local backend = host and host._backend
+    local backendFrame = backend and backend.frame
+    if backendFrame and backendFrame.SetAlpha then
+        pcall(backendFrame.SetAlpha, backendFrame, a)
+    end
+
+    local actor = backend and backend.actor
+    if actor and actor.SetAlpha then
+        pcall(actor.SetAlpha, actor, a)
+    end
+end
+
+--- Smoothly fade ModelContainer to a target alpha.
+--- Cancels any previous model fade in progress.
+function ReplayFrame:_FadeModelTo(targetAlpha, duration, onFinished)
+    local mc = self.ModelContainer
+    if not mc then
+        if onFinished then onFinished() end
+        return
+    end
+    if not mc:IsShown() then
+        self:_SetModelVisualAlpha(targetAlpha)
+        if onFinished then onFinished() end
+        return
+    end
+
+    local startAlpha = mc:GetAlpha()
+    if math.abs(startAlpha - targetAlpha) < 0.01 then
+        self:_SetModelVisualAlpha(targetAlpha)
+        if onFinished then onFinished() end
+        return
+    end
+
+    if not duration or duration <= 0 then
+        self:_SetModelVisualAlpha(targetAlpha)
+        if onFinished then onFinished() end
+        return
+    end
+
+    local elapsed = 0
+    if not self._modelFadeFrame then
+        self._modelFadeFrame = CreateFrame("Frame")
+    end
+    self._modelFadeFrame:SetScript("OnUpdate", function(_, dt)
+        elapsed = elapsed + dt
+        local t = math.min(1, elapsed / duration)
+        self:_SetModelVisualAlpha(startAlpha + (targetAlpha - startAlpha) * t)
+        if t >= 1 then
+            self._modelFadeFrame:SetScript("OnUpdate", nil)
+            if onFinished then onFinished() end
+        end
+    end)
+end
+
+--- Cancel any in-progress model fade and leave alpha as-is.
+function ReplayFrame:_CancelModelFade()
+    if self._modelFadeFrame then
+        self._modelFadeFrame:SetScript("OnUpdate", nil)
+    end
 end
 
 --- Smoothly fade frame to idle alpha.
@@ -302,6 +415,9 @@ function ReplayFrame:_IdleFadeToIdle()
 
     self._idleFadeState = "fading_out"
     self._idleFadingOutAG:Play()
+    -- Sync ModelContainer to same idle alpha
+    local modelDur = dur * (curAlpha - targetAlpha) / (1 - targetAlpha + 0.01)
+    self:_FadeModelTo(targetAlpha, modelDur)
 end
 
 --- Smoothly restore frame from idle alpha to full opacity.
@@ -337,10 +453,13 @@ function ReplayFrame:_IdleFadeRestore()
     local targetAlpha = (p2 and p2.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
     self._idleFadingInAG._anim:SetFromAlpha(curAlpha)
     self._idleFadingInAG._anim:SetToAlpha(1)
-    self._idleFadingInAG._anim:SetDuration(dur * (1 - curAlpha) / (1 - targetAlpha + 0.01))
+    local restoreDur = dur * (1 - curAlpha) / (1 - targetAlpha + 0.01)
+    self._idleFadingInAG._anim:SetDuration(restoreDur)
 
     self._idleFadeState = "fading_in"
     self._idleFadingInAG:Play()
+    -- Sync ModelContainer to full opacity
+    self:_FadeModelTo(1, restoreDur)
 end
 
 --- OnUpdate tick for idle-fade hover detection and timer.
@@ -350,7 +469,8 @@ function ReplayFrame:_IdleFadeTick()
     if not frame or not frame:IsShown() then return end
 
     -- Detect hover via IsMouseOver (works even with EnableMouse(false))
-    local hovered = frame.IsMouseOver and frame:IsMouseOver()
+    local hovered = (frame.IsMouseOver and frame:IsMouseOver())
+        or (self.ModelContainer and self.ModelContainer:IsShown() and self.ModelContainer:IsMouseOver())
     if hovered and not self._idleHovered then
         -- Mouse entered
         self:_IdleFadeTouch()
