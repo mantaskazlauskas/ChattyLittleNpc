@@ -189,7 +189,7 @@ function CLN:_MigrateSavedVars()
 end
 
 function CLN:OnInitialize()
-    self.db = ChattyLittleNpc.Database:New("ChattyLittleNpcDB", defaults, true)
+    self.db = ChattyLittleNpc.Database:New("ChattyLittleNpcDB", defaults, true, "ChattyLittleNpcCharDB")
 
     -- Attach deferred IconAtlas if file loaded before addon existed
     if not self.IconAtlas and _G.ChattyLittleNpc_PendingAtlas then

@@ -438,6 +438,13 @@ end
 
 -- Refresh disabled/enabled visual state of all tracked controls on a content frame
 ---@param contentFrame table The content frame containing controls
+-- Re-query and redraw all controls on the options panel (call after profile switch)
+function ConfigSystem:Refresh()
+    if self.contentFrame then
+        ConfigSystem._RefreshVisibleControls(self.contentFrame)
+    end
+end
+
 function ConfigSystem._RefreshVisibleControls(contentFrame)
     if not contentFrame._trackedControls then return end
     for _, entry in ipairs(contentFrame._trackedControls) do
@@ -473,6 +480,7 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
     local content = CreateFrame("Frame", nil, scrollFrame)
     content:SetSize(570, 1) -- Width fixed, height will grow
     scrollFrame:SetScrollChild(content)
+    self.contentFrame = content -- stored so Refresh() can re-query all controls
     
     local title = content:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 6, -6)

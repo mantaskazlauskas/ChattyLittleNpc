@@ -70,7 +70,9 @@
         "UIErrorsFrame",
         "PixelUtil",
         "EditModeSystemSettingsDialog",
-        "UISpecialFrames"
+        "UISpecialFrames",
+        "StaticPopupDialogs",
+        "StaticPopup_Show"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

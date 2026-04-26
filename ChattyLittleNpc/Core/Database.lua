@@ -10,7 +10,7 @@ Database.__index = Database
 ---@param defaults table Default values
 ---@param defaultProfile boolean|nil Use default profile
 ---@return Database
-function Database:New(savedVarName, defaults, defaultProfile)
+function Database:New(savedVarName, defaults, defaultProfile, charSavedVarName)
     local instance = setmetatable({}, Database)
     
     instance.savedVarName = savedVarName
@@ -23,16 +23,42 @@ function Database:New(savedVarName, defaults, defaultProfile)
     end
     instance.sv = _G[savedVarName]
     
+    -- Initialize per-character saved variable (optional)
+    -- Used to remember which profile each character last used.
+    if charSavedVarName then
+        if not _G[charSavedVarName] then
+            _G[charSavedVarName] = {}
+        end
+        instance.charSv = _G[charSavedVarName]
+    end
+
     -- Initialize profiles
     if not instance.sv.profiles then
         instance.sv.profiles = {}
     end
     
-    -- Set current profile
-    if not instance.sv.currentProfile then
-        instance.sv.currentProfile = defaultProfile and "Default" or (UnitName("player") .. " - " .. GetRealmName())
+    -- Determine the profile to activate:
+    --   1. Per-character preference (charSv.activeProfile) if the profile still exists
+    --   2. Account-wide currentProfile (backward compat for existing saves)
+    --   3. Default name
+    local function resolveProfile()
+        if instance.charSv and instance.charSv.activeProfile then
+            if instance.sv.profiles[instance.charSv.activeProfile] then
+                return instance.charSv.activeProfile
+            end
+        end
+        if instance.sv.currentProfile then
+            return instance.sv.currentProfile
+        end
+        return defaultProfile and "Default" or (UnitName("player") .. " - " .. GetRealmName())
     end
-    
+
+    local resolved = resolveProfile()
+    instance.sv.currentProfile = resolved
+    if instance.charSv then
+        instance.charSv.activeProfile = resolved
+    end
+
     -- Initialize current profile data
     if not instance.sv.profiles[instance.sv.currentProfile] then
         instance.sv.profiles[instance.sv.currentProfile] = {}
@@ -140,6 +166,10 @@ function Database:SetProfile(profileName)
     end
     
     self.sv.currentProfile = profileName
+    -- Remember this choice for the current character
+    if self.charSv then
+        self.charSv.activeProfile = profileName
+    end
     self:ApplyDefaults()
     self:FireCallback("OnProfileChanged")
 end

@@ -862,6 +862,58 @@ function ReplayFrame:UpdateDisplayFrameState()
     self:UpdateDisplayFrame()
 end
 
+-- Re-apply all profile-driven frame settings after a profile switch.
+-- This mirrors the individual `set` callbacks in Options.lua so that switching
+-- profiles is immediately reflected on the live UI, not just in the dropdowns.
+function ReplayFrame:ApplyProfileSettings()
+    if not (CLN and CLN.db and CLN.db.profile) then return end
+    local p = CLN.db.profile
+
+    -- Frame position and size
+    if self.LoadFramePosition then self:LoadFramePosition() end
+
+    -- Frame scale
+    if self.DisplayFrame then
+        self.DisplayFrame:SetScale(p.frameScale or 1.0)
+    end
+
+    -- NPC model portrait height
+    local modelH = p.npcModelFrameHeight or 140
+    self.npcModelFrameHeight = modelH
+    if self.ModelContainer then self.ModelContainer:SetHeight(modelH) end
+    if self.NpcModelFrame then self.NpcModelFrame:SetHeight(modelH) end
+
+    -- Queue text scale
+    if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+
+    -- Visibility / show-replay-frame toggle
+    if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end
+
+    -- Play button position
+    if CLN.PlayButton and CLN.PlayButton.UpdateButtonPositions then
+        CLN.PlayButton:UpdateButtonPositions()
+    end
+
+    -- Subtitle visibility
+    if not p.showSubtitles then
+        if self.HideSubtitle then self:HideSubtitle() end
+    else
+        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        if cur and cur.title and self.ShowSubtitle then
+            self:ShowSubtitle(cur.title)
+        end
+    end
+
+    -- Subtitle font scale
+    if self.SubtitleText then
+        local fontScale = math.max(8, math.floor(12 * (p.subtitleFontScale or 1.0)))
+        self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", fontScale, "")
+    end
+
+    -- Queue dirty (badges, history)
+    if self.MarkQueueDirty then self:MarkQueueDirty() end
+end
+
 -- ============================================================================
 -- ACCESSIBILITY AND SCALING
 -- ============================================================================
