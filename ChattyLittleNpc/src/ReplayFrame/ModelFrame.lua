@@ -113,7 +113,12 @@ function ReplayFrame:LayoutModelArea(frame)
         if hasModel then
             self.NpcModelFrame:Show()
             local backend = self.NpcModelFrame._backend
-            if backend and backend.kind == "scene" and backend.frame and backend.frame.SetCameraPosition then
+            -- Only adjust camera when the actor is fully loaded; calling camera
+            -- functions while the model is still loading causes per-frame thrashing
+            -- during collapse/resize animations (OnSizeChanged fires on every frame).
+            local actorReady = not (backend and backend.kind == "scene")
+                or (backend.actor and backend.actor.IsLoaded and backend.actor:IsLoaded())
+            if actorReady and backend and backend.kind == "scene" and backend.frame and backend.frame.SetCameraPosition then
                 if self.NpcModelFrame._lastCamSnapshot then
                     if self.NpcModelFrame.FitDistanceForCurrentTarget then
                         pcall(self.NpcModelFrame.FitDistanceForCurrentTarget, self.NpcModelFrame, 0.12)
@@ -287,6 +292,14 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             local stillLoaded = false
             if be and be.actor and be.actor.IsLoaded then
                 stillLoaded = be.actor:IsLoaded()
+                -- Scene actors load asynchronously. If IsLoaded() is still false but we
+                -- already called SetDisplayInfo (_unitModelLoaded = true), the actor is
+                -- in-flight. Treat it as "still loading" so we don't ClearModel and
+                -- restart the load on every rapid NotifyDisplayDirty event — each restart
+                -- causes a blank-frame flash that appears as flickering to the user.
+                if not stillLoaded and self._unitModelLoaded then
+                    stillLoaded = true
+                end
             elseif be and be.kind == "player" then
                 -- GetModelFileID can return 0 during same-frame transitions;
                 -- trust _unitModelLoaded first (matches SetUnit path at ~line 349).
