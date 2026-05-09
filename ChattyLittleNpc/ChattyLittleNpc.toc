@@ -71,6 +71,7 @@ src/ReplayFrame/AnimationInfer.lua
 src/ReplayFrame/ModelFrame.lua
 src/ReplayFrame/TextAnalysis.lua
 src/ReplayFrame/Accessibility.lua
+src/ReplayFrame/WhitelistWindow.lua
 src/ReplayFrame/NativeVOPopup.lua
 src/PlayButton.lua
 src/NpcDialogTracker.lua

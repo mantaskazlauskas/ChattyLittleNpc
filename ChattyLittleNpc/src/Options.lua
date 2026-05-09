@@ -105,35 +105,7 @@ local function addNpcToTable(tbl, npcName)
     end
 end
 
-StaticPopupDialogs["CLN_ADD_NPC_WHITELIST"] = {
-    text = "Enter the exact NPC name to add to the Pause For whitelist:",
-    button1 = "Add",
-    button2 = "Cancel",
-    hasEditBox = true,
-    maxLetters = 128,
-    OnAccept = function(self)
-        local name = self.EditBox:GetText()
-        if name and name ~= "" then
-            if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
-            addNpcToTable(CLN.db.profile.nativeVOWhitelist, name)
-            config:Refresh()
-        end
-    end,
-    EditBoxOnEnterPressed = function(self)
-        local parent = self:GetParent()
-        local name = self:GetText()
-        if name and name ~= "" then
-            if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
-            addNpcToTable(CLN.db.profile.nativeVOWhitelist, name)
-            config:Refresh()
-        end
-        parent:Hide()
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
+
 
 local options = {
     name = "Chatty Little Npc",
@@ -851,77 +823,20 @@ local options = {
                         config:Refresh()
                     end,
                 },
-                addNpcByName = {
-                    order = 1.5,
-                    type = 'execute',
-                    name = 'Add NPC by Name...',
-                    desc = 'Manually add an NPC to the whitelist by typing their exact in-game name.',
-                    func = function()
-                        StaticPopup_Show("CLN_ADD_NPC_WHITELIST")
-                    end,
-                    hidden = function() return (CLN.db.profile.nativeVOMode or "off") == "off" end,
-                },
-                pauseForHeader = {
+                manageWhitelist = {
                     order = 2,
-                    type = 'header',
+                    type = 'execute',
                     name = function()
                         local wl = CLN.db.profile.nativeVOWhitelist or {}
                         local count = 0
                         for k, v in pairs(wl) do
                             if v and type(k) == "string" then count = count + 1 end
                         end
-                        return count > 0 and ('Pause For (' .. count .. ')') or 'Pause For'
+                        return count > 0 and ('Manage Whitelist (' .. count .. ')…') or 'Manage Whitelist…'
                     end,
-                    hidden = function() return (CLN.db.profile.nativeVOMode or "off") == "off" end,
-                },
-                pauseForEmpty = {
-                    order = 3,
-                    type = 'description',
-                    name = "No NPCs added yet. Pause playback while an NPC is speaking to get prompted.",
-                    hidden = function()
-                        if (CLN.db.profile.nativeVOMode or "off") == "off" then return true end
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        for k, v in pairs(wl) do
-                            if v and type(k) == "string" then return true end
-                        end
-                        return false
-                    end,
-                },
-                pauseForList = {
-                    order = 4,
-                    type = 'multiselect',
-                    name = '',
-                    desc = 'Uncheck to move NPC to Never Ask.',
-                    width = 'full',
-                    values = function()
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        local sorted = {}
-                        for k, v in pairs(wl) do
-                            if v and type(k) == "string" then sorted[#sorted + 1] = k end
-                        end
-                        table.sort(sorted)
-                        local result = {}
-                        for _, name in ipairs(sorted) do result[name] = name end
-                        return result
-                    end,
-                    get = function(info, key)
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        return wl[key] == true
-                    end,
-                    set = function(info, key, value)
-                        if not value then
-                            removeNpcFromTable(CLN.db.profile.nativeVOWhitelist, key)
-                            if not CLN.db.profile.nativeVODismissed then CLN.db.profile.nativeVODismissed = {} end
-                            addNpcToTable(CLN.db.profile.nativeVODismissed, key)
-                        end
-                    end,
-                    hidden = function()
-                        if (CLN.db.profile.nativeVOMode or "off") == "off" then return true end
-                        local wl = CLN.db.profile.nativeVOWhitelist or {}
-                        for k, v in pairs(wl) do
-                            if v and type(k) == "string" then return false end
-                        end
-                        return true
+                    desc = 'Open the whitelist window to add or remove NPCs.',
+                    func = function()
+                        if CLN.WhitelistWindow then CLN.WhitelistWindow:Open() end
                     end,
                 },
                 neverAskHeader = {
