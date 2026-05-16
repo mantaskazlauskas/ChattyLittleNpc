@@ -633,9 +633,14 @@ local options = {
                 resetFramePos = {
                     order = 6,
                     type = 'execute',
-                    name = 'Reset Frame Position',
+                    name = 'Reset Voiceover Frame Position',
                     desc = 'Reset the voiceover frame to its default position on screen.',
                     func = function() CLN.ReplayFrame:ResetFramePosition() end,
+                },
+                playButtonSpacer = {
+                    order = 6.5,
+                    type = 'header',
+                    name = 'Play Button',
                 },
                 buttonPosX = {
                     order = 7,
@@ -989,6 +994,13 @@ local options = {
             desc = 'Diagnostic tools for addon developers and testers.',
             inline = true,
             args = {
+                slashInfo = {
+                    order = 0,
+                    type = 'description',
+                    width = 'full',
+                    name = 'Slash commands:  /clnlogs — Logs window    /clndebug — Debug window',
+                    fontSize = 'small',
+                },
                 debugMode = {
                     order = 1,
                     type = 'toggle',

@@ -12,7 +12,7 @@
         "utf8": "disable"
     },
     "Lua.workspace.library": [
-        "~\\.vscode\\extensions\\ketho.wow-api-0.21.0\\Annotations\\Core"
+        "~\\.vscode\\extensions\\ketho.wow-api-0.22.3\\Annotations\\Core"
     ],
     "Lua.diagnostics.globals": [
         "GameTooltip_Hide",
@@ -38,6 +38,22 @@
         "QuestUtils_GetQuestName",
         "QuestMapFrame_UpdateAll",
         "GossipFrame",
-        "QuestFrame"
+        "QuestFrame",
+        "StaticPopupDialogs",
+        "StaticPopup_Show",
+        "UIDropDownMenu_Initialize",
+        "UIDropDownMenu_SetWidth",
+        "UIDropDownMenu_SetText",
+        "UIDropDownMenu_AddButton",
+        "UIDropDownMenu_CreateInfo",
+        "UIDropDownMenu_DisableDropDown",
+        "UIDropDownMenu_EnableDropDown",
+        "EventUtil",
+        "UNKNOWNOBJECT",
+        "UIErrorsFrame",
+        "PixelUtil",
+        "EditModeManagerFrame",
+        "EditModeSystemSettingsDialog",
+        "UISpecialFrames"
     ]
 }
