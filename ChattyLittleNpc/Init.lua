@@ -6,7 +6,19 @@ local CLN = _G.ChattyLittleNpc
 -- Create event frame for addon initialization
 local addonFrame = CreateFrame("Frame")
 addonFrame:RegisterEvent("ADDON_LOADED")
+addonFrame:RegisterEvent("PLAYER_LOGIN")
 addonFrame:SetScript("OnEvent", function(self, event, addonName)
+    -- PLAYER_LOGIN fires after all startup addons have loaded.
+    -- Unregister ADDON_LOADED here so our handler never runs inside a
+    -- secure LoadAddOn call chain (e.g. Blizzard_GroupFinder loading and
+    -- immediately calling the protected Search() function), which would
+    -- taint that thread and cause ADDON_ACTION_BLOCKED errors.
+    if event == "PLAYER_LOGIN" then
+        self:UnregisterEvent("ADDON_LOADED")
+        self:UnregisterEvent("PLAYER_LOGIN")
+        return
+    end
+
     if addonName == "ChattyLittleNpc" then
         -- Initialize the addon
         if CLN.OnInitialize then
@@ -42,7 +54,6 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
             CLN.Options:SetupOptions()
         end
 
-        -- Don't unregister - keep listening for voiceover pack addons
     elseif addonName and addonName:match("^ChattyLittleNpc_.+_voiceovers$") then
         -- A voiceover pack was loaded, add it to our collection
         local addon = _G[addonName]
