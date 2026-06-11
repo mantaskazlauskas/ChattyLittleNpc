@@ -586,6 +586,9 @@ function ConfigSystem:RegisterOptions(addonName, options, db)
                                 elseif opt.type == "description" then
                                     yOffset = yOffset - 40
                                     contentHeight = contentHeight + 40
+                                elseif opt.type == "keybinding" then
+                                    yOffset = yOffset - 32
+                                    contentHeight = contentHeight + 32
                                 else
                                     yOffset = yOffset - 32
                                     contentHeight = contentHeight + 32
@@ -651,6 +654,81 @@ end
 ---@param parent table Parent frame
 ---@param opt table Option definition
 ---@return table|nil
+-- Create a keybinding widget: label + button that captures the next keypress
+---@param parent table Parent frame
+---@param info table Setting info {name, desc, get, set}
+---@return table
+function ConfigSystem:CreateKeybinding(parent, info)
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetSize(540, 28)
+
+    local label = container:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", 0, 0)
+    local nameText = type(info.name) == "function" and info.name() or info.name or ""
+    label:SetText(nameText)
+    label:SetTextColor(1, 0.82, 0)
+
+    local btn = CreateFrame("Button", nil, container, "UIPanelButtonTemplate")
+    btn:SetSize(140, 22)
+    btn:SetPoint("LEFT", label, "RIGHT", 12, 0)
+
+    local function refreshLabel()
+        local key = info.get and info.get()
+        btn:SetText(key and key ~= "" and key or "|cFF888888(unbound)|r")
+    end
+    refreshLabel()
+
+    -- Hidden frame that captures the next keypress
+    local listener = CreateFrame("Frame", nil, btn)
+    listener:Hide()
+    listener:SetAllPoints(btn)
+    listener:SetFrameStrata("TOOLTIP")
+
+    local function stopListening()
+        listener:Hide()
+        listener:SetScript("OnKeyDown", nil)
+        listener:UnregisterAllEvents()
+        btn:SetText(info.get and info.get() or "|cFF888888(unbound)|r")
+    end
+
+    local function startListening()
+        btn:SetText("|cFFFFD100Press a key...|r")
+        listener:Show()
+        listener:SetPropagateKeyboardInput(false)
+        listener:RegisterEvent("PLAYER_REGEN_DISABLED")  -- abort in combat
+        listener:SetScript("OnEvent", function() stopListening() end)
+        listener:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                -- clear binding
+                if info.set then info.set(nil, "") end
+            elseif key ~= "LSHIFT" and key ~= "RSHIFT"
+                   and key ~= "LCTRL"  and key ~= "RCTRL"
+                   and key ~= "LALT"   and key ~= "RALT"
+                   and key ~= "PRINTSCREEN" and key ~= "UNKNOWN" then
+                if info.set then info.set(nil, key) end
+            end
+            stopListening()
+        end)
+    end
+
+    btn:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            if info.set then info.set(nil, "") end
+            stopListening()
+            refreshLabel()
+        else
+            startListening()
+        end
+    end)
+
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+    container:SetScript("OnShow", function() refreshLabel() end)
+
+    attachTooltip(container, info)
+    return container
+end
+
 function ConfigSystem:CreateControl(parent, opt)
     if opt.type == "toggle" then
         return self:CreateCheckbox(parent, opt)
@@ -672,6 +750,8 @@ function ConfigSystem:CreateControl(parent, opt)
         return self:CreateInput(parent, opt)
     elseif opt.type == "multiselect" then
         return self:CreateMultiselect(parent, opt)
+    elseif opt.type == "keybinding" then
+        return self:CreateKeybinding(parent, opt)
     end
     return nil
 end

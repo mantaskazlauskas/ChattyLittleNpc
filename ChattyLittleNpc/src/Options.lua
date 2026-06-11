@@ -365,6 +365,23 @@ local options = {
                     get = function(info) return CLN.db.profile.textContinuationEnabled end,
                     set = function(info, value) CLN.db.profile.textContinuationEnabled = value end,
                 },
+                keybindSpacer = {
+                    order = 10.5,
+                    type = 'header',
+                    name = 'Keybinding',
+                },
+                playVoiceoverKeybind = {
+                    order = 11,
+                    type = 'keybinding',
+                    name = 'Play / Resume Voiceover',
+                    desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key. Right-click or press Escape to clear.',
+                    get = function()
+                        return CLN.db.profile.playVoiceoverKey
+                    end,
+                    set = function(_, key)
+                        CLN.db.profile.playVoiceoverKey = (key and key ~= "") and key or nil
+                    end,
+                },
             },
         },
 

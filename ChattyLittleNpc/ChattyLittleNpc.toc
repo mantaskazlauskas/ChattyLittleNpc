@@ -1,8 +1,8 @@
-## Interface: 120005, 50503, 40402, 30405, 20505, 11508
+## Interface: 120007, 120005, 50503, 40402, 30405, 20505, 11508
 ## Title: Chatty Little NPC
 ## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
-## Version: 3.1.8
+## Version: 3.1.9
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB, VoicedNpcContributions, NpcMetadataCache
 ## SavedVariablesPerCharacter: ChattyLittleNpcCharDB
 ## OptionalDeps: EditModeExpanded, DialogueUI, ElvUI
@@ -74,6 +74,7 @@ src/ReplayFrame/Accessibility.lua
 src/ReplayFrame/WhitelistWindow.lua
 src/ReplayFrame/NativeVOPopup.lua
 src/PlayButton.lua
+src/Keybinds.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua
 src/Editor.lua

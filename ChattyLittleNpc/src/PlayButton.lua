@@ -23,6 +23,7 @@ PlayButton.QuestLogButtons = { PlayButton.DetailFrameButton, PlayButton.QuestLog
 PlayButton.buttons = {}
 
 function PlayButton:ClearButtons()
+    PlayButton._currentPlayCallback = nil
 
     for buttonName, button in pairs(PlayButton.DialogWindowButtons) do
         if (_G[button]) then
@@ -100,6 +101,8 @@ end
 
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
     PlayButton:ClearButtons()
+    -- Store callback for keybind use regardless of whether the button is visible
+    PlayButton._currentPlayCallback = onMouseUpFunction
     if (CLN.db.profile.showSpeakButton == false) then
         -- dont create button if the setting is disabled in options
         return
