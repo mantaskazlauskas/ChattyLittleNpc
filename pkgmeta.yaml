@@ -1,0 +1,10 @@
+package-as: ChattyLittleNpc
+ignore:
+  - deploy.py
+  - release.py
+  - README.md
+  - docs
+  - .vscode
+  - .github
+  - .venv
+  - __pycache__
