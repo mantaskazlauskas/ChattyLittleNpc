@@ -4,8 +4,10 @@ Release script for ChattyLittleNpc projects.
 Reads version from .toc file, creates git tag, and creates GitHub release.
 
 Usage:
-    python release.py           # Dry run - shows what would happen
-    python release.py --create  # Actually create tag and release
+    python release.py                          # Dry run - shows what would happen
+    python release.py --create                 # Create a release tag (default: release)
+    python release.py --create --type beta     # Create a beta tag (e.g. v1.0.0-beta)
+    python release.py --create --type alpha    # Create an alpha tag (e.g. v1.0.0-alpha)
 """
 
 import os
@@ -80,6 +82,8 @@ def main():
     parser.add_argument('--create', action='store_true', help='Actually create tag and release (default is dry run)')
     parser.add_argument('--force', action='store_true', help='Delete existing tag if it exists')
     parser.add_argument('--tag-prefix', default='v', help='Prefix for tag name (default: v)')
+    parser.add_argument('--type', dest='release_type', choices=['release', 'beta', 'alpha'], default='release',
+                        help='Release type: release (default), beta, or alpha. Appends -beta/-alpha suffix to tag.')
     args = parser.parse_args()
 
     # Find .toc file
@@ -97,11 +101,13 @@ def main():
         sys.exit(1)
     
     addon_name = get_addon_name_from_toc(toc_path)
-    tag_name = f"{args.tag_prefix}{version}"
+    tag_suffix = f"-{args.release_type}" if args.release_type != 'release' else ''
+    tag_name = f"{args.tag_prefix}{version}{tag_suffix}"
     
     print(f"Addon: {addon_name}")
     print(f"Version: {version}")
     print(f"Tag: {tag_name}")
+    print(f"Release type: {args.release_type}")
     print()
 
     # Check prerequisites
@@ -128,7 +134,8 @@ def main():
         print("Would run:")
         print(f"  git tag {tag_name}")
         print(f"  git push origin {tag_name}")
-        print(f"  gh release create {tag_name} --title \"{addon_name} {version}\" --generate-notes")
+        prerelease_flag = " --prerelease" if args.release_type != 'release' else ""
+        print(f"  gh release create {tag_name} --title \"{addon_name} {version}\" --generate-notes{prerelease_flag}")
         return
 
     # Create and push tag
@@ -140,11 +147,14 @@ def main():
     run_command(['git', 'push', 'origin', tag_name])
     
     print("Creating GitHub release...")
-    run_command([
+    gh_cmd = [
         'gh', 'release', 'create', tag_name,
         '--title', f"{addon_name} {version}",
         '--generate-notes'
-    ])
+    ]
+    if args.release_type != 'release':
+        gh_cmd.append('--prerelease')
+    run_command(gh_cmd)
     
     print()
     print(f"Done! Release {tag_name} created.")
