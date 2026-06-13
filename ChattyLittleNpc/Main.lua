@@ -123,6 +123,8 @@ local defaults = {
         textContinuationThreshold = 0.75,
         -- Reading pace coefficient: adjusted by adaptive-pace learning (1.0 = default ~200 WPM)
         readingPaceCoefficient = 1.0,
+        -- Minimap button: angle in radians around the minimap edge (math.pi = left side)
+        minimapButtonAngle = math.pi,
     }
 }
 
@@ -227,6 +229,11 @@ function CLN:OnEnable()
 
     if (self.ReplayFrame.DisplayFrame) then
         self.ReplayFrame:LoadFramePosition()
+    end
+
+    -- Minimap button
+    if self.MinimapButton then
+        self.MinimapButton:Show()
     end
 
     -- Quest Log play button: QuestMapFrame is a load-on-demand Blizzard addon
