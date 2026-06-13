@@ -769,6 +769,117 @@ function ConfigSystem:Open()
     end
 end
 
+-- Lay out a specific subset of option groups into an existing content frame.
+-- groupKeys : ordered list of group-key strings to include (e.g. {"Playback"}).
+-- allArgs   : the top-level options.args table containing the group definitions.
+-- Returns the total height (in pixels) of the content that was laid out.
+function ConfigSystem:LayoutGroupsInFrame(frame, groupKeys, allArgs)
+    if not frame._trackedControls then
+        frame._trackedControls = {}
+    end
+
+    -- Sort the requested group keys by their .order field.
+    local sortedKeys = {}
+    for _, key in ipairs(groupKeys) do
+        if allArgs[key] then sortedKeys[#sortedKeys + 1] = key end
+    end
+    table.sort(sortedKeys, function(a, b)
+        local orderA = allArgs[a].order or 999
+        local orderB = allArgs[b].order or 999
+        if orderA == orderB then return a < b end
+        return orderA < orderB
+    end)
+
+    local yOffset      = -8   -- small top margin
+    local contentHeight = 8
+    local isFirstGroup  = true
+
+    for _, groupKey in ipairs(sortedKeys) do
+        local group = allArgs[groupKey]
+        if group.type == "group" then
+            -- Separator before every group except the first.
+            if not isFirstGroup then
+                local sep = self:CreateSeparator(frame)
+                sep:SetPoint("TOPLEFT", 6, yOffset - 4)
+                yOffset       = yOffset - 14
+                contentHeight = contentHeight + 14
+            end
+            isFirstGroup = false
+
+            -- Group header.
+            local headerText = group.name or ""
+            if type(headerText) == "function" then headerText = headerText() or "" end
+            local header = self:CreateHeader(frame, headerText)
+            header:SetPoint("TOPLEFT", 6, yOffset)
+            yOffset       = yOffset - 24
+            contentHeight = contentHeight + 24
+
+            -- Optional group description.
+            if group.desc then
+                local desc = self:CreateDescription(frame, group.desc)
+                desc:SetPoint("TOPLEFT", 8, yOffset)
+                yOffset       = yOffset - 20
+                contentHeight = contentHeight + 20
+            end
+
+            -- Controls within the group.
+            if group.args then
+                local sortedControlKeys = {}
+                for key in pairs(group.args) do
+                    sortedControlKeys[#sortedControlKeys + 1] = key
+                end
+                table.sort(sortedControlKeys, function(a, b)
+                    local orderA = group.args[a].order or 999
+                    local orderB = group.args[b].order or 999
+                    if orderA == orderB then return a < b end
+                    return orderA < orderB
+                end)
+
+                for _, key in ipairs(sortedControlKeys) do
+                    local opt = group.args[key]
+                    if not evalField(opt.hidden) then
+                        local control = self:CreateControl(frame, opt)
+                        if control then
+                            -- Dropdowns need extra top-margin for their label.
+                            if opt.type == "select" then
+                                yOffset       = yOffset - 18
+                                contentHeight = contentHeight + 18
+                            end
+                            control:SetPoint("TOPLEFT", opt.type == "range" and 26 or 6, yOffset)
+                            table.insert(frame._trackedControls, { control = control, opt = opt })
+                            if opt.type == "range" then
+                                yOffset       = yOffset - 50
+                                contentHeight = contentHeight + 50
+                            elseif opt.type == "select" then
+                                yOffset       = yOffset - 42
+                                contentHeight = contentHeight + 42
+                            elseif opt.type == "multiselect" then
+                                local h = control:GetHeight() or 32
+                                yOffset       = yOffset - h
+                                contentHeight = contentHeight + h
+                            elseif opt.type == "description" then
+                                yOffset       = yOffset - 40
+                                contentHeight = contentHeight + 40
+                            elseif opt.type == "keybinding" then
+                                yOffset       = yOffset - 32
+                                contentHeight = contentHeight + 32
+                            else
+                                yOffset       = yOffset - 32
+                                contentHeight = contentHeight + 32
+                            end
+                        end
+                    end
+                end
+            end
+
+            yOffset       = yOffset - 8
+            contentHeight = contentHeight + 8
+        end
+    end
+
+    return contentHeight
+end
+
 -- Export globally for the addon
 _G.ChattyLittleNpc = _G.ChattyLittleNpc or {}
 _G.ChattyLittleNpc.ConfigSystem = ConfigSystem

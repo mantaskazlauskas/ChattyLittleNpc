@@ -345,7 +345,7 @@ local options = {
                 gossipQueueMode = {
                     order = 9,
                     type = 'select',
-                    width = 'full',
+                    width = 'double',
                     name = 'Gossip Queueing',
                     desc = 'Controls whether gossip/greeting voiceovers queue behind active playback or override it.\n\n'
                         .. '|cFFFFFFFFNone|r — Gossip replaces whatever is playing (default).\n'
@@ -1011,12 +1011,29 @@ local options = {
             desc = 'Diagnostic tools for addon developers and testers.',
             inline = true,
             args = {
-                slashInfo = {
+                openLogsWindow = {
                     order = 0,
-                    type = 'description',
-                    width = 'full',
-                    name = 'Slash commands:  /clnlogs — Logs window    /clndebug — Debug window',
-                    fontSize = 'small',
+                    type = 'execute',
+                    name = 'Open Logs Window',
+                    desc = 'Open the debug logs viewer. Also accessible via /clnlogs.',
+                    func = function()
+                        local LW = CLN.ReplayFrame and CLN.ReplayFrame.LogsWindow
+                        if LW then
+                            if not LW._frame or not LW._frame:IsShown() then LW:Show() else LW:Hide() end
+                        end
+                    end,
+                },
+                openDebugWindow = {
+                    order = 0.5,
+                    type = 'execute',
+                    name = 'Open Debug Window',
+                    desc = 'Open the model debug/inspection window. Also accessible via /clndebug.',
+                    func = function()
+                        local DW = CLN.ReplayFrame and CLN.ReplayFrame.DebugWindow
+                        if DW then
+                            if not DW.frame or not DW.frame:IsShown() then DW:Show() else DW:Hide() end
+                        end
+                    end,
                 },
                 debugMode = {
                     order = 1,
@@ -1161,14 +1178,39 @@ local options = {
     },
 }
 
+-- Expose the raw options table so SettingsWindow can render it into tabs.
+CLN.OptionsDefinition = options
+
 function Options:SetupOptions()
-    config:RegisterOptions("Chatty Little Npc", options, CLN.db)
-    -- After any profile switch, refresh the settings panel controls and
-    -- re-apply all frame-driven settings (position, scale, heights, etc.).
+    -- Register a minimal Blizzard addon panel with just an "Open Settings" button.
+    local panel = CreateFrame("Frame")
+    panel.name = "Chatty Little NPC"
+
+    local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    btn:SetSize(200, 26)
+    btn:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -16)
+    btn:SetText("Open Settings")
+    btn:SetScript("OnClick", function()
+        if CLN.SettingsWindow then CLN.SettingsWindow:Open() end
+    end)
+
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+        Settings.RegisterAddOnCategory(category)
+        config.category = category
+        config.panel    = panel
+    else
+        InterfaceOptions_AddCategory(panel)
+        config.panel = panel
+    end
+
+    -- After any profile switch, re-apply frame-driven settings and refresh the window.
     local function onProfileChange()
-        config:Refresh()
         if CLN.ReplayFrame and CLN.ReplayFrame.ApplyProfileSettings then
             CLN.ReplayFrame:ApplyProfileSettings()
+        end
+        if CLN.SettingsWindow then
+            CLN.SettingsWindow:Refresh()
         end
     end
     CLN.db:RegisterCallback("OnProfileChanged", onProfileChange)
@@ -1177,5 +1219,9 @@ function Options:SetupOptions()
 end
 
 function Options:OpenSettings()
-    config:Open()
+    if CLN.SettingsWindow then
+        CLN.SettingsWindow:Toggle()
+    else
+        config:Open()
+    end
 end
