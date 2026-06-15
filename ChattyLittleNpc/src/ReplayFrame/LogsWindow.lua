@@ -539,6 +539,7 @@ function LW:Create()
 
     local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", f, "TOPRIGHT")
+    close:SetFrameLevel(dragBar:GetFrameLevel() + 1)
     close:SetScript("OnClick", function() f:Hide() end)
 
     -- Resize grip (bottom-right corner)

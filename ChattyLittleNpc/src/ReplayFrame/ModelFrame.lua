@@ -193,10 +193,15 @@ local function npcIdFromGuid(guid)
     if not guid or type(guid) ~= "string" then return nil end
     -- GUID format: "Type-0-serverID-instanceID-zoneUID-npcID-spawnUID"
     -- Valid NPC types: Creature, Vehicle
-    local guidType = guid:match("^(%a+)%-")
-    if guidType ~= "Creature" and guidType ~= "Vehicle" then return nil end
-    local id = select(6, strsplit("-", guid))
-    return id and tonumber(id) or nil
+    -- Use pcall for all string operations: when execution is tainted, UnitGUID may return
+    -- a "secret string" that cannot be indexed, causing errors on :match() / strsplit().
+    local ok, result = pcall(function()
+        local guidType = guid:match("^(%a+)%-")
+        if guidType ~= "Creature" and guidType ~= "Vehicle" then return nil end
+        local id = select(6, strsplit("-", guid))
+        return id and tonumber(id) or nil
+    end)
+    return ok and result or nil
 end
 
 -- Check if the "npc" unit token currently points to the expected NPC
