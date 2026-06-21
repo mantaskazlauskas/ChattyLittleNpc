@@ -46,30 +46,40 @@ function Window.GetCenter(rect)
 end
 
 --- Serialize frame position for persistence.
---- Stores both pixel offsets (for this resolution) and percentage (for cross-resolution sharing).
---- Uses CENTER/BOTTOMLEFT convention matching Position.lua's SaveFramePosition().
+--- Uses GetPoint() to capture the exact anchor WoW stores internally, avoiding
+--- the GetCenter()+scale-math rounding loop that caused slow drift on reload.
+--- Percentage fallbacks (x_pct/y_pct) are computed from GetLeft/GetBottom in
+--- UIParent-space for cross-resolution import support.
 ---@param frame Frame
 ---@return table|nil pos {point, relativePoint, x, y, x_pct, y_pct}
 function Window.SerializePosition(frame)
-    if not frame or not frame.GetCenter then return nil end
-    local cx, cy = frame:GetCenter()
-    if not (cx and cy) then return nil end
+    if not frame or not frame.GetPoint then return nil end
+    local point, _, relPoint, x, y = frame:GetPoint()
+    if not (point and x and y) then return nil end
 
-    local s = frame:GetEffectiveScale() or 1
-    local uiS = UIParent:GetEffectiveScale() or 1
-    local relX = (cx * s) / uiS
-    local relY = (cy * s) / uiS
-
+    -- Percentage fallback: convert left/bottom to UIParent-space for import
     local uiW = UIParent:GetWidth()
     local uiH = UIParent:GetHeight()
+    local x_pct, y_pct = 0, 0
+    if uiW > 0 and uiH > 0 then
+        local scale = frame:GetEffectiveScale() or 1
+        local uiScale = UIParent:GetEffectiveScale() or 1
+        local ratio = scale / uiScale  -- frame-local → UIParent-space
+        local left   = frame:GetLeft()
+        local bottom = frame:GetBottom()
+        if left and bottom then
+            x_pct = (left * ratio) / uiW
+            y_pct = (bottom * ratio) / uiH
+        end
+    end
 
     return {
-        point = "CENTER",
-        relativePoint = "BOTTOMLEFT",
-        x = relX,
-        y = relY,
-        x_pct = (uiW > 0) and (relX / uiW) or 0,
-        y_pct = (uiH > 0) and (relY / uiH) or 0,
+        point         = point,
+        relativePoint = relPoint,
+        x             = x,
+        y             = y,
+        x_pct         = x_pct,
+        y_pct         = y_pct,
     }
 end
 

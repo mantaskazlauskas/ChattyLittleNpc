@@ -10,27 +10,23 @@ local ReplayFrame = CLN.ReplayFrame
 
 -- Save the current frame position and size to the database
 function ReplayFrame:SaveFramePosition()
-    -- Always save in UIParent-relative coordinates so load works regardless of current parent
-    local cx, cy = self.DisplayFrame:GetCenter()
-    if cx and cy then
-        local s = self.DisplayFrame:GetEffectiveScale() or 1
-        local uiS = UIParent:GetEffectiveScale() or 1
-        local relX = (cx * s) / uiS
-        local relY = (cy * s) / uiS
-        CLN.db.profile.framePos = {
-            point = "CENTER",
-            relativePoint = "BOTTOMLEFT",
-            xOfs = relX,
-            yOfs = relY
-        }
-    else
-        local point, relativeTo, relativePoint, xOfs, yOfs = self.DisplayFrame:GetPoint()
+    -- Use GetPoint() to capture the exact anchor values WoW set via SetPoint.
+    -- Avoids the GetCenter()+scale-math round-trip, which accumulated floating-
+    -- point rounding error on each reload cycle (visible as slow position drift,
+    -- especially on Classic/Anniversary where UIParent scale differs from Retail).
+    -- UpdateParent() always ensures the frame is parented to UIParent before
+    -- any save, so GetPoint() values are already UIParent-relative.
+    local point, _, relativePoint, xOfs, yOfs = self.DisplayFrame:GetPoint()
+    if point and xOfs and yOfs then
         CLN.db.profile.framePos = {
             point = point,
             relativePoint = relativePoint,
             xOfs = xOfs,
-            yOfs = yOfs
+            yOfs = yOfs,
         }
+    else
+        -- GetPoint failed (frame not yet anchored) — skip to avoid corrupting saved pos
+        return
     end
     -- Persist current size — but never save a collapsed height
     if self.DisplayFrame and self.DisplayFrame.GetSize then
@@ -92,21 +88,16 @@ end
 -- Save the current model frame position to the database
 function ReplayFrame:SaveModelPosition()
     if not self.ModelContainer then return end
-    local cx, cy = self.ModelContainer:GetCenter()
-    if cx and cy then
-        local s = self.ModelContainer:GetEffectiveScale() or 1
-        local uiS = UIParent:GetEffectiveScale() or 1
-        local relX = (cx * s) / uiS
-        local relY = (cy * s) / uiS
-        local w = self.ModelContainer:GetWidth()
-        CLN.db.profile.modelFramePos = {
-            point = "CENTER",
-            relativePoint = "BOTTOMLEFT",
-            xOfs = relX,
-            yOfs = relY,
-            width = w and math.floor(w + 0.5) or nil
-        }
-    end
+    local point, _, relativePoint, xOfs, yOfs = self.ModelContainer:GetPoint()
+    if not (point and xOfs and yOfs) then return end
+    local w = self.ModelContainer:GetWidth()
+    CLN.db.profile.modelFramePos = {
+        point         = point,
+        relativePoint = relativePoint,
+        xOfs          = xOfs,
+        yOfs          = yOfs,
+        width         = w and math.floor(w + 0.5) or nil,
+    }
 end
 
 -- Load saved model frame position from the database

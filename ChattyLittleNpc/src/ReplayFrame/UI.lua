@@ -198,6 +198,9 @@ function ReplayFrame:_DisplayFrameFadeIn()
     end
     -- Already fully visible? No-op
     if frame:IsShown() and frame:GetAlpha() >= 1 then return end
+    -- Reset idle timer so the countdown starts from when the frame re-appears
+    -- (covers post-combat restore and any other hide→show cycle).
+    self._idleLastActivity = GetTime()
     -- Start fade-in
     frame:SetAlpha(0)
     frame:Show()
@@ -482,6 +485,10 @@ function ReplayFrame:_IdleFadeTick()
         and CLN.VoiceoverPlayer.IsEffectivelyPlaying
         and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
     if isPlaying or self._editMode or self._blizzardEditMode then
+        -- Always keep the idle timer fresh while playing so that the idle
+        -- countdown starts from the moment playback ends, not from whenever
+        -- UpdateVisibility last fired (which could be the start of a long VO).
+        self._idleLastActivity = GetTime()
         if self._idleFadeState ~= "active" then
             self:_IdleFadeTouch()
         end

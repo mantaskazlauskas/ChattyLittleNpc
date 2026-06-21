@@ -293,9 +293,14 @@ function VoiceoverPlayer:GetCurrentlyPlayingObject()
             -- trust the explicit state, but use estimated duration to detect
             -- natural completion so the watcher can advance the queue.
             if self.soundHandle and self.state == VoiceoverPlayer.State.PLAYING then
-                if self.startTime and self._estimatedDuration and GetTime then
+                if self.startTime and GetTime then
                     local elapsed = GetTime() - self.startTime
-                    if elapsed > self._estimatedDuration * 1.3 then
+                    -- If we have a pack/estimated duration, use it with a 30% buffer.
+                    -- If duration is unknown, fall back to a 5-minute hard cap so
+                    -- that the watcher can still emit VOICEOVER_STOP in Classic
+                    -- instead of treating the sound as playing forever.
+                    local dur = self._estimatedDuration or (60 * 5)
+                    if elapsed > dur * 1.3 then
                         return false
                     end
                 end
