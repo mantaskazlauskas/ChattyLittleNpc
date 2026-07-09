@@ -274,6 +274,28 @@ function ReplayFrame:_IdleFadeInit()
     self._idleHovered = false
 end
 
+--- Instantly restore the frame in the idle-faded state (no fade-in animation).
+--- Used after combat ends when the frame was already idle before combat started.
+function ReplayFrame:_RestoreAsIdle()
+    local frame = self.DisplayFrame
+    if not frame then return end
+    local F = self.Config and self.Config.Fade
+    local p = CLN and CLN.db and CLN.db.profile
+    local idleAlpha = (p and p.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    -- Cancel any lingering animations
+    if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then self._frameFadeInAG:Stop() end
+    if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then self._frameFadeOutAG:Stop() end
+    if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then self._idleFadingInAG:Stop() end
+    if self._idleFadingOutAG and self._idleFadingOutAG:IsPlaying() then self._idleFadingOutAG:Stop() end
+    self:_CancelModelFade()
+    self._frameFadingOut = false
+    -- Show at idle alpha directly
+    frame:SetAlpha(idleAlpha)
+    frame:Show()
+    self:_SetModelVisualAlpha(idleAlpha)
+    self._idleFadeState = "idle"
+end
+
 --- Record activity (hover, playback start) — resets the idle timer.
 function ReplayFrame:_IdleFadeTouch()
     self._idleLastActivity = GetTime()

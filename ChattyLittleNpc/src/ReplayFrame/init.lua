@@ -721,6 +721,8 @@ end
 function ReplayFrame:OnCombatStart()
     if CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse == false then return end
     if self.DisplayFrame and self.DisplayFrame:IsShown() then
+        -- Save idle state so OnCombatEnd can decide whether to restore
+        self._combatPreCombatIdleState = self._idleFadeState
         self._combatAutoCollapsed = true
         -- Cancel any in-progress fade animations for instant combat hide
         if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then self._frameFadeInAG:Stop() end
@@ -737,7 +739,20 @@ end
 function ReplayFrame:OnCombatEnd()
     if self._combatAutoCollapsed then
         self._combatAutoCollapsed = nil
-        if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end
+        local wasIdle = self._combatPreCombatIdleState == "idle"
+            or self._combatPreCombatIdleState == "fading_out"
+        self._combatPreCombatIdleState = nil
+        local isPlaying = CLN.VoiceoverPlayer
+            and CLN.VoiceoverPlayer.IsEffectivelyPlaying
+            and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+        if wasIdle and not isPlaying then
+            -- Frame was already idle-faded before combat and nothing is playing —
+            -- restore it directly at the idle alpha to avoid a spurious full
+            -- fade-in followed immediately by another idle fade-out.
+            if self._RestoreAsIdle then self:_RestoreAsIdle() end
+        else
+            if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end
+        end
     end
 end
 
