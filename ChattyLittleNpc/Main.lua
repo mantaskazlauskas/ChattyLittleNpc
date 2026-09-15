@@ -560,6 +560,10 @@ function CLN:HandlePlaybackStart(questPhase)
     end
 
     if (questId > 0) then
+        -- Cancel any pending gossip auto-play timer so a greeting voiceover
+        -- that hasn't fired yet doesn't race against the quest description.
+        self._gossipTimerGen = (self._gossipTimerGen or 0) + 1
+
         -- Signal that playback is about to start so UpdateVisibility
         -- doesn't fade out the frame during the deferred-timer gap.
         self._playbackPendingAt = GetTime and GetTime() or nil

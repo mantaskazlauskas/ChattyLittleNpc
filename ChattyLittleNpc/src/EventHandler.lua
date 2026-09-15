@@ -433,6 +433,11 @@ function EventHandler:GOSSIP_CLOSED()
     if CLN and CLN.Logger then CLN.Logger:debug("GOSSIP_CLOSED", false, CLN.Utils.LogCategories.loader) end
     CLN.PlayButton:ClearButtons()
 
+    -- Cancel any pending gossip auto-play timer; the gossip frame is gone so
+    -- starting audio from it now would be wrong (e.g. greeting VO firing after
+    -- the player has already clicked into a quest description).
+    CLN._gossipTimerGen = (CLN._gossipTimerGen or 0) + 1
+
     local mode = CLN.db.profile.gossipPlaybackMode or "queue"
     if mode == "stopOnClose" or mode == "manual" then
         -- Only stop gossip/non-quest VO; leave quest playback untouched.
