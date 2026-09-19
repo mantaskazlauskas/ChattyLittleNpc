@@ -3,6 +3,7 @@ local CLN = _G.ChattyLittleNpc
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
+local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
 
 -- ============================================================================
 -- BLIZZARD-STYLE EDIT PANEL FOR EDIT MODE
@@ -402,18 +403,17 @@ function ReplayFrame:CreateEditPanel()
     panel.resetPosButton:SetPoint("BOTTOMLEFT", panel.resetButton, "TOPLEFT", 0, 6)
     panel.resetPosButton:SetPoint("BOTTOMRIGHT", panel.resetButton, "TOPRIGHT", 0, 6)
     panel.resetPosButton:SetScript("OnClick", function()
-        -- Reset conversation window to center-right
+        -- Reset conversation window: default size, docked next to the objectives tracker
+        if CLN.db and CLN.db.profile then CLN.db.profile.frameAnchor = "objectives" end
         if ReplayFrame.DisplayFrame then
-            ReplayFrame.DisplayFrame:ClearAllPoints()
-            ReplayFrame.DisplayFrame:SetPoint("CENTER", UIParent, "CENTER", 200, 0)
-            ReplayFrame.DisplayFrame:SetSize(475, 165)
+            ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H)
             ReplayFrame.DisplayFrame:SetScale(1.0)
         end
         -- Re-dock model above conversation
         local ModelWin = ReplayFrame.EditMode and ReplayFrame.EditMode.ModelWindow
         if ModelWin then
             if ModelWin.frame then
-                ModelWin.frame:SetSize(475, 140)
+                ModelWin.frame:SetSize(DEFAULT_W, 140)
             end
             ModelWin:Dock()
         elseif ReplayFrame.ModelContainer then
@@ -422,7 +422,7 @@ function ReplayFrame:CreateEditPanel()
                 ReplayFrame.ModelContainer:SetPoint("BOTTOMLEFT", ReplayFrame.DisplayFrame, "TOPLEFT", 0, 2)
                 ReplayFrame.ModelContainer:SetPoint("BOTTOMRIGHT", ReplayFrame.DisplayFrame, "TOPRIGHT", 0, 2)
             end
-            ReplayFrame.ModelContainer:SetSize(475, 140)
+            ReplayFrame.ModelContainer:SetSize(DEFAULT_W, 140)
         end
         -- Show model container if hidden
         if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
@@ -435,10 +435,13 @@ function ReplayFrame:CreateEditPanel()
         -- Update profile
         if CLN.db and CLN.db.profile then
             CLN.db.profile.framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 200, yOfs = 0 }
-            CLN.db.profile.frameSize = { width = 475, height = 165 }
+            CLN.db.profile.frameSize = { width = DEFAULT_W, height = DEFAULT_H }
             CLN.db.profile.frameScale = 1.0
             CLN.db.profile.npcModelFrameHeight = 140
             CLN.db.profile.modelFramePos = nil
+        end
+        if ReplayFrame.DisplayFrame and ReplayFrame.LoadFramePosition then
+            ReplayFrame:LoadFramePosition()
         end
         -- Persist to layout
         if ReplayFrame.PersistToActiveLayout then
@@ -548,8 +551,8 @@ function ReplayFrame:CreateEditPanel()
                 if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
                 CLN.db.profile.queueTextScale = old
             end
-            local w = self._orig.width or 475
-            local h = self._orig.height or 165
+            local w = self._orig.width or DEFAULT_W
+            local h = self._orig.height or DEFAULT_H
             if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(w,h) end
             if ReplayFrame and ReplayFrame.NpcModelFrame and self._orig.modelHeight then
                 ReplayFrame.NpcModelFrame:SetHeight(self._orig.modelHeight)
@@ -586,7 +589,7 @@ function ReplayFrame:CreateEditPanel()
             CLN.db.profile.queueTextScale = old
         end
         if ReplayFrame and ReplayFrame.DisplayFrame then
-            local w = panel._orig.width or 475; local h = panel._orig.height or 165
+            local w = panel._orig.width or DEFAULT_W; local h = panel._orig.height or DEFAULT_H
             ReplayFrame.DisplayFrame:SetSize(w,h)
         end
         if ReplayFrame and ReplayFrame.NpcModelFrame and panel._orig.modelHeight then
@@ -598,7 +601,7 @@ function ReplayFrame:CreateEditPanel()
 
     panel.resetButton:SetScript("OnClick", function()
         panel._suppressDirty = true
-        local defaults = { scale=1.0, textScale=1.0, width=475, height=165, modelHeight=140 }
+        local defaults = { scale=1.0, textScale=1.0, width=DEFAULT_W, height=DEFAULT_H, modelHeight=140 }
         for _, row in ipairs(panel._formBuilder.rows) do
             if row.type == "slider" and row.slider then
                 local def = defaults[row.origKey or row.key]
@@ -612,7 +615,7 @@ function ReplayFrame:CreateEditPanel()
             if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
             CLN.db.profile.queueTextScale = old
         end
-        if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(475,165) end
+        if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H) end
         if ReplayFrame and ReplayFrame.NpcModelFrame then ReplayFrame.NpcModelFrame:SetHeight(140) end
         if ReplayFrame and ReplayFrame.ModelContainer then
             ReplayFrame.ModelContainer:SetHeight(140)
@@ -713,7 +716,7 @@ function ReplayFrame:ShowEditPanel()
     -- Load current values
     local frameScale = (CLN.db.profile.frameScale or 1.0)
     local textScale = (CLN.db.profile.queueTextScale or 1.0)
-    local frameSize = CLN.db.profile.frameSize or { width = 475, height = 165 }
+    local frameSize = CLN.db.profile.frameSize or { width = DEFAULT_W, height = DEFAULT_H }
     local modelHeight = (CLN.db.profile.npcModelFrameHeight or 140)
     
     panel.scaleSlider:SetValue(frameScale)
@@ -723,12 +726,12 @@ function ReplayFrame:ShowEditPanel()
     panel.textScaleValue:SetText(string.format("%.2f", textScale))
     
     if panel.widthSlider then
-        panel.widthSlider:SetValue(frameSize.width or 475)
-        panel.widthValue:SetText(string.format("%d", frameSize.width or 475))
+        panel.widthSlider:SetValue(frameSize.width or DEFAULT_W)
+        panel.widthValue:SetText(string.format("%d", frameSize.width or DEFAULT_W))
     end
     if panel.heightSlider then
-        panel.heightSlider:SetValue(frameSize.height or 165)
-        panel.heightValue:SetText(string.format("%d", frameSize.height or 165))
+        panel.heightSlider:SetValue(frameSize.height or DEFAULT_H)
+        panel.heightValue:SetText(string.format("%d", frameSize.height or DEFAULT_H))
     end
     if panel.modelHeightSlider then
         panel.modelHeightSlider:SetValue(modelHeight)
@@ -769,8 +772,8 @@ function ReplayFrame:ShowEditPanel()
     panel._orig = {
         scale = frameScale,
         textScale = textScale,
-        width = frameSize.width or 475,
-        height = frameSize.height or 165,
+        width = frameSize.width or DEFAULT_W,
+        height = frameSize.height or DEFAULT_H,
         modelHeight = modelHeight,
     }
     panel._suppressDirty = true
@@ -847,8 +850,8 @@ function ReplayFrame:ApplyEditPanelSettings(panel)
     
     local frameScale = panel.scaleSlider:GetValue()
     local textScale = panel.textScaleSlider:GetValue()
-    local width = panel.widthSlider and panel.widthSlider:GetValue() or 475
-    local height = panel.heightSlider and panel.heightSlider:GetValue() or 165
+    local width = panel.widthSlider and panel.widthSlider:GetValue() or DEFAULT_W
+    local height = panel.heightSlider and panel.heightSlider:GetValue() or DEFAULT_H
     local modelHeight = panel.modelHeightSlider and panel.modelHeightSlider:GetValue() or 140
     
     -- Validate ranges

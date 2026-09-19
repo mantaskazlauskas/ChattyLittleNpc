@@ -4,6 +4,7 @@ local IconAtlas = CLN.IconAtlas
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
+local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
 
 -- ============================================================================
 -- UI CREATION AND LAYOUT
@@ -25,13 +26,19 @@ function ReplayFrame:GetDisplayFrame()
     -- Defaults; will be overridden by saved size/position if present
     self.normalWidth = self.normalWidth or 310
     self.expandedWidth = self.expandedWidth or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
-    local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or 475)
-    local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or 165
-    if defaultH < 80 then defaultH = 165 end
+    local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or DEFAULT_W)
+    local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or DEFAULT_H
+    if defaultH < 80 then defaultH = DEFAULT_H end
     frame:SetSize(defaultW, defaultH)
     if frame.SetResizeBounds then frame:SetResizeBounds(260, 120) end
 
     self.DisplayFrame = frame
+
+    -- Dragging the window (manual edit or Edit Mode overlay) ends docking; the
+    -- client re-anchors it to the screen, which SaveFramePosition then stores.
+    hooksecurefunc(frame, "StartMoving", function()
+        if CLN.db and CLN.db.profile then CLN.db.profile.frameAnchor = "free" end
+    end)
 
     -- Tooltip on hover: addon name + click to edit hint
     frame:HookScript("OnEnter", function(f)
@@ -1317,7 +1324,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
             else
                 if this.HeaderDivider then this.HeaderDivider:Show() end
                 if this.QueueScrollBox then this.QueueScrollBox:Show() end
-                if frame and frame.SetHeight then frame:SetHeight(this.GetSafeExpandHeight and this:GetSafeExpandHeight() or 165) end
+                if frame and frame.SetHeight then frame:SetHeight(this.GetSafeExpandHeight and this:GetSafeExpandHeight() or DEFAULT_H) end
             end
             if this.UpdateDisplayFrame then this:UpdateDisplayFrame() end
             if this.Relayout then this:Relayout() end

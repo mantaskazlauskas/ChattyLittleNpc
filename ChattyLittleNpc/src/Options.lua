@@ -373,13 +373,13 @@ local options = {
                 playVoiceoverKeybind = {
                     order = 11,
                     type = 'keybinding',
-                    name = 'Play / Resume Voiceover',
-                    desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key. Right-click or press Escape to clear.',
+                    name = 'Play / Stop Voiceover',
+                    desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key (modifiers like Ctrl/Alt/Shift are supported). Right-click or press Escape to clear.\n\nController buttons can be bound in the game\'s Key Bindings menu under AddOns > Chatty Little NPC.',
                     get = function()
-                        return CLN.db.profile.playVoiceoverKey
+                        return CLN.Keybinds and CLN.Keybinds:GetKeyText()
                     end,
                     set = function(_, key)
-                        CLN.db.profile.playVoiceoverKey = (key and key ~= "") and key or nil
+                        if CLN.Keybinds then CLN.Keybinds:SetKeyboardKey(key) end
                     end,
                 },
             },
@@ -644,6 +644,24 @@ local options = {
                             if CLN.ReplayFrame.NpcModelFrame then
                                 CLN.ReplayFrame.NpcModelFrame:SetHeight(value)
                             end
+                        end
+                    end,
+                },
+                dockToObjectives = {
+                    order = 5.5,
+                    type = 'toggle',
+                    width = 'full',
+                    name = 'Dock Next to Objectives Tracker',
+                    desc = 'Keep the voiceover frame to the left of the quest objectives tracker. Moving the frame turns this off; Reset Voiceover Frame Position turns it back on.',
+                    get = function() return CLN.db.profile.frameAnchor == "objectives" end,
+                    set = function(_, value)
+                        if value then
+                            CLN.ReplayFrame:DockToObjectives()
+                        else
+                            -- Stay where it is, but as a free, saved position
+                            CLN.ReplayFrame:UndockFrame()
+                            CLN.db.profile.frameAnchor = "free"
+                            if CLN.ReplayFrame.DisplayFrame then CLN.ReplayFrame:SaveFramePosition() end
                         end
                     end,
                 },

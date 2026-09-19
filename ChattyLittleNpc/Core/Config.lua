@@ -692,20 +692,29 @@ function ConfigSystem:CreateKeybinding(parent, info)
     end
 
     local function startListening()
+        -- SetPropagateKeyboardInput is restricted for addon code in combat
+        if InCombatLockdown() then return end
         btn:SetText("|cFFFFD100Press a key...|r")
         listener:Show()
         listener:SetPropagateKeyboardInput(false)
         listener:RegisterEvent("PLAYER_REGEN_DISABLED")  -- abort in combat
         listener:SetScript("OnEvent", function() stopListening() end)
         listener:SetScript("OnKeyDown", function(self, key)
+            if key == "LSHIFT" or key == "RSHIFT"
+               or key == "LCTRL" or key == "RCTRL"
+               or key == "LALT"  or key == "RALT"
+               or key == "LMETA" or key == "RMETA" then
+                return -- wait for the key the modifier is held with
+            end
             if key == "ESCAPE" then
                 -- clear binding
                 if info.set then info.set(nil, "") end
-            elseif key ~= "LSHIFT" and key ~= "RSHIFT"
-                   and key ~= "LCTRL"  and key ~= "RCTRL"
-                   and key ~= "LALT"   and key ~= "RALT"
-                   and key ~= "PRINTSCREEN" and key ~= "UNKNOWN" then
-                if info.set then info.set(nil, key) end
+            elseif key ~= "PRINTSCREEN" and key ~= "UNKNOWN" then
+                -- Same modifier order WoW uses in binding strings: ALT-CTRL-SHIFT-KEY
+                local prefix = (IsAltKeyDown() and "ALT-" or "")
+                    .. (IsControlKeyDown() and "CTRL-" or "")
+                    .. (IsShiftKeyDown() and "SHIFT-" or "")
+                if info.set then info.set(nil, prefix .. key) end
             end
             stopListening()
         end)

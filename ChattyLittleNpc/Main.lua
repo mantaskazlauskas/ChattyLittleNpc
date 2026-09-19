@@ -13,6 +13,9 @@ CLN.expansions = { "Battle_for_Azeroth_voiceovers", "Cataclysm_voiceovers", "Van
 CLN.loadedVoiceoverPacks = {}
 CLN.VoiceoverPacks = {}
 CLN.questsQueue = {}
+-- Default voiceover window size: new profiles, reset buttons and fallbacks.
+CLN.DEFAULT_FRAME_WIDTH = 320
+CLN.DEFAULT_FRAME_HEIGHT = 140
 CLN.isDUIAddonLoaded = false
 CLN.isElvuiAddonLoaded = false
 CLN.currentItemInfo = {
@@ -74,7 +77,9 @@ local defaults = {
             xOfs = 500,
             yOfs = 0
         },
-        frameSize = { width = 310 + 165, height = 310 },
+        frameSize = { width = CLN.DEFAULT_FRAME_WIDTH, height = CLN.DEFAULT_FRAME_HEIGHT },
+        -- "objectives" = docked left of the quest objectives tracker, "free" = framePos
+        frameAnchor = "objectives",
         buttonPosX = -15,
         buttonPosY = -30,
         -- Unified quest playback mode: "queue" | "stopOnClose" | "manual"
@@ -140,7 +145,17 @@ function CLN:_MigrateSavedVars()
         -- v1: initial schema stamp (all existing migrations below remain for pre-v1 profiles)
     end
 
-    p.schemaVersion = 1
+    if sv < 2 then
+        -- v2: docking next to the objectives tracker became the default placement.
+        -- Keep the window where it is for anyone who already moved it off the
+        -- old default spot (CENTER +500,0).
+        local pos = p.framePos
+        local atOldDefault = pos and pos.point == "CENTER" and pos.relativePoint == "CENTER"
+            and pos.xOfs == 500 and pos.yOfs == 0
+        p.frameAnchor = atOldDefault and "objectives" or "free"
+    end
+
+    p.schemaVersion = 2
 
     -- Migrate pauseOnNativeVO boolean → nativeVOMode
     if p.pauseOnNativeVO ~= nil then
@@ -474,7 +489,7 @@ end
 ]]
 function CLN:GetTitleForQuestID(questID)
     local title
-    if (self.useNamespaces) then
+    if (C_QuestLog and C_QuestLog.GetTitleForQuestID) then
         title = C_QuestLog.GetTitleForQuestID(questID)
     elseif (QuestUtils_GetQuestName) then
         title = QuestUtils_GetQuestName(questID)

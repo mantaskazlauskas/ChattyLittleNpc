@@ -1,6 +1,14 @@
 -- Print.lua - Simple print utility
 -- Provides a Print function that outputs to the chat frame with addon prefix
 
+-- TEMP DIAGNOSTIC (SavedVariables load timing). This is the first file in the
+-- TOC, so it shows whether saved data exists before any addon code runs.
+-- Inspect in game with: /dump ChattyLittleNpcSVDiag
+ChattyLittleNpcSVDiag = {
+    firstFile = { db = ChattyLittleNpcDB ~= nil, npcInfo = NpcInfoDB ~= nil, charDb = ChattyLittleNpcCharDB ~= nil },
+    events = {},
+}
+
 local ADDON_PREFIX = "|cff00ff00[Chatty Little NPC]|r "
 
 ---@class PrintUtil

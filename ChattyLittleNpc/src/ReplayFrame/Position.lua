@@ -3,6 +3,46 @@ local CLN = _G.ChattyLittleNpc
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
+local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
+
+-- Horizontal gap between the docked window and the quest objectives tracker
+local DOCK_GAP = 12
+
+-- The quest objectives tracker: ObjectiveTrackerFrame (Retail, modern Classic
+-- clients), WatchFrame (Wrath/Cata Classic) or QuestWatchFrame (Vanilla/TBC).
+local function GetObjectiveTracker()
+    return _G.ObjectiveTrackerFrame or _G.WatchFrame or _G.QuestWatchFrame
+end
+
+-- ============================================================================
+-- DOCKING (window pinned to the left of the objectives tracker)
+-- ============================================================================
+-- profile.frameAnchor: "objectives" = docked, "free" = saved framePos.
+-- Moving the window (drag, nudge, layout apply) switches it to "free".
+
+function ReplayFrame:IsDockedToObjectives()
+    return CLN.db.profile.frameAnchor == "objectives"
+end
+
+-- Stop docking. Re-anchors the window to UIParent at its current screen
+-- position so it doesn't jump. Not for use mid-drag (see the StartMoving hook).
+function ReplayFrame:UndockFrame()
+    if not self:IsDockedToObjectives() then return end
+    CLN.db.profile.frameAnchor = "free"
+    local f = self.DisplayFrame
+    if not f then return end
+    local left, top = f:GetLeft(), f:GetTop()
+    if left and top then
+        f:ClearAllPoints()
+        f:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, top)
+    end
+end
+
+-- Dock (or re-dock) the window next to the objectives tracker.
+function ReplayFrame:DockToObjectives()
+    CLN.db.profile.frameAnchor = "objectives"
+    if self.DisplayFrame then self:LoadFramePosition() end
+end
 
 -- ============================================================================
 -- POSITION AND STATE MANAGEMENT
@@ -16,17 +56,20 @@ function ReplayFrame:SaveFramePosition()
     -- especially on Classic/Anniversary where UIParent scale differs from Retail).
     -- UpdateParent() always ensures the frame is parented to UIParent before
     -- any save, so GetPoint() values are already UIParent-relative.
-    local point, _, relativePoint, xOfs, yOfs = self.DisplayFrame:GetPoint()
-    if point and xOfs and yOfs then
+    local point, relativeTo, relativePoint, xOfs, yOfs = self.DisplayFrame:GetPoint()
+    if not (point and xOfs and yOfs) then
+        -- GetPoint failed (frame not yet anchored) — skip to avoid corrupting saved pos
+        return
+    end
+    -- While docked the anchor is relative to the objectives tracker, not a
+    -- screen position: keep the last free position and only persist the size.
+    if relativeTo == nil or relativeTo == UIParent then
         CLN.db.profile.framePos = {
             point = point,
             relativePoint = relativePoint,
             xOfs = xOfs,
             yOfs = yOfs,
         }
-    else
-        -- GetPoint failed (frame not yet anchored) — skip to avoid corrupting saved pos
-        return
     end
     -- Persist current size — but never save a collapsed height
     if self.DisplayFrame and self.DisplayFrame.GetSize then
@@ -38,7 +81,7 @@ function ReplayFrame:SaveFramePosition()
             -- Use the pre-collapse height (or profile default) instead of the tiny current height
             h = self._preCollapseHeight
                 or (CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
-                or 165
+                or DEFAULT_H
         end
         CLN.db.profile.frameSize = { width = math.floor(w + 0.5), height = math.floor(h + 0.5) }
     end
@@ -51,10 +94,14 @@ function ReplayFrame:LoadFramePosition()
     local size = CLN.db.profile.frameSize
     if size and size.width and size.height and self.DisplayFrame and self.DisplayFrame.SetSize then
         local h = size.height
-        if h < 80 then h = 165 end
+        if h < 80 then h = DEFAULT_H end
         self.DisplayFrame:SetSize(size.width, h)
     end
-    if (pos) then
+    local tracker = self:IsDockedToObjectives() and GetObjectiveTracker()
+    if tracker then
+        self.DisplayFrame:ClearAllPoints()
+        self.DisplayFrame:SetPoint("TOPRIGHT", tracker, "TOPLEFT", -DOCK_GAP, 0)
+    elseif (pos) then
         self.DisplayFrame:ClearAllPoints()
         self.DisplayFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
     else
@@ -70,8 +117,9 @@ function ReplayFrame:ResetFramePosition()
         xOfs = 500,
         yOfs = 0
     }
+    CLN.db.profile.frameAnchor = "objectives"
     -- Reset saved size and per-mode widths to defaults
-    CLN.db.profile.frameSize = { width = 310 + 165, height = 165 }
+    CLN.db.profile.frameSize = { width = DEFAULT_W, height = DEFAULT_H }
     CLN.db.profile.compactWidth = nil
     CLN.db.profile.expandedWidth = nil
     -- Reset model frame to docked mode

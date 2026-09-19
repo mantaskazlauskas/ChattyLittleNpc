@@ -51,6 +51,7 @@ Utils.LogCategories = {
     ui = "ui",
     misc = "misc",
     secrets = "secrets",
+    savedvars = "savedvars",
 }
 
 --- Session-level counters for secret-value encounters.

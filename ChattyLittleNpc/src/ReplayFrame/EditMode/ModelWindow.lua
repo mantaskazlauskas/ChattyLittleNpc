@@ -5,6 +5,7 @@ local CLN = _G.ChattyLittleNpc
 local ReplayFrame = CLN.ReplayFrame
 local EditMode = ReplayFrame.EditMode
 local Window = EditMode.Window
+local DEFAULT_W = CLN.DEFAULT_FRAME_WIDTH
 
 -- ============================================================================
 -- Model Window Adapter
@@ -110,7 +111,7 @@ end
 function ModelWindow:GetDefaultState()
     return {
         docked = true,
-        size   = { width = 475, height = 140 },
+        size   = { width = DEFAULT_W, height = 140 },
     }
 end
 

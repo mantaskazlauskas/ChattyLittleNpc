@@ -13,6 +13,7 @@
 local CLN = _G.ChattyLittleNpc
 local ReplayFrame = CLN.ReplayFrame
 local EditMode = ReplayFrame.EditMode
+local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
 
 local ImportExport = {}
 EditMode.ImportExport = ImportExport
@@ -66,12 +67,12 @@ local DEFAULTS = {
     conversation = {
         scale     = 1.0,
         textScale = 1.0,
-        width     = 475,
-        height    = 165,
+        width     = DEFAULT_W,
+        height    = DEFAULT_H,
     },
     model = {
         docked = true,
-        width  = 475,
+        width  = DEFAULT_W,
         height = 140,
     },
 }

@@ -82,21 +82,20 @@ function PlayButton:AttachPlayButtonForQuestLog(parentFrame, offsetX, offsetY, b
         return
     end
 
-    if (CLN.isElvuiAddonLoaded) then
-        PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
-            local questID = PlayButton:GetSelectedQuest()
-            if (questID) then
-                    CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
-            end
-        end)
-    else
-        PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, function()
-            local questID = PlayButton:GetSelectedQuest()
-            if (questID) then
-                    CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
-            end
-        end)
+    local function playSelectedQuest()
+        local questID = PlayButton:GetSelectedQuest()
+        if (questID) then
+                CLN.VoiceoverPlayer:PlayQuestSound(questID, CLN.Utils.QuestPhases.DESC)
+        end
     end
+
+    local button
+    if (CLN.isElvuiAddonLoaded) then
+        button = PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, playSelectedQuest, UIParent)
+    else
+        button = PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, playSelectedQuest, UIParent)
+    end
+    PlayButton:FollowAnchor(button, parentFrame)
 end
 
 function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUpFunction)
@@ -111,11 +110,70 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     local offsetX = CLN.db.profile.buttonPosX
     local offsetY = CLN.db.profile.buttonPosY
 
+    local button
     if (CLN.isElvuiAddonLoaded) then
-        return PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
+        button = PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
     else
-        return PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
+        button = PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
     end
+    PlayButton:FollowAnchor(button, parentFrame, true)
+    return button
+end
+
+-- Our buttons are parented to UIParent and only anchored to Blizzard frames.
+-- In gamepad mode SmartNavigation post-hooks CreateFrame and, when the new
+-- frame's parent chain reaches an open panel (GossipFrame, QuestFrame,
+-- WorldMapFrame, ...), rebuilds that panel's navigation state inside our call.
+-- That state is then tainted, and the gamepad action bar's next
+-- SetPreferredGamepadInteractTarget() gets ADDON_ACTION_BLOCKED. The walk stops
+-- at UIParent, so UIParent-hosted frames never touch it.
+local anchoredButtons = {} -- anchorFrame -> { [button] = true }
+
+local function SyncWithAnchor(anchorFrame, shown)
+    for btn in pairs(anchoredButtons[anchorFrame]) do
+        if btn._clnAnchor == anchorFrame then
+            if not shown then
+                btn:Hide()
+            elseif btn._clnWaitingForAnchor then
+                btn._clnWaitingForAnchor = nil
+                btn:Show()
+            end
+        end
+    end
+end
+
+--- Make a UIParent-hosted button look and behave like a child of anchorFrame:
+--- same effective scale, drawn above it, and hidden whenever it hides.
+---@param showWithAnchor boolean|nil Also show the button when the anchor shows
+function PlayButton:FollowAnchor(button, anchorFrame, showWithAnchor)
+    if not button or not anchorFrame then return end
+    button._clnAnchor = anchorFrame
+
+    local uiScale = UIParent:GetEffectiveScale()
+    if uiScale and uiScale > 0 then
+        button:SetScale(anchorFrame:GetEffectiveScale() / uiScale)
+    end
+    if button:GetFrameStrata() ~= "TOOLTIP" then
+        button:SetFrameStrata(anchorFrame:GetFrameStrata())
+        button:SetFrameLevel(anchorFrame:GetFrameLevel() + 20)
+    end
+
+    if not anchorFrame:IsVisible() then
+        button._clnWaitingForAnchor = showWithAnchor or nil
+        button:Hide()
+    end
+
+    if not anchoredButtons[anchorFrame] then
+        anchoredButtons[anchorFrame] = setmetatable({}, { __mode = "k" })
+        anchorFrame:HookScript("OnShow", function(self) SyncWithAnchor(self, true) end)
+        anchorFrame:HookScript("OnHide", function(self) SyncWithAnchor(self, false) end)
+    end
+    anchoredButtons[anchorFrame][button] = true
+end
+
+--- True when a button's anchor frame is currently hidden.
+function PlayButton:IsAnchorHidden(button)
+    return button._clnAnchor ~= nil and not button._clnAnchor:IsVisible()
 end
 
 function PlayButton:AttachQuestLogAndDetailsButtons()
@@ -152,7 +210,8 @@ function PlayButton:UpdatePlayButton()
     for _, name in ipairs(allButtons) do
         local btn = _G[name]
         if btn then
-            if (questID) then btn:Show() else btn:Hide() end
+            -- UIParent-hosted buttons must not outlive their anchor frame
+            if (questID and not PlayButton:IsAnchorHidden(btn)) then btn:Show() else btn:Hide() end
         end
     end
     PlayButton:UpdateQuestDetailPlayStopState()
@@ -173,9 +232,15 @@ function PlayButton:HidePlayButton()
 end
 
 function PlayButton:GetSelectedQuest()
-    if (CLN.useNamespaces and C_QuestLog and C_QuestLog.GetSelectedQuest) then
+    -- Feature detect rather than gate on the client version: some builds report
+    -- a Classic interface number while shipping the modern quest log API and no
+    -- legacy GetQuestLogSelection/GetQuestLogTitle globals.
+    if (C_QuestLog and C_QuestLog.GetSelectedQuest) then
         return C_QuestLog.GetSelectedQuest()
-    else
+    end
+
+    ---@diagnostic disable-next-line: undefined-global
+    if (type(GetQuestLogSelection) == "function" and type(GetQuestLogTitle) == "function") then
         ---@diagnostic disable-next-line: undefined-global
         local selectedIndex = GetQuestLogSelection()
 
@@ -184,7 +249,19 @@ function PlayButton:GetSelectedQuest()
             local _, _, _, _, _, _, _, questID = GetQuestLogTitle(selectedIndex)
             return questID
         end
+        return nil
     end
+
+    -- Last resort: the modern quest map keeps the detail quest on the frame.
+    ---@diagnostic disable-next-line: undefined-global
+    if (type(QuestMapFrame_GetDetailQuestID) == "function") then
+        ---@diagnostic disable-next-line: undefined-global
+        return QuestMapFrame_GetDetailQuestID()
+    end
+    if (QuestMapFrame and QuestMapFrame.DetailsFrame) then
+        return QuestMapFrame.DetailsFrame.questID
+    end
+
     return nil
 end
 
@@ -205,8 +282,8 @@ function PlayButton:UpdateButtonPositions()
     end
 end
 
-function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
-    local button = CreateFrame("Frame", buttonName, parentFrame)
+function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, hostFrame)
+    local button = CreateFrame("Frame", buttonName, hostFrame or parentFrame)
     button:SetSize(64, 64)
     button:SetFrameStrata("TOOLTIP")
 
@@ -295,8 +372,8 @@ function PlayButton:GetElvUI()
     return nil
 end
 
-function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction)
-    local button = CreateFrame("Button", buttonName, parentFrame, "UIPanelButtonTemplate")
+function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, hostFrame)
+    local button = CreateFrame("Button", buttonName, hostFrame or parentFrame, "UIPanelButtonTemplate")
     button:SetSize(90, 25) -- Adjusted to fit ElvUI's style better
 
     local ElvUI = PlayButton:GetElvUI()
@@ -391,8 +468,9 @@ function PlayButton:CreateQuestDetailPlayStopButton()
     if CLN.db.profile.showSpeakButton == false then return end
 
     local size = 24
-    local btn = CreateFrame("Button", nil, DetailsFrame)
+    local btn = CreateFrame("Button", nil, UIParent)
     btn:SetSize(size, size)
+    PlayButton:FollowAnchor(btn, DetailsFrame)
 
     local bg = btn:CreateTexture(nil, "BACKGROUND")
     bg:SetPoint("CENTER")
@@ -496,7 +574,7 @@ function PlayButton:UpdateQuestDetailPlayStopState()
         end
     end
 
-    if not hasVoiceover then
+    if not hasVoiceover or self:IsAnchorHidden(btn) then
         btn:Hide()
         return
     end

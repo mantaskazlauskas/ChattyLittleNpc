@@ -390,6 +390,10 @@ local function wireInteraction(ov, controller)
 
             local f = controller.frame
             if f then
+                -- Nudging a docked window: convert to a screen position first
+                if controller.id == "conversation" and ReplayFrame.UndockFrame then
+                    ReplayFrame:UndockFrame()
+                end
                 local p, _, r, x, y = f:GetPoint(1)
                 f:ClearAllPoints()
                 f:SetPoint(p or "CENTER", UIParent, r or "BOTTOMLEFT", (x or 0) + dx, (y or 0) + dy)

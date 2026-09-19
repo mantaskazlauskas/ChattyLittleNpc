@@ -5,6 +5,7 @@ local CLN = _G.ChattyLittleNpc
 local ReplayFrame = CLN.ReplayFrame
 local EditMode = ReplayFrame.EditMode
 local Window = EditMode.Window
+local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
 
 -- ============================================================================
 -- Conversation Window Adapter
@@ -51,7 +52,10 @@ function ConversationWindow:ReadState()
 
     if f then
         state.size = Window.SerializeSize(f)
-        state.pos  = Window.SerializePosition(f)
+        -- Docked: the anchor is tracker-relative, not a screen position to persist
+        if not (ReplayFrame.IsDockedToObjectives and ReplayFrame:IsDockedToObjectives()) then
+            state.pos = Window.SerializePosition(f)
+        end
     end
 
     return state
@@ -86,7 +90,7 @@ function ConversationWindow:ApplyState(state)
     if state.size and state.size.width and state.size.height then
         -- Guard against collapsed heights
         local h = state.size.height
-        if h < 80 then h = 165 end
+        if h < 80 then h = DEFAULT_H end
         f:SetSize(state.size.width, h)
         CLN.db.profile.frameSize = { width = state.size.width, height = h }
         if ReplayFrame.Relayout then
@@ -95,6 +99,8 @@ function ConversationWindow:ApplyState(state)
     end
 
     if state.pos then
+        -- An explicit saved/imported position replaces docking
+        CLN.db.profile.frameAnchor = "free"
         Window.ApplyPosition(f, state.pos)
         -- Sync to legacy profile key for Position.lua compatibility
         CLN.db.profile.framePos = {
@@ -112,7 +118,7 @@ function ConversationWindow:GetDefaultState()
     return {
         scale     = 1.0,
         textScale = 1.0,
-        size      = { width = 475, height = 165 },
+        size      = { width = DEFAULT_W, height = DEFAULT_H },
         pos       = {
             point = "CENTER", relativePoint = "CENTER",
             x = 500, y = 0, x_pct = 0, y_pct = 0,

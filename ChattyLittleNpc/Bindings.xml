@@ -1,2 +1,5 @@
 <Bindings>
+    <Binding name="CHATTYLITTLENPC_PLAY_VOICEOVER" header="CHATTYLITTLENPC" category="ADDONS">
+        if ChattyLittleNpc and ChattyLittleNpc.Keybinds then ChattyLittleNpc.Keybinds:OnBindingPressed() end
+    </Binding>
 </Bindings>
