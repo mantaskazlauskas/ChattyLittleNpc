@@ -2538,6 +2538,119 @@ class TestSimHashGuarded(unittest.TestCase):
     pass
 
 
+class TestPlayButtonAnchoring(unittest.TestCase):
+    """Play buttons live on UIParent and mimic being children of a Blizzard frame."""
+
+    FAKE_FRAMES = """
+        -- Minimal frame stand-ins: only what FollowAnchor/SetButtonShown touch.
+        function MakeFrame(visible)
+            local f = {
+                shown = true, visible = visible ~= false, scripts = {},
+                strata = "MEDIUM", level = 1, scale = 1,
+            }
+            function f:Show() self.shown = true end
+            function f:Hide() self.shown = false end
+            function f:IsShown() return self.shown end
+            function f:IsVisible() return self.visible and self.shown end
+            function f:SetScale(s) self.scale = s end
+            function f:GetEffectiveScale() return self.scale end
+            function f:GetFrameStrata() return self.strata end
+            function f:SetFrameStrata(s) self.strata = s end
+            function f:GetFrameLevel() return self.level end
+            function f:SetFrameLevel(l) self.level = l end
+            function f:HookScript(event, fn) self.scripts[event] = fn end
+            -- Show/hide the anchor and fire the hooks WoW would fire
+            function f:SetVisible(v)
+                self.visible = v
+                local fn = self.scripts[v and "OnShow" or "OnHide"]
+                if fn then fn(self) end
+            end
+            return f
+        end
+        UIParent = MakeFrame(true)
+    """
+
+    def setUp(self):
+        self.lua = make_lua()
+        self.lua.execute(self.FAKE_FRAMES)
+        load_file(self.lua, "src/PlayButton.lua")
+
+    def test_button_reappears_when_anchor_reopens(self):
+        """Regression: quest log button created while the log is closed (Classic)."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(false), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            local hiddenAtCreation = not btn:IsShown()
+            anchor:SetVisible(true)
+            return hiddenAtCreation, btn:IsShown()
+        """)
+        self.assertEqual(result, (True, True))
+
+    def test_button_hidden_by_addon_stays_hidden(self):
+        """A button we hid on purpose must not come back with the anchor."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            PB:SetButtonShown(btn, false)
+            anchor:SetVisible(false)
+            anchor:SetVisible(true)
+            return btn:IsShown()
+        """)
+        self.assertFalse(result)
+
+    def test_visible_button_survives_anchor_close_and_reopen(self):
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            anchor:SetVisible(false)
+            local hiddenWithAnchor = not btn:IsShown()
+            anchor:SetVisible(true)
+            return hiddenWithAnchor, btn:IsShown()
+        """)
+        self.assertEqual(result, (True, True))
+
+    def test_show_while_anchor_hidden_defers(self):
+        """Showing a button whose anchor is closed waits for the anchor."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(false), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            PB:SetButtonShown(btn, true)
+            local stillHidden = not btn:IsShown()
+            anchor:SetVisible(true)
+            return stillHidden, btn:IsShown()
+        """)
+        self.assertEqual(result, (True, True))
+
+    def test_released_button_never_reappears(self):
+        """Regression: replaced buttons stacking on top of the new one."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor = MakeFrame(false)
+            local old, new = MakeFrame(true), MakeFrame(true)
+            PB:FollowAnchor(old, anchor)
+            PB:ReleaseButton(old)
+            PB:FollowAnchor(new, anchor)
+            anchor:SetVisible(true)
+            return old:IsShown(), new:IsShown()
+        """)
+        self.assertEqual(result, (False, True))
+
+    def test_button_matches_anchor_scale(self):
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            anchor.scale = 2
+            UIParent.scale = 1
+            PB:FollowAnchor(btn, anchor)
+            return btn.scale
+        """)
+        self.assertEqual(result, 2)
+
+
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)
     unittest.main(verbosity=2)

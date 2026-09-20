@@ -491,7 +491,8 @@ function CLN:GetTitleForQuestID(questID)
     local title
     if (C_QuestLog and C_QuestLog.GetTitleForQuestID) then
         title = C_QuestLog.GetTitleForQuestID(questID)
-    elseif (QuestUtils_GetQuestName) then
+    end
+    if (not title and QuestUtils_GetQuestName) then
         title = QuestUtils_GetQuestName(questID)
     end
     -- Fallback: if the quest isn't in the log yet, try the open dialog window

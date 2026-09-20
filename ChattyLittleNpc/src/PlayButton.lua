@@ -25,20 +25,24 @@ PlayButton.buttons = {}
 function PlayButton:ClearButtons()
     PlayButton._currentPlayCallback = nil
 
-    for buttonName, button in pairs(PlayButton.DialogWindowButtons) do
+    for _, button in pairs(PlayButton.DialogWindowButtons) do
         if (_G[button]) then
-            _G[button]:Hide()
+            PlayButton:ReleaseButton(_G[button])
             _G[button] = nil
         end
     end
 end
 
 function PlayButton:ClearQuestLogAndDetailButtons()
-    for buttonName, button in pairs(PlayButton.QuestLogButtons) do
+    for _, button in pairs(PlayButton.QuestLogButtons) do
         if (_G[button]) then
-            _G[button]:Hide()
+            PlayButton:ReleaseButton(_G[button])
             _G[button] = nil
         end
+    end
+    if PlayButton._questDetailPlayStopBtn then
+        PlayButton:ReleaseButton(PlayButton._questDetailPlayStopBtn)
+        PlayButton._questDetailPlayStopBtn = nil
     end
 end
 
@@ -70,7 +74,7 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
             end)
         end
         if not fileNameFound then
-            _G[buttonName]:Hide()
+            PlayButton:SetButtonShown(_G[buttonName], false)
         end
     end
 end
@@ -116,7 +120,7 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     else
         button = PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
     end
-    PlayButton:FollowAnchor(button, parentFrame, true)
+    PlayButton:FollowAnchor(button, parentFrame)
     return button
 end
 
@@ -129,26 +133,8 @@ end
 -- at UIParent, so UIParent-hosted frames never touch it.
 local anchoredButtons = {} -- anchorFrame -> { [button] = true }
 
-local function SyncWithAnchor(anchorFrame, shown)
-    for btn in pairs(anchoredButtons[anchorFrame]) do
-        if btn._clnAnchor == anchorFrame then
-            if not shown then
-                btn:Hide()
-            elseif btn._clnWaitingForAnchor then
-                btn._clnWaitingForAnchor = nil
-                btn:Show()
-            end
-        end
-    end
-end
-
---- Make a UIParent-hosted button look and behave like a child of anchorFrame:
---- same effective scale, drawn above it, and hidden whenever it hides.
----@param showWithAnchor boolean|nil Also show the button when the anchor shows
-function PlayButton:FollowAnchor(button, anchorFrame, showWithAnchor)
-    if not button or not anchorFrame then return end
-    button._clnAnchor = anchorFrame
-
+--- Match the scale and draw order of the anchor frame.
+local function MatchAnchorLook(button, anchorFrame)
     local uiScale = UIParent:GetEffectiveScale()
     if uiScale and uiScale > 0 then
         button:SetScale(anchorFrame:GetEffectiveScale() / uiScale)
@@ -157,9 +143,37 @@ function PlayButton:FollowAnchor(button, anchorFrame, showWithAnchor)
         button:SetFrameStrata(anchorFrame:GetFrameStrata())
         button:SetFrameLevel(anchorFrame:GetFrameLevel() + 20)
     end
+end
+
+-- Show/hide the anchor's buttons the way WoW would if they were its children:
+-- hiding the anchor hides them, showing it brings back the ones that were
+-- shown before (_clnWantShown), and a button hidden by our own code stays hidden.
+local function SyncWithAnchor(anchorFrame, shown)
+    local buttons = anchoredButtons[anchorFrame]
+    if not buttons then return end
+    for btn in pairs(buttons) do
+        if btn._clnAnchor == anchorFrame then
+            if not shown then
+                btn:Hide()
+            elseif btn._clnWantShown then
+                MatchAnchorLook(btn, anchorFrame)
+                btn:Show()
+            end
+        end
+    end
+end
+
+--- Make a UIParent-hosted button look and behave like a child of anchorFrame:
+--- same effective scale, drawn above it, and shown only while it is visible.
+function PlayButton:FollowAnchor(button, anchorFrame)
+    if not button or not anchorFrame then return end
+    button._clnAnchor = anchorFrame
+    -- Freshly created frames are shown, just like a child button would be
+    button._clnWantShown = button:IsShown() and true or false
+
+    MatchAnchorLook(button, anchorFrame)
 
     if not anchorFrame:IsVisible() then
-        button._clnWaitingForAnchor = showWithAnchor or nil
         button:Hide()
     end
 
@@ -171,9 +185,30 @@ function PlayButton:FollowAnchor(button, anchorFrame, showWithAnchor)
     anchoredButtons[anchorFrame][button] = true
 end
 
---- True when a button's anchor frame is currently hidden.
-function PlayButton:IsAnchorHidden(button)
-    return button._clnAnchor ~= nil and not button._clnAnchor:IsVisible()
+--- Show or hide a button, remembering the intent while its anchor is hidden.
+--- Use this instead of calling Show()/Hide() on an anchored button.
+function PlayButton:SetButtonShown(button, shown)
+    if not button then return end
+    button._clnWantShown = shown and true or false
+    local anchor = button._clnAnchor
+    if shown and (not anchor or anchor:IsVisible()) then
+        button:Show()
+    else
+        button:Hide()
+    end
+end
+
+--- Detach a button from its anchor and hide it, so a replacement button can
+--- take over without the old one reappearing when the anchor is shown again.
+function PlayButton:ReleaseButton(button)
+    if not button then return end
+    local anchor = button._clnAnchor
+    if anchor and anchoredButtons[anchor] then
+        anchoredButtons[anchor][button] = nil
+    end
+    button._clnAnchor = nil
+    button._clnWantShown = false
+    button:Hide()
 end
 
 function PlayButton:AttachQuestLogAndDetailsButtons()
@@ -210,8 +245,7 @@ function PlayButton:UpdatePlayButton()
     for _, name in ipairs(allButtons) do
         local btn = _G[name]
         if btn then
-            -- UIParent-hosted buttons must not outlive their anchor frame
-            if (questID and not PlayButton:IsAnchorHidden(btn)) then btn:Show() else btn:Hide() end
+            PlayButton:SetButtonShown(btn, questID ~= nil)
         end
     end
     PlayButton:UpdateQuestDetailPlayStopState()
@@ -223,10 +257,10 @@ function PlayButton:HidePlayButton()
         return
     end
     for _, name in ipairs(PlayButton.DialogWindowButtons) do
-        if _G[name] then _G[name]:Hide() end
+        if _G[name] then PlayButton:SetButtonShown(_G[name], false) end
     end
     for _, name in ipairs(PlayButton.QuestLogButtons) do
-        if _G[name] then _G[name]:Hide() end
+        if _G[name] then PlayButton:SetButtonShown(_G[name], false) end
     end
     PlayButton:HideQuestDetailPlayStopButton()
 end
@@ -235,10 +269,9 @@ function PlayButton:GetSelectedQuest()
     -- Feature detect rather than gate on the client version: some builds report
     -- a Classic interface number while shipping the modern quest log API and no
     -- legacy GetQuestLogSelection/GetQuestLogTitle globals.
-    if (C_QuestLog and C_QuestLog.GetSelectedQuest) then
-        return C_QuestLog.GetSelectedQuest()
-    end
-
+    -- The legacy API comes first: where it exists it tracks the classic
+    -- QuestLogFrame selection, which is the window our buttons sit on. Retail
+    -- dropped these globals in 9.0, so it falls through to C_QuestLog.
     ---@diagnostic disable-next-line: undefined-global
     if (type(GetQuestLogSelection) == "function" and type(GetQuestLogTitle) == "function") then
         ---@diagnostic disable-next-line: undefined-global
@@ -250,6 +283,13 @@ function PlayButton:GetSelectedQuest()
             return questID
         end
         return nil
+    end
+
+    if (C_QuestLog and C_QuestLog.GetSelectedQuest) then
+        local questID = C_QuestLog.GetSelectedQuest()
+        if (questID and questID ~= 0) then
+            return questID
+        end
     end
 
     -- Last resort: the modern quest map keeps the detail quest on the frame.
@@ -553,13 +593,13 @@ function PlayButton:UpdateQuestDetailPlayStopState()
     if not btn then return end
 
     if CLN.db.profile.showSpeakButton == false then
-        btn:Hide()
+        self:SetButtonShown(btn, false)
         return
     end
 
     local questID = self:GetSelectedQuest()
     if not questID then
-        btn:Hide()
+        self:SetButtonShown(btn, false)
         return
     end
 
@@ -574,12 +614,12 @@ function PlayButton:UpdateQuestDetailPlayStopState()
         end
     end
 
-    if not hasVoiceover or self:IsAnchorHidden(btn) then
-        btn:Hide()
+    if not hasVoiceover then
+        self:SetButtonShown(btn, false)
         return
     end
 
-    btn:Show()
+    self:SetButtonShown(btn, true)
 
     local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local isPlaying = cp and cp.questId == questID and CLN.VoiceoverPlayer:IsPlaybackActive(cp)
@@ -596,6 +636,6 @@ end
 
 function PlayButton:HideQuestDetailPlayStopButton()
     if self._questDetailPlayStopBtn then
-        self._questDetailPlayStopBtn:Hide()
+        self:SetButtonShown(self._questDetailPlayStopBtn, false)
     end
 end
