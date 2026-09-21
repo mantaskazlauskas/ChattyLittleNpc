@@ -2650,6 +2650,41 @@ class TestPlayButtonAnchoring(unittest.TestCase):
         """)
         self.assertEqual(result, 2)
 
+    def _make_buttons(self):
+        """Register a gossip button and a quest log button by their global names."""
+        self.lua.execute("""
+            ChattyLittleNpc.db.profile.showSpeakButton = true
+            GossipFrame, QuestLogAnchor = MakeFrame(true), MakeFrame(true)
+            local PB = ChattyLittleNpc.PlayButton
+            _G[PB.GossipButton] = MakeFrame(true)
+            _G[PB.QuestLogFrameButton] = MakeFrame(true)
+            PB:FollowAnchor(_G[PB.GossipButton], GossipFrame)
+            PB:FollowAnchor(_G[PB.QuestLogFrameButton], QuestLogAnchor)
+            -- No quest selected in the log, the way retail reports it
+            C_QuestLog = { GetSelectedQuest = function() return 0 end }
+        """)
+
+    def test_update_leaves_dialog_buttons_alone(self):
+        """Regression: QuestMapFrame_UpdateAll hid the gossip button when no
+        quest was selected in the log (C_QuestLog.GetSelectedQuest() == 0)."""
+        self._make_buttons()
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            PB:UpdatePlayButton()
+            return _G[PB.GossipButton]:IsShown(), _G[PB.QuestLogFrameButton]:IsShown()
+        """)
+        self.assertEqual(result, (True, False))
+
+    def test_hide_leaves_dialog_buttons_alone(self):
+        """DetailsFrame closing must not take the open gossip window's button with it."""
+        self._make_buttons()
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            PB:HidePlayButton()
+            return _G[PB.GossipButton]:IsShown(), _G[PB.QuestLogFrameButton]:IsShown()
+        """)
+        self.assertEqual(result, (True, False))
+
 
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)

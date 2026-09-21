@@ -80,7 +80,9 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
 end
 
 function PlayButton:AttachPlayButtonForQuestLog(parentFrame, offsetX, offsetY, buttonName)
-    PlayButton:ClearButtons()
+    -- Deliberately does not clear the dialog window buttons: the caller has
+    -- already cleared the quest log ones, and an open gossip/quest window must
+    -- keep its own button (and _currentPlayCallback for the keybind).
     if (CLN.db.profile.showSpeakButton == false) then
         -- dont create button if the setting is disabled in options
         return
@@ -233,16 +235,19 @@ function PlayButton:AttachQuestLogAndDetailsButtons()
     end
 end
 
+-- Only the quest log buttons follow the quest log selection. The dialog window
+-- buttons (gossip, quest detail, item text) belong to frames that open and
+-- close on their own events, so they must not be touched here: these two
+-- functions are driven by quest log hooks (QuestMapFrame_UpdateAll fires on
+-- every QUEST_LOG_UPDATE) and would otherwise hide a perfectly good gossip
+-- button whenever no quest happens to be selected in the log.
 function PlayButton:UpdatePlayButton()
     if (CLN.db.profile.showSpeakButton == false) then
         -- dont create button if the setting is disabled in options
         return
     end
     local questID = PlayButton:GetSelectedQuest()
-    local allButtons = {}
-    for _, name in ipairs(PlayButton.DialogWindowButtons) do allButtons[#allButtons + 1] = name end
-    for _, name in ipairs(PlayButton.QuestLogButtons) do allButtons[#allButtons + 1] = name end
-    for _, name in ipairs(allButtons) do
+    for _, name in ipairs(PlayButton.QuestLogButtons) do
         local btn = _G[name]
         if btn then
             PlayButton:SetButtonShown(btn, questID ~= nil)
@@ -255,9 +260,6 @@ function PlayButton:HidePlayButton()
     if (CLN.db.profile.showSpeakButton == false) then
         -- dont create button if the setting is disabled in options
         return
-    end
-    for _, name in ipairs(PlayButton.DialogWindowButtons) do
-        if _G[name] then PlayButton:SetButtonShown(_G[name], false) end
     end
     for _, name in ipairs(PlayButton.QuestLogButtons) do
         if _G[name] then PlayButton:SetButtonShown(_G[name], false) end
