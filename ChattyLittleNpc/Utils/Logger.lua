@@ -43,10 +43,13 @@ local function normalizeCategory(cat)
 	return getCategories().misc or "misc"
 end
 
--- Should a message print to console based on severity and user prefs
-local function shouldPrint(level, category)
+-- Should a message print to console based on severity and user prefs.
+-- includeInChat marks messages the caller already gated behind its own opt-in
+-- (e.g. "Log Collected Data to Chat"), so they print even with logToChat off.
+local function shouldPrint(level, category, includeInChat)
 	-- Always record in LogsWindow buffer via CLN.Print hook; decide chat mirroring here
 	local prof = CLN and CLN.db and CLN.db.profile or {}
+	if includeInChat == true and level ~= Logger.Level.DEBUG then return true end
 	local chatOn = prof.logToChat == true
 	if not chatOn then return false end
 	level = level or Logger.Level.INFO
@@ -94,8 +97,8 @@ function Logger:log(message, includeInChat, category, level)
 		CLN:Print(line)
 	end
 
-	-- Mirror to chat frame only when user has enabled log-to-chat
-	if shouldPrint(lvl, cat) then
+	-- Mirror to chat frame when the caller asks for it or the user enabled log-to-chat
+	if shouldPrint(lvl, cat, includeInChat) then
 		if DEFAULT_CHAT_FRAME and DEFAULT_CHAT_FRAME.AddMessage then
 			DEFAULT_CHAT_FRAME:AddMessage("|cff00ff00[Chatty Little NPC]|r " .. line)
 		end

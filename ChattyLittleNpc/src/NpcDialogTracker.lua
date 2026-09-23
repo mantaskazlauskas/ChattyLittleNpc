@@ -43,7 +43,9 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
     self:EnsureNpcInfoInitialized(npcID)
     NpcInfoDB[npcID][CLN.locale].name = unitName
 
-    if (NpcInfoDB[npcID][CLN.locale].sex and NpcInfoDB[npcID][CLN.locale].sex ~= gender) then
+    -- New entries start with sex = "", which is not a different gender
+    local previousSex = NpcInfoDB[npcID][CLN.locale].sex
+    if (previousSex and previousSex ~= "" and previousSex ~= gender) then
         NpcInfoDB[npcID][CLN.locale].hasMultipleGenders = true
     end
 
