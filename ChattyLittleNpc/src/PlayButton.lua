@@ -24,12 +24,25 @@ PlayButton.buttons = {}
 
 function PlayButton:ClearButtons()
     PlayButton._currentPlayCallback = nil
+    PlayButton._currentPlayButtonName = nil
 
     for _, button in pairs(PlayButton.DialogWindowButtons) do
         if (_G[button]) then
             PlayButton:ReleaseButton(_G[button])
             _G[button] = nil
         end
+    end
+end
+
+--- Remove one dialog window button, and the keybind callback if it was that button's.
+function PlayButton:ClearButton(buttonName)
+    if PlayButton._currentPlayButtonName == buttonName then
+        PlayButton._currentPlayCallback = nil
+        PlayButton._currentPlayButtonName = nil
+    end
+    if (_G[buttonName]) then
+        PlayButton:ReleaseButton(_G[buttonName])
+        _G[buttonName] = nil
     end
 end
 
@@ -108,7 +121,8 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     PlayButton:ClearButtons()
     -- Store callback for keybind use regardless of whether the button is visible
     PlayButton._currentPlayCallback = onMouseUpFunction
-    if (CLN.db.profile.showSpeakButton == false) then
+    PlayButton._currentPlayButtonName = buttonName
+    if (CLN.db.profile.showSpeakButton == false) or not parentFrame then
         -- dont create button if the setting is disabled in options
         return
     end
@@ -124,6 +138,63 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     end
     PlayButton:FollowAnchor(button, parentFrame)
     return button
+end
+
+-- Dialog windows a play button can sit on, replacement UI first. DialogueUI
+-- replaces the Blizzard frames, but hands some interactions back to them
+-- ("disable in instances", Delves/Torghast pickers, its book UI turned off),
+-- so the anchor is whichever one is on screen, not whichever one exists.
+local DialogAnchors = {
+    gossip = { "DUIQuestFrame", "GossipFrame" },
+    quest = { "DUIQuestFrame", "QuestFrame" },
+    itemText = { "DUIBookFrame", "ItemTextFrame" },
+}
+
+-- The dialog addon and we handle the same event in no set order, and some
+-- (DialogueUI's book UI) show their frame a little later. If no dialog frame
+-- is on screen yet, look again after each of these delays (seconds).
+local ANCHOR_RECHECK_DELAYS = { 0, 0.1, 0.3, 0.6 }
+
+--- Returns the visible dialog frame for kind ("gossip", "quest" or "itemText"),
+--- or the first one that exists and false when none is visible yet.
+function PlayButton:ResolveDialogAnchor(kind)
+    local fallback
+    for _, name in ipairs(DialogAnchors[kind] or {}) do
+        local frame = _G[name]
+        if frame then
+            if frame:IsVisible() then
+                return frame, true
+            end
+            fallback = fallback or frame
+        end
+    end
+    return fallback, false
+end
+
+--- Create a dialog window play button on whichever dialog frame shows it.
+function PlayButton:CreateDialogPlayButton(kind, buttonName, onMouseUpFunction)
+    local anchor, visible = PlayButton:ResolveDialogAnchor(kind)
+    local button = PlayButton:CreatePlayVoiceoverButton(anchor, buttonName, onMouseUpFunction)
+    if button and not visible then
+        PlayButton:RecheckDialogAnchor(kind, button, buttonName, onMouseUpFunction, 1)
+    end
+    return button
+end
+
+function PlayButton:RecheckDialogAnchor(kind, button, buttonName, onMouseUpFunction, attempt)
+    local delay = ANCHOR_RECHECK_DELAYS[attempt]
+    if not delay then return end
+    C_Timer.After(delay, function()
+        -- Replaced or cleared by a later dialog event
+        if _G[buttonName] ~= button then return end
+        local anchor, visible = PlayButton:ResolveDialogAnchor(kind)
+        if not visible then
+            PlayButton:RecheckDialogAnchor(kind, button, buttonName, onMouseUpFunction, attempt + 1)
+        elseif anchor ~= button._clnAnchor then
+            -- The drag handlers capture their frame, so rebuild rather than re-point
+            PlayButton:CreatePlayVoiceoverButton(anchor, buttonName, onMouseUpFunction)
+        end
+    end)
 end
 
 -- Our buttons are parented to UIParent and only anchored to Blizzard frames.
@@ -165,6 +236,48 @@ local function SyncWithAnchor(anchorFrame, shown)
     end
 end
 
+-- The OnShow/OnHide hooks are only the fast path: SetScript() on a frame drops
+-- every HookScript hook on it, and DialogueUI calls SetScript("OnHide", ...)
+-- on DUIQuestFrame each time it shows or hides, which left our buttons on
+-- screen after it closed. So while any button wants to be shown, a watcher
+-- also compares it with its anchor every frame.
+local anchorWatcher
+
+--- Bring every anchored button in line with its anchor's visibility.
+--- Returns true while at least one button wants to be shown.
+local function SyncAllWithAnchors()
+    local anyWanted = false
+    for anchorFrame, buttons in pairs(anchoredButtons) do
+        local visible = anchorFrame:IsVisible()
+        for btn in pairs(buttons) do
+            if btn._clnAnchor == anchorFrame and btn._clnWantShown then
+                anyWanted = true
+                if visible and not btn:IsShown() then
+                    MatchAnchorLook(btn, anchorFrame)
+                    btn:Show()
+                elseif not visible and btn:IsShown() then
+                    btn:Hide()
+                end
+            end
+        end
+    end
+    return anyWanted
+end
+
+local function OnAnchorWatcherUpdate(self)
+    if not SyncAllWithAnchors() then
+        self:SetScript("OnUpdate", nil)
+    end
+end
+
+local function StartAnchorWatcher()
+    if not anchorWatcher then
+        -- On UIParent like the buttons, so it pauses when they are hidden anyway
+        anchorWatcher = CreateFrame("Frame", nil, UIParent)
+    end
+    anchorWatcher:SetScript("OnUpdate", OnAnchorWatcherUpdate)
+end
+
 --- Make a UIParent-hosted button look and behave like a child of anchorFrame:
 --- same effective scale, drawn above it, and shown only while it is visible.
 function PlayButton:FollowAnchor(button, anchorFrame)
@@ -185,6 +298,10 @@ function PlayButton:FollowAnchor(button, anchorFrame)
         anchorFrame:HookScript("OnHide", function(self) SyncWithAnchor(self, false) end)
     end
     anchoredButtons[anchorFrame][button] = true
+
+    if button._clnWantShown then
+        StartAnchorWatcher()
+    end
 end
 
 --- Show or hide a button, remembering the intent while its anchor is hidden.
@@ -197,6 +314,9 @@ function PlayButton:SetButtonShown(button, shown)
         button:Show()
     else
         button:Hide()
+    end
+    if shown and anchor then
+        StartAnchorWatcher()
     end
 end
 
@@ -311,15 +431,13 @@ function PlayButton:UpdateButtonPositions()
     local x = CLN.db.profile.buttonPosX or 0
     local y = CLN.db.profile.buttonPosY or 0
 
-    local buttonsToUpdate = {
-        {name = PlayButton.GossipButton, parent = GossipFrame},
-        {name = PlayButton.QuestButton, parent = QuestFrame},
-    }
-    for _, entry in pairs(buttonsToUpdate) do
-        local button = _G[entry.name]
-        if (button and entry.parent) then
+    -- Re-point at the frame each button actually sits on (DialogueUI's or Blizzard's)
+    for _, name in ipairs(PlayButton.DialogWindowButtons) do
+        local button = _G[name]
+        local anchor = button and button._clnAnchor
+        if anchor then
             button:ClearAllPoints()
-            button:SetPoint("TOPRIGHT", entry.parent, "TOPRIGHT", x, y)
+            button:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", x, y)
         end
     end
 end

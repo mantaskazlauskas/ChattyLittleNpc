@@ -168,7 +168,10 @@ end
 function EventHandler:GOSSIP_SHOW()
     if CLN and CLN.Logger then CLN.Logger:debug("GOSSIP_SHOW", false, CLN.Utils.LogCategories.loader) end
 
-    local parentFrame = _G["DUIQuestFrame"] or GossipFrame
+    -- Drop the previous page's button before any early return below. DialogueUI
+    -- keeps one frame open from quest back to gossip, so nothing hides it for us.
+    CLN.PlayButton:ClearButtons()
+
     local _, gender, _, _, unitType, unitId, creatureType = CLN:GetUnitInfo("npc")
     local text = C_GossipInfo.GetText()
     if (not unitId or not unitType or not text) then
@@ -195,7 +198,7 @@ function EventHandler:GOSSIP_SHOW()
 
     local soundType = (unitType == "GameObject") and "GameObject" or "Gossip"
 
-    CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.GossipButton ,function()
+    CLN.PlayButton:CreateDialogPlayButton("gossip", CLN.PlayButton.GossipButton, function()
         CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, soundType, text, gender, displayID, creatureType)
     end)
 
@@ -212,6 +215,9 @@ end
 function EventHandler:QUEST_GREETING()
     if CLN and CLN.Logger then CLN.Logger:debug("QUEST_GREETING", false, CLN.Utils.LogCategories.loader) end
 
+    -- No voiceover for the greeting page itself; don't leave the last page's button up
+    CLN.PlayButton:ClearButtons()
+
     if (CLN.db.profile.logNpcTexts) then
         CLN.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
     end
@@ -223,14 +229,11 @@ function EventHandler:QUEST_DETAIL()
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    if (_G["QuestFrame"]) then
-        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
-        CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-            local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, nid, did, gen, ct)
-        end)
-    end
+    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
+        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
+        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, nid, did, gen, ct)
+    end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
@@ -247,14 +250,11 @@ function EventHandler:QUEST_PROGRESS()
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    if (_G["QuestFrame"]) then
-        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
-        CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-            local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, nid, did, gen, ct)
-        end)
-    end
+    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
+        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
+        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, nid, did, gen, ct)
+    end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
@@ -271,14 +271,11 @@ function EventHandler:QUEST_COMPLETE()
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    if (_G["QuestFrame"]) then
-        local parentFrame = _G["DUIQuestFrame"] or _G["QuestFrame"]
-        CLN.PlayButton:CreatePlayVoiceoverButton(parentFrame, CLN.PlayButton.QuestButton, function()
-            local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-            local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-            CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, nid, did, gen, ct)
-        end)
-    end
+    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
+        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
+        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, nid, did, gen, ct)
+    end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
@@ -320,11 +317,9 @@ function EventHandler:ITEM_TEXT_READY()
     end
 
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-    if (_G["ItemTextFrame"]) then
-        CLN.PlayButton:CreatePlayVoiceoverButton(_G["ItemTextFrame"], CLN.PlayButton.ItemTextButton, function()
-            CLN.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText, nil, displayID)
-        end)
-    end
+    CLN.PlayButton:CreateDialogPlayButton("itemText", CLN.PlayButton.ItemTextButton, function()
+        CLN.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText, nil, displayID)
+    end)
 
     if (not itemId and itemName and itemText and unitGuid) then
         unitType = select(1, string.split('-', unitGuid))
@@ -420,6 +415,9 @@ end
 
 function EventHandler:QUEST_FINISHED()
     if CLN and CLN.Logger then CLN.Logger:debug("QUEST_FINISHED", false, CLN.Utils.LogCategories.loader) end
+    -- The quest page is gone (the next page, if any, makes its own button).
+    -- DialogueUI may keep its frame open for gossip, so this can't wait for a hide.
+    CLN.PlayButton:ClearButton(CLN.PlayButton.QuestButton)
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end

@@ -874,7 +874,7 @@ class TestIsNilOrEmpty(unittest.TestCase):
         ''')
         self.assertFalse(result)
 
-
+
 @unittest.skip("Framing.lua requires WoW ModelScene APIs not available in test env")
 class TestFramingSolveAxis(unittest.TestCase):
     """Test Framing.solveAxis and FOVPair_FromF."""
@@ -1752,7 +1752,7 @@ class TestMD5(unittest.TestCase):
         result = self._md5("test")
         self.assertRegex(result, r'^[0-9a-f]+$')
 
-
+
 @unittest.skip("SimHash.lua uses WoW bit library that hangs in Lua 5.4")
 class TestSimHash(unittest.TestCase):
     """Test SimHash64 character n-gram hashing and similarity."""
@@ -2568,6 +2568,27 @@ class TestPlayButtonAnchoring(unittest.TestCase):
             return f
         end
         UIParent = MakeFrame(true)
+
+        -- CreateFrame hands out fake frames; TickFrames runs their OnUpdate once.
+        CreatedFrames = {}
+        function CreateFrame()
+            local f = MakeFrame(true)
+            function f:SetScript(event, fn) self.scripts[event] = fn end
+            table.insert(CreatedFrames, f)
+            return f
+        end
+        function TickFrames()
+            for _, f in ipairs(CreatedFrames) do
+                local fn = f.scripts.OnUpdate
+                if fn then fn(f, 0.016) end
+            end
+        end
+        function IsWatching()
+            for _, f in ipairs(CreatedFrames) do
+                if f.scripts.OnUpdate then return true end
+            end
+            return false
+        end
     """
 
     def setUp(self):
@@ -2649,6 +2670,66 @@ class TestPlayButtonAnchoring(unittest.TestCase):
             return btn.scale
         """)
         self.assertEqual(result, 2)
+
+    def test_watcher_syncs_when_hooks_are_wiped(self):
+        """Regression: DialogueUI SetScript()s DUIQuestFrame's OnHide, dropping our
+        hooks, which left the button on screen after the dialog closed."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            -- Visibility changes without our hooks firing
+            anchor.visible = false
+            TickFrames()
+            local hiddenWithAnchor = not btn:IsShown()
+            anchor.visible = true
+            TickFrames()
+            return hiddenWithAnchor, btn:IsShown()
+        """)
+        self.assertEqual(result, (True, True))
+
+    def test_watcher_stops_when_no_button_wants_showing(self):
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            PB:FollowAnchor(btn, anchor)
+            local watching = IsWatching()
+            PB:ReleaseButton(btn)
+            TickFrames()
+            return watching, IsWatching()
+        """)
+        self.assertEqual(result, (True, False))
+
+    def test_dialog_anchor_prefers_visible_frame(self):
+        """DialogueUI's frame exists but may hand the interaction back to Blizzard's."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            DUIQuestFrame, GossipFrame = MakeFrame(false), MakeFrame(true)
+            local handedBack, handedBackVisible = PB:ResolveDialogAnchor("gossip")
+            DUIQuestFrame.visible, GossipFrame.visible = true, false
+            local dui = PB:ResolveDialogAnchor("gossip")
+            GossipFrame.visible = false
+            DUIQuestFrame.visible = false
+            local pending, pendingVisible = PB:ResolveDialogAnchor("gossip")
+            return handedBack == GossipFrame, handedBackVisible, dui == DUIQuestFrame,
+                pending == DUIQuestFrame, pendingVisible
+        """)
+        self.assertEqual(result, (True, True, True, True, False))
+
+    def test_clear_button_keeps_other_buttons_keybind(self):
+        """QUEST_FINISHED clears the quest button, not a newer gossip button's keybind."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local cb = function() end
+            PB._currentPlayCallback, PB._currentPlayButtonName = cb, PB.GossipButton
+            PB:ClearButton(PB.QuestButton)
+            local kept = PB._currentPlayCallback == cb
+            PB._currentPlayButtonName = PB.QuestButton
+            _G[PB.QuestButton] = MakeFrame(true)
+            PB:ClearButton(PB.QuestButton)
+            return kept, PB._currentPlayCallback == nil, _G[PB.QuestButton] == nil
+        """)
+        self.assertEqual(result, (True, True, True))
 
     def _make_buttons(self):
         """Register a gossip button and a quest log button by their global names."""
