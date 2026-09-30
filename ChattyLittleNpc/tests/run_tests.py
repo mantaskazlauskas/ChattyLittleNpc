@@ -2646,6 +2646,33 @@ class TestPlayButtonAnchoring(unittest.TestCase):
         """)
         self.assertEqual(result, (True, True))
 
+    def test_elvui_button_drawn_above_raised_anchor(self):
+        """Regression: the ElvUI button sat under the toplevel dialog frame once
+        it was raised, looking grayed out behind ElvUI's transparent skin."""
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            anchor.strata, anchor.level = "MEDIUM", 5
+            PB:FollowAnchor(btn, anchor)
+            local before = btn:GetFrameStrata()
+            anchor.level = 500 -- raised on show/click
+            anchor.strata = "HIGH" -- restrata'd by another addon while open
+            TickFrames()
+            return before, btn:GetFrameStrata()
+        """)
+        self.assertEqual(result, ("HIGH", "DIALOG"))
+
+    def test_tooltip_strata_button_left_alone(self):
+        result = lua_call(self.lua, """
+            local PB = ChattyLittleNpc.PlayButton
+            local anchor, btn = MakeFrame(true), MakeFrame(true)
+            btn.strata = "TOOLTIP"
+            PB:FollowAnchor(btn, anchor)
+            TickFrames()
+            return btn:GetFrameStrata()
+        """)
+        self.assertEqual(result, "TOOLTIP")
+
     def test_released_button_never_reappears(self):
         """Regression: replaced buttons stacking on top of the new one."""
         result = lua_call(self.lua, """

@@ -206,16 +206,36 @@ end
 -- at UIParent, so UIParent-hosted frames never touch it.
 local anchoredButtons = {} -- anchorFrame -> { [button] = true }
 
+local STRATA_ORDER = {
+    "BACKGROUND", "LOW", "MEDIUM", "HIGH", "DIALOG",
+    "FULLSCREEN", "FULLSCREEN_DIALOG", "TOOLTIP",
+}
+local STRATA_ABOVE = {}
+for i, strata in ipairs(STRATA_ORDER) do
+    STRATA_ABOVE[strata] = STRATA_ORDER[i + 1] or strata
+end
+
+--- Keep a non-TOOLTIP button (the ElvUI one) drawn above its anchor.
+--- Matching the anchor's strata with a fixed level offset is not enough: the
+--- dialog frames are toplevel, so showing or clicking them raises their level
+--- (and their children's) past ours, and ElvUI's semi-transparent skin then
+--- covers the button, which looks grayed out and swallows its clicks. The
+--- strata above the anchor wins over any frame level inside it.
+local function MatchAnchorStrata(button, anchorFrame)
+    if button:GetFrameStrata() == "TOOLTIP" then return end
+    local strata = STRATA_ABOVE[anchorFrame:GetFrameStrata()] or "DIALOG"
+    if button:GetFrameStrata() ~= strata then
+        button:SetFrameStrata(strata)
+    end
+end
+
 --- Match the scale and draw order of the anchor frame.
 local function MatchAnchorLook(button, anchorFrame)
     local uiScale = UIParent:GetEffectiveScale()
     if uiScale and uiScale > 0 then
         button:SetScale(anchorFrame:GetEffectiveScale() / uiScale)
     end
-    if button:GetFrameStrata() ~= "TOOLTIP" then
-        button:SetFrameStrata(anchorFrame:GetFrameStrata())
-        button:SetFrameLevel(anchorFrame:GetFrameLevel() + 20)
-    end
+    MatchAnchorStrata(button, anchorFrame)
 end
 
 -- Show/hide the anchor's buttons the way WoW would if they were its children:
@@ -255,6 +275,9 @@ local function SyncAllWithAnchors()
                 if visible and not btn:IsShown() then
                     MatchAnchorLook(btn, anchorFrame)
                     btn:Show()
+                elseif visible then
+                    -- Addons (ElvUI skins, DialogueUI) may restrata the anchor while open
+                    MatchAnchorStrata(btn, anchorFrame)
                 elseif not visible and btn:IsShown() then
                     btn:Hide()
                 end
@@ -546,12 +569,16 @@ function PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, o
     end
     button:SetText("Play Voiceover")
 
-    button:SetScript("OnEnter", function()
-        button:SetBackdropBorderColor(1, 1, 0) -- Highlight border on hover
+    -- HookScript, not SetScript: HandleButton hooks its own hover styling onto
+    -- these, and the backdrop only exists if the skin was applied.
+    button:HookScript("OnEnter", function()
+        if button.SetBackdropBorderColor then
+            button:SetBackdropBorderColor(1, 1, 0) -- Highlight border on hover
+        end
     end)
 
-    button:SetScript("OnLeave", function()
-        if ElvUI and ElvUI.media and ElvUI.media.bordercolor then
+    button:HookScript("OnLeave", function()
+        if button.SetBackdropBorderColor and ElvUI and ElvUI.media and ElvUI.media.bordercolor then
             ---@diagnostic disable-next-line: undefined-field
             button:SetBackdropBorderColor(unpack(ElvUI.media.bordercolor)) -- Reset border on leave
         end
