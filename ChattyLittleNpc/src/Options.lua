@@ -1184,6 +1184,15 @@ local options = {
                         end
                     end,
                 },
+                openRaceModelManager = {
+                    order = 7.5,
+                    type = 'execute',
+                    name = 'Manage Unknown Race Models',
+                    desc = 'Label NPC models whose race could not be identified. Unknown models are collected while NPC text logging is enabled.',
+                    func = function()
+                        if CLN.RaceModelManager then CLN.RaceModelManager:Toggle() end
+                    end,
+                },
                 printLoadedVoiceoverPackMetadata = {
                     order = 8,
                     type = 'execute',

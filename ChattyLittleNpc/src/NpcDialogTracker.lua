@@ -50,7 +50,24 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
     end
 
     NpcInfoDB[npcID][CLN.locale].sex = gender
-    NpcInfoDB[npcID][CLN.locale].race = race
+
+    -- UnitRace() is empty for NPCs; fall back to identifying the race by model file.
+    -- Unknown models yield "", and an empty result never overwrites a known race.
+    if (npcID ~= 0 and (not race or race == "") and CLN.NpcRaceLookup) then
+        local fileId, displayId
+        race, fileId, displayId = CLN.NpcRaceLookup:GetRaceFromModel("npc")
+        if (race == "" and fileId) then
+            CLN.NpcRaceLookup:RecordUnknown(fileId, {
+                npcId = npcID,
+                name = unitName,
+                displayId = displayId,
+                creatureType = creatureType,
+            })
+        end
+    end
+    if (race and race ~= "") then
+        NpcInfoDB[npcID][CLN.locale].race = race
+    end
     NpcInfoDB[npcID][CLN.locale].zone = GetZoneText()
     NpcInfoDB[npcID][CLN.locale].subzone = GetSubZoneText()
     if creatureType and creatureType ~= "" then
@@ -58,7 +75,11 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
     end
 
     if (CLN.db.profile.printNpcTexts) and CLN.Logger then
-        CLN.Logger:info("Npc info collected: Id=" .. npcID .. ", Name=" .. NpcInfoDB[npcID][CLN.locale].name .. ", Gender=" ..  NpcInfoDB[npcID][CLN.locale].sex, true, CLN.Utils.LogCategories.ui)
+        local info = NpcInfoDB[npcID][CLN.locale]
+        local highlight = function(value)
+            return "|cffc080ff" .. ((value and value ~= "") and value or "?") .. "|r" -- light purple
+        end
+        CLN.Logger:info("Npc info collected: Id=" .. npcID .. ", Name=" .. info.name .. ", Gender=" .. highlight(info.sex) .. ", Race=" .. highlight(info.race), true, CLN.Utils.LogCategories.ui)
     end
 end
 
