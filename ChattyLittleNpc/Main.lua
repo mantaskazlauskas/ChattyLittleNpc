@@ -96,6 +96,8 @@ local defaults = {
         debugAnimCategories = "all",
         debugNoAnim = false,
         disableCameraAnimations = false,
+        -- Race Model Manager: hide models that already have a race or are marked "not a race"
+        raceModelsUnassignedOnly = true,
         -- Per Edit Mode layout overrides (keyed by layoutName)
         editModeLayouts = {},
         -- Replay UI: combat behavior

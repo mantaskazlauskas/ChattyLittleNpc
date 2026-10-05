@@ -11,6 +11,12 @@ CLN.RaceModelManager = RaceModelManager
 
 RaceModelManager.list = {}
 RaceModelManager.index = 1
+RaceModelManager.totalCount = 0 -- all recorded models, before filtering
+
+--- True when a model has neither a race nor a "not a race" mark.
+local function isUnassigned(entry)
+    return (not entry.race or entry.race == "") and not entry.ignored
+end
 
 local function createFrame()
     local f = CreateFrame("Frame", "CLN_RaceModelManager", UIParent, "BasicFrameTemplateWithInset")
@@ -112,6 +118,16 @@ local function createFrame()
     f.nextButton = button("Next >", 74, function() RaceModelManager:Step(1) end)
     f.nextButton:SetPoint("LEFT", f.ignoreButton, "RIGHT", 8, 0)
 
+    f.unassignedOnly = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+    f.unassignedOnly:SetSize(24, 24)
+    f.unassignedOnly:SetPoint("TOPLEFT", f.prevButton, "BOTTOMLEFT", 0, -8)
+    f.unassignedOnly:SetScript("OnClick", function(self)
+        RaceModelManager:SetUnassignedOnly(self:GetChecked())
+    end)
+    f.unassignedOnlyLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    f.unassignedOnlyLabel:SetPoint("LEFT", f.unassignedOnly, "RIGHT", 2, 0)
+    f.unassignedOnlyLabel:SetText("Only show unassigned models")
+
     f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     f.hint:SetPoint("BOTTOM", 0, 12)
     f.hint:SetText("Drag model to rotate, scroll to zoom. Enter saves and moves on.")
@@ -127,13 +143,19 @@ function RaceModelManager:Refresh()
     f.nextButton:SetEnabled(self.index < #self.list)
 
     if not item then
-        f.header:SetText("No unknown models")
-        f.details:SetText("Talk to NPCs with NPC text logging enabled to collect some.")
+        if self.totalCount and self.totalCount > 0 then
+            f.header:SetText("All models assigned")
+            f.details:SetText("Untick \"Only show unassigned models\" to review the " .. self.totalCount .. " labeled ones.")
+        else
+            f.header:SetText("No unknown models")
+            f.details:SetText("Talk to NPCs with NPC text logging enabled to collect some.")
+        end
         f.counter:SetText("")
         f.raceInput:SetText("")
         f.raceInput:Disable()
         f.saveButton:Disable()
         f.ignoreButton:Disable()
+        f.model.renderToken = (f.model.renderToken or 0) + 1 -- cancel a pending fallback
         f.model:ClearModel()
         f.noModel:Show()
         return
@@ -142,7 +164,7 @@ function RaceModelManager:Refresh()
     local e = item.entry
     local labeled = 0
     for _, it in ipairs(self.list) do
-        if (it.entry.race and it.entry.race ~= "") or it.entry.ignored then labeled = labeled + 1 end
+        if not isUnassigned(it.entry) then labeled = labeled + 1 end
     end
 
     f.header:SetText("Model ID: " .. item.fileId)
@@ -161,6 +183,7 @@ function RaceModelManager:Refresh()
     local model = f.model
     model:ClearModel()
     model.facing, model.zoom = 0, 0
+    model.renderToken = (model.renderToken or 0) + 1
     local renderPath
     if e.displayId then
         model:SetDisplayInfo(e.displayId)
@@ -168,6 +191,21 @@ function RaceModelManager:Refresh()
     elseif e.npcId and model.SetCreature and pcall(model.SetCreature, model, e.npcId) then
         -- No display ID captured: render by creature ID, textured if the client has it cached
         renderPath = "SetCreature(" .. e.npcId .. ")"
+        -- SetCreature succeeds but draws nothing for creatures the client has
+        -- not cached; fall back to the bare model file if nothing loaded.
+        local token = model.renderToken
+        C_Timer.After(0.5, function()
+            if model.renderToken ~= token or not model.GetModelFileID then return end
+            local loaded = model:GetModelFileID()
+            if not loaded or loaded == 0 then
+                model:SetModel(item.fileId)
+                model:SetPortraitZoom(model.zoom)
+                model:SetFacing(model.facing)
+                if CLN.Logger then
+                    CLN.Logger:debug("RaceModelManager render: SetCreature(" .. e.npcId .. ") loaded nothing, SetModel(" .. item.fileId .. ") - untextured", false, CLN.Utils.LogCategories.ui)
+                end
+            end
+        end)
     else
         model:SetModel(item.fileId) -- last resort: bare model file, untextured
         renderPath = "SetModel(" .. item.fileId .. ") - untextured"
@@ -216,18 +254,45 @@ function RaceModelManager:ToggleIgnored()
     end
 end
 
+--- Rebuild the list from the saved models, filtered by the checkbox. The list
+--- is only rebuilt on open and on toggling the filter, so a model labeled
+--- just now stays reachable with Prev for a correction.
+function RaceModelManager:BuildList()
+    local all = CLN.NpcRaceLookup and CLN.NpcRaceLookup:GetUnknownList() or {}
+    self.totalCount = #all
+    if CLN.db.profile.raceModelsUnassignedOnly == false then
+        self.list = all
+        return
+    end
+    self.list = {}
+    for _, item in ipairs(all) do
+        if isUnassigned(item.entry) then table.insert(self.list, item) end
+    end
+end
+
+--- Index of the given model in the list, else the first one still needing a label.
+function RaceModelManager:FindStartIndex(fileId)
+    local firstUnassigned
+    for i, item in ipairs(self.list) do
+        if item.fileId == fileId then return i end
+        if not firstUnassigned and isUnassigned(item.entry) then firstUnassigned = i end
+    end
+    return firstUnassigned or 1
+end
+
+function RaceModelManager:SetUnassignedOnly(enabled)
+    local current = self.list[self.index]
+    CLN.db.profile.raceModelsUnassignedOnly = enabled and true or false
+    self:BuildList()
+    self.index = self:FindStartIndex(current and current.fileId)
+    self:Refresh()
+end
+
 function RaceModelManager:Show()
     self.frame = self.frame or createFrame()
-    self.list = CLN.NpcRaceLookup and CLN.NpcRaceLookup:GetUnknownList() or {}
-
-    -- Start at the first entry that still needs a label
-    self.index = 1
-    for i, item in ipairs(self.list) do
-        if (not item.entry.race or item.entry.race == "") and not item.entry.ignored then
-            self.index = i
-            break
-        end
-    end
+    self.frame.unassignedOnly:SetChecked(CLN.db.profile.raceModelsUnassignedOnly ~= false)
+    self:BuildList()
+    self.index = self:FindStartIndex(nil)
 
     self.frame:Show()
     self.frame:Raise()

@@ -72,7 +72,13 @@
         "EditModeSystemSettingsDialog",
         "UISpecialFrames",
         "StaticPopupDialogs",
-        "StaticPopup_Show"
+        "StaticPopup_Show",
+        "MovieFrame",
+        "AlternatePowerBar",
+        "GuideFrame",
+        "TorghastLevelPickerFrame",
+        "DelvesDifficultyPickerFrame",
+        "CustomGossipFrameManager"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

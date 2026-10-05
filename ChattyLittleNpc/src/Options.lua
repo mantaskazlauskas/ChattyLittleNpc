@@ -1252,3 +1252,8 @@ function Options:OpenSettings()
         config:Open()
     end
 end
+
+SLASH_CLNSETTINGS1 = "/clnsettings"
+SlashCmdList["CLNSETTINGS"] = function()
+    Options:OpenSettings()
+end
