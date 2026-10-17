@@ -19,6 +19,7 @@ Core/NpcRaceLookup.lua
 Main.lua
 
 # Main addon modules
+src/VoiceoverPacks.lua
 src/EventHandler.lua
 src/Options.lua
 src/SettingsWindow.lua

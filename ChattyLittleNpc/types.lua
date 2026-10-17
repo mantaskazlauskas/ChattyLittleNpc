@@ -59,9 +59,7 @@
 ---@field locale string
 ---@field gameVersion number
 ---@field useNamespaces boolean
----@field expansions table
----@field loadedVoiceoverPacks table
----@field VoiceoverPacks table
+---@field VoiceoverPacks table All loaded voiceover packs, any language; iterate with IterateVoiceoverPacks
 ---@field questsQueue table
 ---@field isDUIAddonLoaded boolean
 ---@field isElvuiAddonLoaded boolean
@@ -73,4 +71,6 @@
 ---@field ReplayFrame table
 ---@field Print fun(self: ChattyLittleNpc, ...: any)
 ---@field CheckVoiceoverPacks fun(self: ChattyLittleNpc)
+---@field IterateVoiceoverPacks fun(self: ChattyLittleNpc): fun(): string, table
+---@field GetVoiceoverLanguage fun(self: ChattyLittleNpc): string
 ---@field SendMessage fun(self: ChattyLittleNpc, message: string, ...)

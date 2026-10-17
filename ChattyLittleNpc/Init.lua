@@ -76,14 +76,7 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
     elseif addonName and addonName:match("^ChattyLittleNpc_.+_voiceovers$") then
         -- A voiceover pack was loaded, add it to our collection
         local addon = _G[addonName]
-        if addon and CLN.VoiceoverPacks then
-            CLN.VoiceoverPacks[addonName] = addon
-            if addon.Voiceovers then
-                addon._voiceoverIndex = {}
-                for _, name in ipairs(addon.Voiceovers) do
-                    addon._voiceoverIndex[name] = true
-                end
-            end
+        if CLN.RegisterVoiceoverPack and CLN:RegisterVoiceoverPack(addonName) then
             if CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.Logger then
                 CLN.Logger:info("Detected voiceover pack: " .. tostring(addonName), false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
                 if addon.Voiceovers then

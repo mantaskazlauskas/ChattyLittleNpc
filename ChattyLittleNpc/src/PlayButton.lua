@@ -70,7 +70,7 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
     if (questID) then
         local questFileName = questID .. "_Desc.ogg"
         local fileNameFound = false
-        for packName, packData in pairs(CLN.VoiceoverPacks) do
+        for packName, packData in CLN:IterateVoiceoverPacks() do
             if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
                 fileNameFound = true
                 break
@@ -752,7 +752,7 @@ function PlayButton:UpdateQuestDetailPlayStopState()
 
     local hasVoiceover = false
     if CLN.VoiceoverPacks then
-        for _, packData in pairs(CLN.VoiceoverPacks) do
+        for _, packData in CLN:IterateVoiceoverPacks() do
             local questFileName = questID .. "_Desc.ogg"
             if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
                 hasVoiceover = true

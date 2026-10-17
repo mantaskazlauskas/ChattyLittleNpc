@@ -23,6 +23,12 @@ local TABS = {
         tip    = "Playback behaviour, audio channel, keybind and gossip settings.",
     },
     {
+        key    = "language",
+        label  = "Language",
+        groups = { "VoiceoverLanguage", "InstalledVoiceoverPacks" },
+        tip    = "Voiceover language and the voiceover packs installed in your AddOns folder.",
+    },
+    {
         key    = "display",
         label  = "Display",
         groups = { "VoiceoverFrame", "FrameLayout", "Accessibility", "Advanced" },
@@ -326,7 +332,7 @@ function SettingsWindow:Refresh()
 end
 
 --- Switch to a specific tab and open the window.
----@param tabKey string  One of: "general", "display", "npcs", "profiles", "developer"
+---@param tabKey string  One of: "general", "language", "display", "npcs", "profiles", "developer"
 function SettingsWindow:OpenTab(tabKey)
     buildFrame()
     activateTab(tabKey)

@@ -321,7 +321,7 @@ VoiceoverPlayer._suspendedPlayback = nil
 ---@return number|nil duration  Seconds, or nil if not available
 function VoiceoverPlayer:LookupFileDuration(fileName)
     if not fileName then return nil end
-    for _, packData in pairs(CLN.VoiceoverPacks) do
+    for _, packData in CLN:IterateVoiceoverPacks() do
         if packData.VoiceoverDurations then
             local dur = packData.VoiceoverDurations[fileName]
             if dur then return dur end
@@ -761,10 +761,10 @@ function VoiceoverPlayer:ResumePlayback()
             self:SetPlaybackState(cp, self.State.DROPPED)
             self:PushToHistory(cp)
             self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-            self:ProcessQueueAfterResume()
+            self:AdvanceQueue()
         end
     else
-        self:ProcessQueueAfterResume()
+        self:AdvanceQueue()
     end
 
     if CLN and CLN.Logger then
@@ -833,7 +833,7 @@ function VoiceoverPlayer:CompleteTextContinuation()
     self.currentlyPlaying = self:GetCurrentlyPlayingObject()
     self:NotifyQueueDirty()
     self:NotifyDisplayDirty()
-    self:ProcessQueueAfterResume()
+    self:AdvanceQueue()
 
     if CLN and CLN.Logger then
         CLN.Logger:debug("Text continuation completed", false, CLN.Utils.LogCategories.loader)
@@ -851,7 +851,7 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         local fileName = cp.questId .. "_" .. cp.phase .. ".ogg"
         local fileLocation = "\\voiceovers\\" .. fileName
         local foundPath = nil
-        for packName, packData in pairs(CLN.VoiceoverPacks) do
+        for packName, packData in CLN:IterateVoiceoverPacks() do
             local found = (packData._voiceoverIndex and packData._voiceoverIndex[fileName])
                 or (CLN.Utils and CLN.Utils.ContainsString and CLN.Utils:ContainsString(packData.Voiceovers, fileName))
             if found then
@@ -909,13 +909,6 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         return true
     end
     return false
-end
-
---- If nothing to replay, try to advance the queue, then check suspended.
---- @deprecated Use AdvanceQueue() instead. Kept as a thin wrapper for any
---- callers that haven't migrated yet.
-function VoiceoverPlayer:ProcessQueueAfterResume()
-    self:AdvanceQueue()
 end
 
 -- ============================================================================
@@ -1358,7 +1351,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
 
     -- Find the voiceover file first, before stopping current audio
     local foundPath = nil
-    for packName, packData in pairs(CLN.VoiceoverPacks) do
+    for packName, packData in CLN:IterateVoiceoverPacks() do
         local fileNameFound = packData._voiceoverIndex and packData._voiceoverIndex[fileName]
         if (fileNameFound) then
             foundPath = addonsFolderPath .. packName .. fileLocation

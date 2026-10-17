@@ -78,7 +78,8 @@
         "GuideFrame",
         "TorghastLevelPickerFrame",
         "DelvesDifficultyPickerFrame",
-        "CustomGossipFrameManager"
+        "CustomGossipFrameManager",
+        "English"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

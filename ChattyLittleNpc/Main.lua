@@ -9,8 +9,6 @@ CLN.Options = nil
 CLN.locale = nil
 CLN.gameVersion = nil
 CLN.useNamespaces = nil
-CLN.expansions = { "Battle_for_Azeroth_voiceovers", "Cataclysm_voiceovers", "Vanilla_voiceovers", "Dragonflight_voiceovers", "Legion_voiceovers", "Mists_of_Pandaria_voiceovers", "Shadowlands_voiceovers", "The_Burning_Crusade_voiceovers", "The_War_Within_voiceovers", "Warlords_of_Draenor_voiceovers", "Wrath_of_the_Lich_King_voiceovers" }
-CLN.loadedVoiceoverPacks = {}
 CLN.VoiceoverPacks = {}
 CLN.questsQueue = {}
 -- Default voiceover window size: new profiles, reset buttons and fallbacks.
@@ -24,36 +22,13 @@ CLN.currentItemInfo = {
     ItemText = nil
 }
 
--- Diagnostic function to check voiceover pack status
-function CLN:CheckVoiceoverPacks()
-    if not self.Logger then return end
-    self.Logger:info("Checking for voiceover packs...")
-    local foundCount = 0
-    for _, expansion in ipairs(self.expansions) do
-        local packName = "ChattyLittleNpc_" .. expansion
-        local isLoaded = C_AddOns.IsAddOnLoaded(packName)
-        if isLoaded then
-            foundCount = foundCount + 1
-            local addon = _G[packName]
-            local voCount = (addon and addon.Voiceovers and #addon.Voiceovers) or 0
-            self.Logger:info("|cff00ff00✓|r " .. packName .. " - " .. voCount .. " voiceovers")
-        else
-            self.Logger:info("|cffff0000✗|r " .. packName .. " - Not loaded")
-        end
-    end
-    if foundCount == 0 then
-        self.Logger:warn("No voiceover packs found!")
-        self.Logger:info("You need to install voiceover pack addons separately.")
-    else
-        self.Logger:info("|cff00ff00Found " .. foundCount .. " voiceover pack(s)|r")
-    end
-end
-
 local defaults = {
     profile = {
         schemaVersion = 1,
         autoPlayVoiceovers = true,
         playVoiceoverAfterDelay = 0,
+        voiceoverLanguage = "auto",         -- locale code (e.g. "deDE") or "auto" for the game client's language
+        voiceoverLanguageFallback = true,   -- use English packs when the selected language has no file
         printMissingFiles = false,
         logNpcTexts = true,
         printNpcTexts = false,
@@ -505,50 +480,6 @@ function CLN:GetTitleForQuestID(questID)
         end
     end
     return title
-end
-
---[[
-    Retrieves the list of loaded expansion voiceover packs for the ChattyLittleNpc addon.
-
-    @return table: A table containing the loaded expansion voiceover packs.
-]]
-function CLN:GetLoadedExpansionVoiceoverPacks()
-    for _, expansion in ipairs(self.expansions) do
-        local voiceoverPackName = "ChattyLittleNpc_" .. expansion
-        local isLoaded = C_AddOns.IsAddOnLoaded(voiceoverPackName)
-        if (isLoaded) then
-            table.insert(self.loadedVoiceoverPacks, expansion)
-            if (self.db.profile.debugMode and self.Logger) then
-                local C = self.Utils and self.Utils.LogCategories or { loader = 'loader' }
-                self.Logger:debug("Loaded voiceover pack: " .. tostring(expansion), false, C.loader or 'misc')
-            end
-
-            local addon = _G[voiceoverPackName]
-            if addon then
-                self.VoiceoverPacks[voiceoverPackName] = addon
-                if addon.Voiceovers then
-                    addon._voiceoverIndex = {}
-                    for _, name in ipairs(addon.Voiceovers) do
-                        addon._voiceoverIndex[name] = true
-                    end
-                end
-            end
-        end      
-    end
-
-    if (self.db.profile.debugMode and self.Logger) then self:PrintLoadedVoiceoverPacks() end
-end
-
-function CLN:PrintLoadedVoiceoverPacks()
-    for packName, packData in pairs(self.VoiceoverPacks) do
-        if packData.Metadata then
-            if self.Logger then self.Logger:info("Metadata for " .. tostring(packName), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
-            self.Utils:PrintTable(packData.Metadata)
-        end
-        if packData.Voiceovers then
-            if self.Logger then self.Logger:info("VO count for " .. tostring(packName) .. ": " .. tostring(#packData.Voiceovers), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
-        end
-    end
 end
 
 --[[

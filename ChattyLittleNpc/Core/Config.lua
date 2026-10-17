@@ -451,8 +451,10 @@ function ConfigSystem._RefreshVisibleControls(contentFrame)
         local control = entry.control
         local opt = entry.opt
         if control and control.IsShown and control:IsShown() then
+            if control._textFn then
+                control:SetText(control._textFn() or "")
             -- Re-trigger OnShow to update disabled state
-            if control:GetScript("OnShow") then
+            elseif control:GetScript("OnShow") then
                 control:GetScript("OnShow")(control)
             end
         end
@@ -750,7 +752,10 @@ function ConfigSystem:CreateControl(parent, opt)
     elseif opt.type == "description" then
         local text = opt.name or ""
         if type(text) == "function" then text = text() or "" end
-        return self:CreateDescription(parent, text)
+        local desc = self:CreateDescription(parent, text)
+        -- Dynamic text is re-read by _RefreshVisibleControls (FontStrings have no OnShow).
+        if type(opt.name) == "function" then desc._textFn = opt.name end
+        return desc
     elseif opt.type == "header" then
         local text = opt.name or ""
         if type(text) == "function" then text = text() or "" end
@@ -867,8 +872,9 @@ function ConfigSystem:LayoutGroupsInFrame(frame, groupKeys, allArgs)
                                 yOffset       = yOffset - h
                                 contentHeight = contentHeight + h
                             elseif opt.type == "description" then
-                                yOffset       = yOffset - 40
-                                contentHeight = contentHeight + 40
+                                local h = math.max(40, math.ceil((control:GetStringHeight() or 0) + 12))
+                                yOffset       = yOffset - h
+                                contentHeight = contentHeight + h
                             elseif opt.type == "keybinding" then
                                 yOffset       = yOffset - 32
                                 contentHeight = contentHeight + 32

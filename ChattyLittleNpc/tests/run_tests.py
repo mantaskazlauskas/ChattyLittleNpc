@@ -1368,8 +1368,9 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
                 return "Quest " .. tostring(questId)
             end
 
+            function GetLocale() return "enUS" end
             CLN.VoiceoverPacks = {
-                TestPack = {
+                ChattyLittleNpc_Test_voiceovers = {
                     _voiceoverIndex = {
                         ["100_Desc.ogg"] = true,
                         ["300_Comp.ogg"] = true,
@@ -1381,6 +1382,7 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
             function PlaySoundFile() return true, 4242 end
             function StopSound() end
         """)
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
         load_file(cls.lua, "src/ReplayFrame/init.lua")
         cls.lua.execute("""
@@ -2792,6 +2794,126 @@ class TestPlayButtonAnchoring(unittest.TestCase):
             return _G[PB.GossipButton]:IsShown(), _G[PB.QuestLogFrameButton]:IsShown()
         """)
         self.assertEqual(result, (True, False))
+
+
+class TestVoiceoverPackLanguages(unittest.TestCase):
+    """Pack name parsing, language resolution and lookup order in VoiceoverPacks.lua."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+
+    def setUp(self):
+        # Installed addons: two legacy English packs, a new-style enUS pack, a German pack
+        # and a disabled French pack. Only loaded packs are registered.
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.VoiceoverPacks = {}
+            CLN._activePacksKey = nil
+            CLN.db.profile.voiceoverLanguage = "auto"
+            CLN.db.profile.voiceoverLanguageFallback = true
+            _clientLocale = "enUS"
+            function GetLocale() return _clientLocale end
+            local addons = {
+                { "ChattyLittleNpc", true },
+                { "ChattyLittleNpc_Vanilla_voiceovers", true },
+                { "ChattyLittleNpc_The_War_Within_voiceovers", true },
+                { "ChattyLittleNpc_Legion_enUS_voiceovers", true },
+                { "ChattyLittleNpc_Vanilla_deDE_voiceovers", true },
+                { "ChattyLittleNpc_Vanilla_frFR_voiceovers", false },
+            }
+            C_AddOns = {
+                GetNumAddOns = function() return #addons end,
+                GetAddOnInfo = function(i)
+                    local a = addons[i]
+                    return a[1], a[1], "", a[2], (not a[2]) and "DISABLED" or nil
+                end,
+                IsAddOnLoaded = function(name)
+                    for _, a in ipairs(addons) do if a[1] == name then return a[2] end end
+                    return false
+                end,
+                GetAddOnMetadata = function() return "1.0" end,
+            }
+            for _, a in ipairs(addons) do
+                if a[2] and a[1] ~= "ChattyLittleNpc" then
+                    _G[a[1]] = { Voiceovers = { "1_Desc.ogg" } }
+                    CLN:RegisterVoiceoverPack(a[1])
+                end
+            end
+        """)
+
+    def _parse(self, name):
+        return lua_call(self.lua, f'return ChattyLittleNpc:ParseVoiceoverPackName("{name}")')
+
+    def _order(self):
+        return lua_call(self.lua, """
+            local names = {}
+            for name in ChattyLittleNpc:IterateVoiceoverPacks() do names[#names + 1] = name end
+            return table.concat(names, ",")
+        """)
+
+    def test_parse_legacy_name_is_english(self):
+        self.assertEqual(self._parse("ChattyLittleNpc_Battle_for_Azeroth_voiceovers"), ("Battle_for_Azeroth", "enUS"))
+
+    def test_parse_locale_suffix(self):
+        self.assertEqual(self._parse("ChattyLittleNpc_The_War_Within_deDE_voiceovers"), ("The_War_Within", "deDE"))
+        self.assertEqual(self._parse("ChattyLittleNpc_Vanilla_enUS_voiceovers"), ("Vanilla", "enUS"))
+
+    def test_parse_unknown_suffix_stays_in_expansion(self):
+        # "Within" is not a locale code, so it must not be split off.
+        self.assertEqual(self._parse("ChattyLittleNpc_The_War_Within_voiceovers"), ("The_War_Within", "enUS"))
+
+    def test_parse_non_pack(self):
+        self.assertEqual(self._parse("ChattyLittleNpc"), (None, None))
+
+    def test_installed_list_includes_disabled_packs(self):
+        result = lua_call(self.lua, """
+            local out = {}
+            for _, p in ipairs(ChattyLittleNpc:GetInstalledVoiceoverPacks()) do
+                out[#out + 1] = p.locale .. ":" .. p.expansion .. ":" .. tostring(p.loaded)
+            end
+            return table.concat(out, ",")
+        """)
+        self.assertEqual(result, "deDE:Vanilla:true,enUS:Vanilla:true,enUS:Legion:true,enUS:The_War_Within:true,frFR:Vanilla:false")
+
+    def test_auto_uses_english_on_english_client(self):
+        self.assertEqual(self._order(), "ChattyLittleNpc_Legion_enUS_voiceovers,ChattyLittleNpc_The_War_Within_voiceovers,ChattyLittleNpc_Vanilla_voiceovers")
+
+    def test_auto_uses_client_locale_when_packs_exist(self):
+        lua_call(self.lua, '_clientLocale = "deDE"')
+        self.assertEqual(lua_call(self.lua, "return ChattyLittleNpc:GetVoiceoverLanguage()"), "deDE")
+        self.assertTrue(self._order().startswith("ChattyLittleNpc_Vanilla_deDE_voiceovers,"))
+
+    def test_auto_falls_back_to_english_without_client_packs(self):
+        # French packs are installed but disabled, so French is not usable.
+        lua_call(self.lua, '_clientLocale = "frFR"')
+        self.assertEqual(lua_call(self.lua, "return ChattyLittleNpc:GetVoiceoverLanguage()"), "enUS")
+
+    def test_selected_language_first_then_english_fallback(self):
+        lua_call(self.lua, 'ChattyLittleNpc.db.profile.voiceoverLanguage = "deDE"')
+        self.assertEqual(self._order(), "ChattyLittleNpc_Vanilla_deDE_voiceovers,ChattyLittleNpc_Legion_enUS_voiceovers,ChattyLittleNpc_The_War_Within_voiceovers,ChattyLittleNpc_Vanilla_voiceovers")
+
+    def test_fallback_disabled_uses_only_selected_language(self):
+        lua_call(self.lua, """
+            ChattyLittleNpc.db.profile.voiceoverLanguage = "deDE"
+            ChattyLittleNpc.db.profile.voiceoverLanguageFallback = false
+        """)
+        self.assertEqual(self._order(), "ChattyLittleNpc_Vanilla_deDE_voiceovers")
+
+    def test_order_updates_when_setting_changes(self):
+        self._order()
+        lua_call(self.lua, 'ChattyLittleNpc.db.profile.voiceoverLanguage = "deDE"')
+        self.assertTrue(self._order().startswith("ChattyLittleNpc_Vanilla_deDE_voiceovers"))
+
+    def test_pack_list_text_marks_status(self):
+        lua_call(self.lua, 'ChattyLittleNpc.db.profile.voiceoverLanguage = "deDE"; ADDON_DISABLED = "Disabled"')
+        text = lua_call(self.lua, "return ChattyLittleNpc:GetVoiceoverPackListText()")
+        self.assertIn("German (deDE)", text)
+        self.assertIn("In use", text)
+        self.assertIn("Fallback", text)
+        self.assertIn("Disabled", text)
+        self.assertIn("The War Within", text)
 
 
 if __name__ == "__main__":

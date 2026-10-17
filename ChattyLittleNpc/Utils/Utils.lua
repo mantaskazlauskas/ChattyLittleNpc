@@ -418,7 +418,7 @@ function Utils:GetPathToNonQuestFile(npcId, type, hashes, gender)
             fileNameWithGender = npcId .. "_" .. type .. "_" .. hash .. "_" .. gender .. ".ogg"
         end
 
-        for packName, packData in pairs(CLN.VoiceoverPacks) do
+        for packName, packData in CLN:IterateVoiceoverPacks() do
             ---@type string
             local path = addonsFolderPath .. packName .. "\\voiceovers\\"
             if (not CLN.Utils:IsNilOrEmpty(fileNameWithGender)
