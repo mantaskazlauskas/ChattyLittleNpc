@@ -81,6 +81,7 @@ src/PlayButton.lua
 src/Keybinds.lua
 src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua
+src/VoiceoverLibrary.lua
 src/Editor.lua
 src/RaceModelManager.lua
 

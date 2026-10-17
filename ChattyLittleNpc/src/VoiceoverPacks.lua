@@ -36,6 +36,7 @@ local EXPANSION_ORDER = {
     Mists_of_Pandaria = 5, Warlords_of_Draenor = 6, Legion = 7, Battle_for_Azeroth = 8,
     Shadowlands = 9, Dragonflight = 10, The_War_Within = 11, Midnight = 12,
 }
+CLN.VoiceoverExpansionOrder = EXPANSION_ORDER
 
 --- Display name for a locale code, e.g. "German (deDE)".
 ---@param locale string

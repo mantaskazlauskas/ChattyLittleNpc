@@ -363,8 +363,9 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
     -- Re-stamp the gossip cooldown when the line finishes naturally, so long
     -- lines are timed from their end. (It is also stamped when the line starts
     -- in PlayNonQuestSound, so interrupted lines are covered too.)
+    -- Library lines are skipped: their title is the NPC name, not the spoken text.
     if stoppedVoiceover and stoppedVoiceover.entryType == "Gossip"
-        and stoppedVoiceover.npcId and stoppedVoiceover.title then
+        and stoppedVoiceover.npcId and stoppedVoiceover.title and not stoppedVoiceover._libraryEntry then
         local hashes = CLN.Utils:GetHashes(stoppedVoiceover.npcId, stoppedVoiceover.title)
         CLN.VoiceoverPlayer:RecordGossipCooldown(hashes)
     end

@@ -3054,6 +3054,213 @@ class TestGossipCooldown(unittest.TestCase):
         self.assertEqual(self._migrate("nil"), (10, None))
 
 
+class TestVoiceoverLibrary(unittest.TestCase):
+    """Index, parsing and filtering in VoiceoverLibrary.lua."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverLibrary.lua")
+
+    def setUp(self):
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.locale = "enUS"
+            NpcInfoDB = { [68] = { enUS = { name = "Stormwind City Guard" } } }
+            CLN.NpcMetadataCache = { db = { [1747] = { name = "Anduin Wrynn" } }, Lookup = function(self, id) return self.db[id] end }
+            C_QuestLog = { GetTitleForQuestID = function(id) return ({ [783] = "A Threat Within" })[id] end }
+            CLN.VoiceoverPacks = {
+                ChattyLittleNpc_Vanilla_voiceovers = { Voiceovers = {
+                    "783_Desc.ogg", "783_Comp.ogg", "7830_Prog.ogg",
+                    "68_Gossip_abc123_Male.ogg", "1747_QuestGreeting.ogg",
+                    "207401_GameObject_d3d71c.ogg", "162981_Item_13cc42.ogg",
+                }, VoiceoverDurations = { ["783_Desc.ogg"] = 12.4 } },
+                ChattyLittleNpc_Legion_voiceovers = { Voiceovers = { "40000_Desc.ogg" } },
+                ChattyLittleNpc_Vanilla_deDE_voiceovers = { Voiceovers = { "783_Desc.ogg" } },
+            }
+            local L = CLN.VoiceoverLibrary
+            L._index = nil
+            L._titles = {}
+            L._requested = {}
+        """)
+
+    def _filter(self, query="", type_="all", expansion="all", locale="all"):
+        return lua_call(self.lua, f"""
+            local L = ChattyLittleNpc.VoiceoverLibrary
+            local packs = L:GetIndex()
+            local p, f = L:Filter({{ query = [[{query}]], type = "{type_}", expansion = "{expansion}", locale = "{locale}" }})
+            local out = {{}}
+            for n = 1, #p do
+                local pack = packs[p[n]]
+                out[n] = (pack.locale ~= "enUS" and pack.locale .. ":" or "") .. pack.data.Voiceovers[f[n]]
+            end
+            table.sort(out)
+            return table.concat(out, ",")
+        """)
+
+    def test_parse_kinds(self):
+        result = lua_call(self.lua, """
+            local L = ChattyLittleNpc.VoiceoverLibrary
+            local out = {}
+            for _, f in ipairs({ "783_Desc.ogg", "783_Prog.ogg", "783_Comp.ogg", "68_Gossip_ab_Male.ogg",
+                                 "1747_QuestGreeting.ogg", "207401_GameObject_d3.ogg", "162981_Item_13.ogg", "weird.ogg" }) do
+                local kind, id = L:ParseFile(f)
+                out[#out + 1] = kind .. ":" .. tostring(id)
+            end
+            return table.concat(out, ",")
+        """)
+        self.assertEqual(result, "1:783,2:783,3:783,4:68,5:1747,6:207401,7:162981,8:nil")
+
+    def test_index_orders_packs_by_expansion(self):
+        result = lua_call(self.lua, """
+            local names = {}
+            for _, p in ipairs(ChattyLittleNpc.VoiceoverLibrary:GetIndex()) do names[#names + 1] = p.name end
+            return table.concat(names, ",")
+        """)
+        self.assertEqual(result, "ChattyLittleNpc_Vanilla_voiceovers,ChattyLittleNpc_Vanilla_deDE_voiceovers,ChattyLittleNpc_Legion_voiceovers")
+
+    def test_no_filter_returns_everything(self):
+        self.assertEqual(len(self._filter().split(",")), 9)
+
+    def test_numeric_query_matches_id_prefix(self):
+        self.assertEqual(self._filter("783"), "7830_Prog.ogg,783_Comp.ogg,783_Desc.ogg,deDE:783_Desc.ogg")
+
+    def test_type_filter(self):
+        self.assertEqual(self._filter(type_="gossip"), "68_Gossip_abc123_Male.ogg")
+        self.assertEqual(self._filter(type_="greeting"), "1747_QuestGreeting.ogg")
+        self.assertEqual(self._filter(type_="quest", expansion="Legion"), "40000_Desc.ogg")
+
+    def test_language_filter(self):
+        self.assertEqual(self._filter(locale="deDE"), "deDE:783_Desc.ogg")
+
+    def test_text_query_matches_known_npc_names(self):
+        self.assertEqual(self._filter("city guard"), "68_Gossip_abc123_Male.ogg")
+        self.assertEqual(self._filter("ANDUIN"), "1747_QuestGreeting.ogg")
+
+    def test_text_query_matches_quest_titles_in_client_cache(self):
+        # Titles are prefilled from the client cache on the first text search,
+        # so quests never drawn in the list are still found.
+        lua_call(self.lua, "ChattyLittleNpc.VoiceoverLibrary._titlesPrefilled = nil")
+        self.assertEqual(self._filter("threat", locale="enUS"), "783_Comp.ogg,783_Desc.ogg")
+
+    def test_entry_details(self):
+        result = lua_call(self.lua, """
+            local L = ChattyLittleNpc.VoiceoverLibrary
+            local pack = L:GetIndex()[1]
+            local e1 = L:GetEntry(pack, 1)
+            local e4 = L:GetEntry(pack, 4)
+            return e1.name, e1.phase, e1.duration, e1.path, e4.name, e4.entryType, e4.gender
+        """)
+        self.assertEqual(result, ("A Threat Within", "Desc", 12.4,
+            r"Interface\AddOns\ChattyLittleNpc_Vanilla_voiceovers\voiceovers\783_Desc.ogg",
+            "Stormwind City Guard", "Gossip", "Male"))
+
+    def test_unknown_names_fall_back_to_ids(self):
+        result = lua_call(self.lua, """
+            local L = ChattyLittleNpc.VoiceoverLibrary
+            return (L:GetEntryName(1, 40000)), (L:GetEntryName(4, 999)), (L:GetEntryName(6, 207401))
+        """)
+        self.assertEqual(result, ("Quest 40000", "NPC 999", "Object 207401"))
+
+
+class TestPlayLibraryFile(unittest.TestCase):
+    """VoiceoverPlayer:PlayLibraryFile and how library lines survive pause/resume."""
+
+    GOSSIP = '{ path = "Interface\\\\AddOns\\\\P\\\\voiceovers\\\\68_Gossip_ab_Male.ogg", fileName = "68_Gossip_ab_Male.ogg", kind = 4, id = 68, name = "Guard", entryType = "Gossip", gender = "Male" }'
+    QUEST = '{ path = "Interface\\\\AddOns\\\\P\\\\voiceovers\\\\783_Desc.ogg", fileName = "783_Desc.ogg", kind = 1, id = 783, name = "A Threat Within", phase = "Desc", duration = 12 }'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("ChattyLittleNpc.EventSystem = { New = function() return {} end }")
+        load_file(cls.lua, "Main.lua")
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+
+    def setUp(self):
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.db.profile.audioChannel = "MASTER"
+            CLN.Utils.LogCategories = CLN.Utils.LogCategories or { loader = "loader" }
+            function GetLocale() return "enUS" end
+            _now = 100
+            function GetTime() return _now end
+            _played, _stopped, _resumed, _hist = {}, 0, 0, {}
+            function PlaySoundFile(path) table.insert(_played, path) return true, 500 + #_played end
+            function StopSound() _stopped = _stopped + 1 end
+            C_Sound = { IsPlaying = function() return true end }
+            CLN.EventHandler = { ResumeTimers = function() _resumed = _resumed + 1 end }
+            CLN.ReplayFrame = { PushHistory = function(_, e) table.insert(_hist, e) end }
+            local VP = CLN.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP._suspendedPlayback = nil
+            VP._nativeVOResumeTimer = nil
+        """)
+
+    def test_gossip_entry_has_no_spoken_text(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            local ok = VP:PlayLibraryFile({self.GOSSIP})
+            local cp = VP.currentlyPlaying
+            return ok, cp.entryType, cp.npcId, cp._libraryNoText, cp._libraryEntry ~= nil, _played[1]
+        """)
+        self.assertEqual(result[:5], (True, "Gossip", 68, True, True))
+        self.assertTrue(result[5].endswith("68_Gossip_ab_Male.ogg"))
+
+    def test_quest_entry_sets_quest_fields(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            VP:PlayLibraryFile({self.QUEST})
+            local cp = VP.currentlyPlaying
+            return cp.entryType, cp.questId, cp.phase, cp.title, cp._libraryNoText, cp._estimatedDuration
+        """)
+        self.assertEqual(result, ("quest", 783, "Desc", "A Threat Within", False, 12))
+
+    def test_playing_while_paused_resumes_timers_and_logs_old_line(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            local old = VP:GetCurrentlyPlayingObject()
+            old.title = "Old line"; old.npcId = 1; old.entryType = "Gossip"
+            VP.currentlyPlaying = old
+            VP:SetPlaybackState(old, VP.State.PAUSED_USER)
+            VP:PlayLibraryFile({self.GOSSIP})
+            return _resumed, #_hist, _hist[1] and _hist[1].title
+        """)
+        self.assertEqual(result, (1, 1, "Old line"))
+
+    def test_resume_after_user_pause_replays_same_file(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            VP:PlayLibraryFile({self.GOSSIP})
+            local cp = VP.currentlyPlaying
+            cp.soundHandle = nil
+            VP:SetPlaybackState(cp, VP.State.PAUSED_USER)
+            local ok = VP:ReplayPausedEntry(cp)
+            return ok, #_played, _played[1] == _played[2], #_hist, VP.currentlyPlaying._libraryEntry ~= nil
+        """)
+        self.assertEqual(result, (True, 2, True, 0, True))
+
+    def test_suspend_and_resume_keeps_library_file(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            VP:PlayLibraryFile({self.GOSSIP})
+            VP:SuspendCurrentPlayback()
+            VP:ResumeSuspendedPlayback()
+            return #_played, _played[1] == _played[2], VP.currentlyPlaying._libraryEntry ~= nil
+        """)
+        self.assertEqual(result, (2, True, True))
+
+    def test_history_keeps_library_entry(self):
+        result = lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            VP:PlayLibraryFile({self.GOSSIP})
+            VP:PlayLibraryFile({self.QUEST})
+            return #_hist, _hist[1].libraryEntry and _hist[1].libraryEntry.fileName
+        """)
+        self.assertEqual(result, (1, "68_Gossip_ab_Male.ogg"))
+
+
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)
     unittest.main(verbosity=2)

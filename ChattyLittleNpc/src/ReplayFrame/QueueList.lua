@@ -257,7 +257,10 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                             end
                         end
                     end
-                    if e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                    if e.libraryEntry and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayLibraryFile then
+                        -- Played from the library: replay that exact file.
+                        CLN.VoiceoverPlayer:PlayLibraryFile(e.libraryEntry)
+                    elseif e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
                         CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID, e.gender, e.creatureType)
                     elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
                         CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender, e.displayID, e.creatureType, { skipCooldown = true })

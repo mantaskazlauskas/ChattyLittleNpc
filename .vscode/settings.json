@@ -79,7 +79,11 @@
         "TorghastLevelPickerFrame",
         "DelvesDifficultyPickerFrame",
         "CustomGossipFrameManager",
-        "English"
+        "English",
+        "FauxScrollFrame_SetOffset",
+        "FauxScrollFrame_Update",
+        "FauxScrollFrame_GetOffset",
+        "FauxScrollFrame_OnVerticalScroll"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

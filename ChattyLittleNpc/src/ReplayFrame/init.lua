@@ -560,6 +560,7 @@ function ReplayFrame:BuildQueueEntries()
                 gender = h.gender,
                 title = h.title,
                 displayID = h.displayID,
+                libraryEntry = h.libraryEntry,
             })
         end
     end
@@ -802,7 +803,7 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         -- Show subtitle if enabled and not already showing
         if self.ShowSubtitle and not self._subtitleSentences then
             local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-            if cur2 and cur2.title then
+            if cur2 and cur2.title and not cur2._libraryNoText then
                 self:ShowSubtitle(cur2.title)
             end
         end
@@ -914,7 +915,7 @@ function ReplayFrame:ApplyProfileSettings()
         if self.HideSubtitle then self:HideSubtitle() end
     else
         local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        if cur and cur.title and self.ShowSubtitle then
+        if cur and cur.title and not cur._libraryNoText and self.ShowSubtitle then
             self:ShowSubtitle(cur.title)
         end
     end

@@ -29,6 +29,13 @@ local TABS = {
         tip    = "Voiceover language and the voiceover packs installed in your AddOns folder.",
     },
     {
+        key    = "library",
+        label  = "Library",
+        -- Custom content: built by VoiceoverLibrary instead of option groups.
+        build  = function(parent) if CLN.VoiceoverLibrary then CLN.VoiceoverLibrary:Build(parent) end end,
+        tip    = "Browse, search and play every installed voiceover.",
+    },
+    {
         key    = "display",
         label  = "Display",
         groups = { "VoiceoverFrame", "FrameLayout", "Accessibility", "Advanced" },
@@ -90,6 +97,10 @@ end
 
 --- Build the controls for one tab's scroll content on first activation.
 local function buildTabContent(tabDef, panel)
+    if tabDef.build then
+        tabDef.build(panel.content)
+        return
+    end
     local opts = CLN.OptionsDefinition
     if not (opts and opts.args) then return end
     -- Fresh ConfigSystem instance per tab so counters stay independent.
@@ -268,18 +279,27 @@ local function buildFrame()
     local contentW = WIN_WIDTH - PADDING * 2 - SCROLLBAR_W
 
     for _, tab in ipairs(TABS) do
-        local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
-        sf:SetPoint("TOPLEFT",     f, "TOPLEFT",     PADDING,       contentTopY)
-        sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(PADDING + SCROLLBAR_W), contentBottomY)
-        sf:Hide()
+        if tab.build then
+            -- Custom tabs manage their own scrolling: a plain frame over the content area.
+            local panelFrame = CreateFrame("Frame", nil, f)
+            panelFrame:SetPoint("TOPLEFT",     f, "TOPLEFT",     PADDING,  contentTopY)
+            panelFrame:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, contentBottomY)
+            panelFrame:Hide()
+            _tabPanels[tab.key] = { sf = panelFrame, content = panelFrame, built = false }
+        else
+            local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+            sf:SetPoint("TOPLEFT",     f, "TOPLEFT",     PADDING,       contentTopY)
+            sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(PADDING + SCROLLBAR_W), contentBottomY)
+            sf:Hide()
 
-        local content = CreateFrame("Frame", nil, sf)
-        content:SetWidth(contentW)
-        content:SetHeight(1)  -- grows after buildTabContent
-        sf:SetScrollChild(content)
-        content._trackedControls = {}
+            local content = CreateFrame("Frame", nil, sf)
+            content:SetWidth(contentW)
+            content:SetHeight(1)  -- grows after buildTabContent
+            sf:SetScrollChild(content)
+            content._trackedControls = {}
 
-        _tabPanels[tab.key] = { sf = sf, content = content, built = false }
+            _tabPanels[tab.key] = { sf = sf, content = content, built = false }
+        end
     end
 
     -- Refresh active tab controls whenever the window is shown.
@@ -334,7 +354,7 @@ function SettingsWindow:Refresh()
 end
 
 --- Switch to a specific tab and open the window.
----@param tabKey string  One of: "general", "language", "display", "npcs", "profiles", "developer"
+---@param tabKey string  One of: "general", "language", "library", "display", "npcs", "profiles", "developer"
 function SettingsWindow:OpenTab(tabKey)
     buildFrame()
     activateTab(tabKey)
