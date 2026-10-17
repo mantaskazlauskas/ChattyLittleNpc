@@ -199,7 +199,8 @@ function EventHandler:GOSSIP_SHOW()
     local soundType = (unitType == "GameObject") and "GameObject" or "Gossip"
 
     CLN.PlayButton:CreateDialogPlayButton("gossip", CLN.PlayButton.GossipButton, function()
-        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, soundType, text, gender, displayID, creatureType)
+        -- Explicit click always plays; the cooldown only throttles auto-play.
+        CLN.VoiceoverPlayer:PlayNonQuestSound(unitId, soundType, text, gender, displayID, creatureType, { skipCooldown = true })
     end)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
@@ -359,9 +360,9 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
         CLN.VoiceoverPlayer:PushToHistory(stoppedVoiceover)
     end
 
-    -- Record gossip cooldown only when the sound finishes naturally.
-    -- Interrupted gossip (paused, skipped, force-stopped) never reaches here
-    -- because those paths clear currentlyPlaying before the watcher fires.
+    -- Re-stamp the gossip cooldown when the line finishes naturally, so long
+    -- lines are timed from their end. (It is also stamped when the line starts
+    -- in PlayNonQuestSound, so interrupted lines are covered too.)
     if stoppedVoiceover and stoppedVoiceover.entryType == "Gossip"
         and stoppedVoiceover.npcId and stoppedVoiceover.title then
         local hashes = CLN.Utils:GetHashes(stoppedVoiceover.npcId, stoppedVoiceover.title)

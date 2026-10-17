@@ -391,18 +391,25 @@ local options = {
                     get = function(info) return CLN.db.profile.gossipCooldownEnabled end,
                     set = function(info, value) CLN.db.profile.gossipCooldownEnabled = value end,
                 },
-                gossipCooldownMinutes = {
+                gossipCooldownSeconds = {
                     order = 8,
-                    type = 'range',
+                    type = 'select',
                     width = 'double',
-                    name = 'Gossip Cooldown (minutes)',
-                    desc = 'How long to wait before allowing the same gossip line to play again. Set to 0 for infinite (entire session, until reload/logout).',
-                    min = 0,
-                    max = 120,
-                    step = 1,
+                    name = 'Gossip Cooldown',
+                    desc = 'How long the same gossip line stays silent after it finished playing. '
+                        .. 'Short cooldowns stop repeated lines when clicking quickly through dialog options (e.g. guards).',
+                    values = {
+                        [5] = '5 seconds',
+                        [10] = '10 seconds',
+                        [30] = '30 seconds',
+                        [60] = '1 minute',
+                        [300] = '5 minutes',
+                        [0] = 'Until reload',
+                    },
+                    sorting = { 5, 10, 30, 60, 300, 0 },
                     disabled = function() return not CLN.db.profile.gossipCooldownEnabled end,
-                    get = function(info) return CLN.db.profile.gossipCooldownMinutes end,
-                    set = function(info, value) CLN.db.profile.gossipCooldownMinutes = value end,
+                    get = function(info) return CLN.db.profile.gossipCooldownSeconds or 10 end,
+                    set = function(info, value) CLN.db.profile.gossipCooldownSeconds = value end,
                 },
                 gossipQueueMode = {
                     order = 9,
@@ -1295,6 +1302,7 @@ function Options:SetupOptions()
 
     -- After any profile switch, re-apply frame-driven settings and refresh the window.
     local function onProfileChange()
+        if CLN._MigrateGossipCooldown then CLN:_MigrateGossipCooldown() end
         if CLN.ReplayFrame and CLN.ReplayFrame.ApplyProfileSettings then
             CLN.ReplayFrame:ApplyProfileSettings()
         end

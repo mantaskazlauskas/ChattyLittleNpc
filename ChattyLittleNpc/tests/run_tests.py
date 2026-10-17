@@ -1343,7 +1343,7 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
             CLN.db.profile.questPlaybackMode = "queue"
             CLN.db.profile.gossipQueueMode = "all"
             CLN.db.profile.gossipCooldownEnabled = false
-            CLN.db.profile.gossipCooldownMinutes = 0
+            CLN.db.profile.gossipCooldownSeconds = 0
             CLN.db.profile.textContinuationEnabled = true
             CLN.db.profile.textContinuationThreshold = 0.75
             CLN.db.profile.queueHistoryMaxEntries = 20
@@ -2914,6 +2914,144 @@ class TestVoiceoverPackLanguages(unittest.TestCase):
         self.assertIn("Fallback", text)
         self.assertIn("Disabled", text)
         self.assertIn("The War Within", text)
+
+
+class TestGossipCooldown(unittest.TestCase):
+    """Seconds-based gossip cooldown and migration from the old minutes setting."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("ChattyLittleNpc.EventSystem = { New = function() return {} end }")
+        load_file(cls.lua, "Main.lua")
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+
+    def setUp(self):
+        lua_call(self.lua, """
+            _now = 1000
+            function GetTime() return _now end
+            local p = ChattyLittleNpc.db.profile
+            p.gossipCooldownEnabled = true
+            p.gossipCooldownMinutes = nil
+            p.gossipCooldownSeconds = 10
+            ChattyLittleNpc.VoiceoverPlayer._gossipCooldowns = {}
+        """)
+
+    def _on_cooldown_after(self, seconds):
+        return lua_call(self.lua, f"""
+            local VP = ChattyLittleNpc.VoiceoverPlayer
+            _now = 1000
+            VP:RecordGossipCooldown({{ "h1" }})
+            _now = 1000 + {seconds}
+            return VP:IsGossipOnCooldown({{ "h1" }})
+        """)
+
+    def test_within_cooldown_is_blocked(self):
+        self.assertTrue(self._on_cooldown_after(9))
+
+    def test_after_cooldown_plays_again(self):
+        self.assertFalse(self._on_cooldown_after(10))
+
+    def test_short_cooldown_is_in_seconds_not_minutes(self):
+        lua_call(self.lua, "ChattyLittleNpc.db.profile.gossipCooldownSeconds = 5")
+        self.assertFalse(self._on_cooldown_after(6))
+
+    def test_zero_means_until_reload(self):
+        lua_call(self.lua, "ChattyLittleNpc.db.profile.gossipCooldownSeconds = 0")
+        self.assertTrue(self._on_cooldown_after(100000))
+
+    def test_disabled_never_blocks(self):
+        lua_call(self.lua, "ChattyLittleNpc.db.profile.gossipCooldownEnabled = false")
+        self.assertFalse(self._on_cooldown_after(1))
+
+    def _play_guard(self):
+        """Play the guard greeting via PlayNonQuestSound; returns number of PlaySoundFile calls so far."""
+        return lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.db.profile.audioChannel = "MASTER"
+            CLN.db.profile.gossipQueueMode = "none"
+            CLN.Utils.LogCategories = CLN.Utils.LogCategories or { loader = "loader" }
+            CLN.Utils.GetHashes = CLN.Utils.GetHashes or function(_, npcId, text) return { npcId .. ":" .. text } end
+            CLN.Utils.GetPathToNonQuestFile = function() return "guard.ogg" end
+            CLN.Utils.IsNilOrEmpty = CLN.Utils.IsNilOrEmpty or function(_, v) return v == nil or v == "" end
+            C_Sound = { IsPlaying = function() return true end }
+            function GetLocale() return "enUS" end
+            _plays = _plays or 0
+            function PlaySoundFile() _plays = _plays + 1 return true, 100 + _plays end
+            function StopSound() end
+            CLN.VoiceoverPlayer:PlayNonQuestSound(68, "Gossip", "What do you seek, adventurer?", "Male")
+            return _plays
+        """)
+
+    def test_interrupted_guard_line_still_starts_cooldown(self):
+        """Re-opening a guard dialog while its line plays must not restart it, and
+        once it is stopped early the cooldown still applies."""
+        lua_call(self.lua, "_plays = 0; ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil")
+        self.assertEqual(self._play_guard(), 1)
+        # Re-open 1s later while the line is still playing: no restart.
+        lua_call(self.lua, "_now = 1001")
+        self.assertEqual(self._play_guard(), 1)
+        # Line interrupted (dialog closed / stopped), re-open 2s later: still on cooldown.
+        lua_call(self.lua, "_now = 1002; ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil")
+        self.assertEqual(self._play_guard(), 1)
+        # After the 10s cooldown it plays again.
+        lua_call(self.lua, "_now = 1011")
+        self.assertEqual(self._play_guard(), 2)
+
+    def test_line_still_playing_is_not_restarted_after_short_cooldown(self):
+        """5s cooldown, line still playing at 6s: re-opening must not restart it."""
+        lua_call(self.lua, """
+            _plays = 0
+            ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil
+            ChattyLittleNpc.db.profile.gossipCooldownSeconds = 5
+        """)
+        self.assertEqual(self._play_guard(), 1)
+        lua_call(self.lua, "_now = 1006")
+        self.assertEqual(self._play_guard(), 1)
+
+    def test_skip_cooldown_plays_during_cooldown(self):
+        """Resumes and explicit clicks pass skipCooldown and must still play."""
+        lua_call(self.lua, "_plays = 0; ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil")
+        self.assertEqual(self._play_guard(), 1)
+        result = lua_call(self.lua, """
+            _now = 1002
+            ChattyLittleNpc.VoiceoverPlayer.currentlyPlaying = nil
+            ChattyLittleNpc.VoiceoverPlayer:PlayNonQuestSound(68, "Gossip", "What do you seek, adventurer?", "Male",
+                nil, nil, { skipCooldown = true })
+            return _plays
+        """)
+        self.assertEqual(result, 2)
+
+    def _migrate(self, minutes):
+        return lua_call(self.lua, f"""
+            local p = ChattyLittleNpc.db.profile
+            p.gossipCooldownMinutes = {minutes}
+            ChattyLittleNpc:_MigrateGossipCooldown()
+            return p.gossipCooldownSeconds, p.gossipCooldownMinutes
+        """)
+
+    def test_migrate_enabled_five_minutes_kept(self):
+        self.assertEqual(self._migrate(5), (300, None))
+
+    def test_migrate_zero_keeps_until_reload(self):
+        self.assertEqual(self._migrate(0), (0, None))
+
+    def test_migrate_short_values_round_to_one_minute(self):
+        self.assertEqual(self._migrate(1), (60, None))
+        self.assertEqual(self._migrate(2), (60, None))
+
+    def test_migrate_disabled_profile_gets_new_default(self):
+        # Old default 5 was stored in every profile; unused cooldowns get the new 10s default.
+        # (the test profile is a plain table, so a cleared key reads as nil, not the default)
+        lua_call(self.lua, "ChattyLittleNpc.db.profile.gossipCooldownEnabled = false")
+        self.assertEqual(self._migrate(5), (None, None))
+
+    def test_migrate_long_values_cap_at_five_minutes(self):
+        self.assertEqual(self._migrate(120), (300, None))
+
+    def test_migrate_without_old_key_keeps_setting(self):
+        self.assertEqual(self._migrate("nil"), (10, None))
 
 
 if __name__ == "__main__":

@@ -91,7 +91,7 @@ local defaults = {
         highContrastMode = false,
         -- Gossip cooldown: don't replay the same gossip line within a session
         gossipCooldownEnabled = false,
-        gossipCooldownMinutes = 5,
+        gossipCooldownSeconds = 10,   -- 0 = until reload/logout
         -- Gossip queue mode: "none" (override, default), "medium" (queue if >5s playing), "long" (queue if >10s playing), "all" (always queue)
         gossipQueueMode = "none",
         -- Native VO handling: "off" (ignore), "all" (pause on any), "whitelist" (user-curated)
@@ -110,6 +110,29 @@ local defaults = {
     }
 }
 
+-- Gossip cooldown moved from a minutes slider (0-120) to a seconds dropdown.
+-- Runs for the active profile; also called on profile switch since other
+-- profiles keep the old key until they are activated.
+function CLN:_MigrateGossipCooldown()
+    local p = self.db and self.db.profile
+    local minutes = p and p.gossipCooldownMinutes
+    if minutes == nil then return end
+    -- The old default (5) was written into every profile, so only carry the value
+    -- over when the cooldown was actually enabled; otherwise use the new default.
+    if p.gossipCooldownEnabled then
+        if minutes == 0 then
+            p.gossipCooldownSeconds = 0
+        elseif minutes <= 2 then
+            p.gossipCooldownSeconds = 60
+        else
+            p.gossipCooldownSeconds = 300
+        end
+    else
+        p.gossipCooldownSeconds = nil   -- falls back to the default
+    end
+    p.gossipCooldownMinutes = nil
+end
+
 -- Migrate legacy saved variables from upstream format to fork format
 function CLN:_MigrateSavedVars()
     if not (self.db and self.db.profile) then return end
@@ -117,6 +140,8 @@ function CLN:_MigrateSavedVars()
 
     -- Schema version guard: run migrations in order, then stamp current version
     local sv = p.schemaVersion or 0
+
+    self:_MigrateGossipCooldown()
 
     if sv < 1 then
         -- v1: initial schema stamp (all existing migrations below remain for pre-v1 profiles)

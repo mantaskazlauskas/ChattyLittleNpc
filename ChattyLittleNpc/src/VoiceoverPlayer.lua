@@ -90,17 +90,17 @@ end
 ---@return boolean
 function VoiceoverPlayer:IsGossipOnCooldown(hashes)
     if not CLN.db or not CLN.db.profile or not CLN.db.profile.gossipCooldownEnabled then return false end
-    local cooldownMinutes = CLN.db.profile.gossipCooldownMinutes or 0
+    local cooldownSeconds = CLN.db.profile.gossipCooldownSeconds or 0
     local now = GetTime and GetTime() or 0
 
     for _, hash in ipairs(hashes) do
         local lastPlayed = self._gossipCooldowns[hash]
         if lastPlayed then
-            if cooldownMinutes == 0 then
+            if cooldownSeconds == 0 then
                 -- 0 = infinite / entire session
                 return true
             end
-            if (now - lastPlayed) < (cooldownMinutes * 60) then
+            if (now - lastPlayed) < cooldownSeconds then
                 return true
             end
             -- Expired — clean up lazily
@@ -118,6 +118,18 @@ function VoiceoverPlayer:RecordGossipCooldown(hashes)
     for _, hash in ipairs(hashes) do
         self._gossipCooldowns[hash] = now
     end
+end
+
+--- True when the cooldown is on and this exact gossip line is still playing,
+--- so re-opening the dialog doesn't restart it mid-line.
+---@param npcId number|nil
+---@param text string|nil
+---@return boolean
+function VoiceoverPlayer:_IsGossipLinePlaying(npcId, text)
+    if not CLN.db or not CLN.db.profile or not CLN.db.profile.gossipCooldownEnabled then return false end
+    local cp = self.currentlyPlaying
+    return cp ~= nil and cp.entryType == "Gossip" and cp.npcId == npcId and cp.title == text
+        and self:IsEffectivelyPlaying() and true or false
 end
 
 --- Returns true when text contains more than one paragraph.
@@ -574,9 +586,10 @@ function VoiceoverPlayer:ResumeAfterNativeVO()
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
         self:PlayQuestSound(cp.questId, cp.phase, cp.npcId, cp.displayID, cp.gender, cp.creatureType)
     elseif cp.npcId and cp.title and cp.entryType then
-        -- Non-quest (gossip/item): resume from the beginning.
+        -- Non-quest (gossip/item): resume from the beginning. Its cooldown was
+        -- stamped when it first started, so bypass it for this continuation.
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender, cp.displayID, cp.creatureType)
+        self:PlayNonQuestSound(cp.npcId, cp.entryType, cp.title, cp.gender, cp.displayID, cp.creatureType, { skipCooldown = true })
     else
         -- Can't identify the entry; clear state
         self.currentlyPlaying = self:GetCurrentlyPlayingObject()
@@ -996,7 +1009,7 @@ function VoiceoverPlayer:PlayQueuedItemAtIndex(queueIndex)
     elseif item.npcId and item.title and item.entryType then
         table.remove(CLN.questsQueue, 1)
         self:NotifyQueueDirty()
-        self:PlayNonQuestSound(item.npcId, item.entryType, item.title, item.gender, item.displayID, item.creatureType)
+        self:PlayNonQuestSound(item.npcId, item.entryType, item.title, item.gender, item.displayID, item.creatureType, { skipCooldown = true })
     else
         table.remove(CLN.questsQueue, 1)
         self:NotifyQueueDirty()
@@ -1132,7 +1145,8 @@ function VoiceoverPlayer:ResumeSuspendedPlayback()
     if saved.entryType == "quest" and saved.questId and saved.phase then
         self:PlayQuestSound(saved.questId, saved.phase, saved.npcId, saved.displayID, saved.gender, saved.creatureType)
     elseif saved.npcId and saved.title and saved.entryType then
-        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender, saved.displayID, saved.creatureType)
+        -- Resuming a suspended line: its cooldown was stamped when it first started.
+        self:PlayNonQuestSound(saved.npcId, saved.entryType, saved.title, saved.gender, saved.displayID, saved.creatureType, { skipCooldown = true })
     end
 
     -- If playback didn't actually start (file missing/unavailable), the
@@ -1516,16 +1530,17 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
     local newSoundHandle
     local hashes = CLN.Utils:GetHashes(npcId, text)
 
-    -- Gossip cooldown: skip if this line was recently played.
-    -- Cooldown is recorded on completion (OnVoiceoverStop), not on play-start,
-    -- so interrupted gossip doesn't get marked as "heard".
+    -- Gossip cooldown: skip if this line was recently played or is playing now.
+    -- Cooldown is recorded when the line starts (so re-opening the dialog to
+    -- interrupt it still counts) and again on completion (OnVoiceoverStop), so
+    -- long lines are timed from their end.
     -- Multi-paragraph gossip (lore, long dialogue) is exempt from cooldown
     -- since the user likely wants to replay substantive text.
     -- History-replay clicks pass opts.skipCooldown to bypass unconditionally.
     if soundType == "Gossip"
         and not (opts and opts.skipCooldown)
         and not self:_IsMultiParagraph(text)
-        and self:IsGossipOnCooldown(hashes) then
+        and (self:IsGossipOnCooldown(hashes) or self:_IsGossipLinePlaying(npcId, text)) then
         if CLN.db.profile.debugMode and CLN.Logger then
             CLN.Logger:debug("Gossip on cooldown, skipping: " .. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
         end
@@ -1616,6 +1631,9 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                     false, CLN.Utils.LogCategories.loader)
             end
             self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
+            if soundType == "Gossip" then
+                self:RecordGossipCooldown(hashes)
+            end
 
             -- Always start fresh for new playback to avoid stale state
             if CLN.ReplayFrame and CLN.ReplayFrame.ResetAnimationState then

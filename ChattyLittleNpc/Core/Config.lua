@@ -339,13 +339,21 @@ function ConfigSystem:CreateDropdown(parent, info)
         local vals = dropdown.info.values
         if type(vals) == "function" then vals = vals() end
         local currentValue = dropdown.info.get()
-        for value, text in pairs(vals) do
+        local function addItem(value, text)
             local item = UIDropDownMenu_CreateInfo()
             item.text = text
             item.value = value
             item.func = OnClick
             item.checked = (value == currentValue)
             UIDropDownMenu_AddButton(item, level)
+        end
+        -- Optional info.sorting: array of keys giving the display order.
+        if dropdown.info.sorting then
+            for _, value in ipairs(dropdown.info.sorting) do
+                if vals[value] then addItem(value, vals[value]) end
+            end
+        else
+            for value, text in pairs(vals) do addItem(value, text) end
         end
     end
     
