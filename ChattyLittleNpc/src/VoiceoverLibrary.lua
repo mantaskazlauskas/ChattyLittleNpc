@@ -299,7 +299,7 @@ end
 
 local ROW_H = 20
 local SCROLLBAR_W = 24
-local LIST_TOP = -86
+local LIST_TOP = -100   -- first row; column headers sit in the 14px above it
 
 local function formatDuration(sec)
     if not sec then return "" end
@@ -549,7 +549,7 @@ function Library:Build(parent)
     -- Column headers
     local function header(text, x, w, justify)
         local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, LIST_TOP + 4)
+        fs:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", x, LIST_TOP + 2)
         fs:SetWidth(w)
         fs:SetJustifyH(justify or "LEFT")
         fs:SetText(text)
