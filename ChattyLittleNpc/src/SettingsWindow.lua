@@ -262,13 +262,15 @@ local function buildFrame()
     local contentTopY    = tabTopY - TAB_BAR_H - 2
     local contentBottomY = PADDING
 
-    -- Scroll content width: window minus padding on both sides minus scrollbar (~20px).
-    local contentW = WIN_WIDTH - PADDING * 2 - 22
+    -- UIPanelScrollFrameTemplate hangs its scrollbar outside the scroll frame's right
+    -- edge (6px gap + ~16px bar), so inset the scroll frame by that much.
+    local SCROLLBAR_W = 24
+    local contentW = WIN_WIDTH - PADDING * 2 - SCROLLBAR_W
 
     for _, tab in ipairs(TABS) do
         local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
         sf:SetPoint("TOPLEFT",     f, "TOPLEFT",     PADDING,       contentTopY)
-        sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(PADDING + 4), contentBottomY)
+        sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(PADDING + SCROLLBAR_W), contentBottomY)
         sf:Hide()
 
         local content = CreateFrame("Frame", nil, sf)
