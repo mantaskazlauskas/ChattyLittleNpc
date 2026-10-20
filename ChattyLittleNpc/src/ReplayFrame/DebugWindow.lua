@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
+local Widgets = CLN.Widgets
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -161,53 +162,37 @@ function DW:Create()
         end
     end)
     f:SetFrameStrata("DIALOG")
-    f:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
-    f:SetBackdropColor(0, 0, 0, 0.9)
+    Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:Hide()
 
-    -- Title
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-    title:SetText("Chatty Little NPC — Model Debugger")
-    -- Allow dragging by the title area
-    local dragBar = CreateFrame("Frame", nil, f)
-    dragBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    dragBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    dragBar:SetHeight(28)
-    dragBar:EnableMouse(true)
-    dragBar:RegisterForDrag("LeftButton")
-    dragBar:SetScript("OnDragStart", function() if not DW._lockWindow then f:StartMoving() end end)
-    dragBar:SetScript("OnDragStop", function()
-        f:StopMovingOrSizing()
-        -- Persist position/size after title-drag
-        local p, rel, rp, x, y = f:GetPoint(1)
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-            local dw = CLN.db.profile.debugWindow
-            dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
-            local w2, h2 = f:GetSize()
-            dw.width, dw.height = w2, h2
-        end
-    end)
-
-    -- Close button
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT")
-    -- Ensure debug render window (mirror) also closes
-    close:SetScript("OnClick", function()
-        DW:Hide()
-    end)
+    -- Title bar (drag to move unless locked; SetMovable tracks the lock).
+    -- Closing goes through DW:Hide so the debug render window (mirror) also closes.
+    Widgets.CreateTitleBar(f, "Chatty Little NPC", {
+        subtitle   = "Model Debugger",
+        onClose    = function() DW:Hide() end,
+        onDragStop = function()
+            -- Persist position/size after title-drag
+            local p, rel, rp, x, y = f:GetPoint(1)
+            if CLN and CLN.db and CLN.db.profile then
+                CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+                local dw = CLN.db.profile.debugWindow
+                dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
+                local w2, h2 = f:GetSize()
+                dw.width, dw.height = w2, h2
+            end
+        end,
+    })
 
     -- Columns: left (controls), middle (outputs), right (preview)
     local leftCol = CreateFrame("Frame", nil, f)
-    leftCol:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -30)
+    leftCol:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -44)
     leftCol:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 10, 10)
     leftCol:SetWidth(260)
     leftCol:SetFrameLevel(f:GetFrameLevel() + 1)
 
     -- Rightmost preview column
     local previewCol = CreateFrame("Frame", nil, f)
-    previewCol:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -30)
+    previewCol:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -44)
     previewCol:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -10, 10)
     previewCol:SetWidth(320)
     previewCol:SetFrameLevel(f:GetFrameLevel() + 1)
@@ -225,8 +210,7 @@ function DW:Create()
     preview:SetPoint("TOPLEFT", previewCol, "TOPLEFT", 0, 0)
     preview:SetPoint("TOPRIGHT", previewCol, "TOPRIGHT", 0, 0)
     preview:SetHeight(180)
-    preview:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 12, insets = {left=2,right=2,top=2,bottom=2} })
-    preview:SetBackdropColor(0, 0, 0, 0.8)
+    Widgets.ApplyBackdrop(preview, { 0, 0, 0, 0.5 }, Widgets.Colors.border)
     DW._previewContainer = preview
     -- Use expanded view by default unless explicitly turned off earlier; load persisted pref
     if DW._previewExpanded == nil then
@@ -279,8 +263,7 @@ function DW:Create()
         else
             mf:ClearAllPoints(); mf:SetAllPoints(parent)
         end
-        mf:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 12, insets = {left=2,right=2,top=2,bottom=2} })
-        mf:SetBackdropColor(0, 0, 0, 0.8)
+        Widgets.ApplyBackdrop(mf, { 0, 0, 0, 0.5 }, Widgets.Colors.border)
         mf:EnableMouse(true)
     -- Don't trap keyboard while this overlay is shown
     if mf.SetPropagateKeyboardInput then mf:SetPropagateKeyboardInput(true) end
@@ -601,7 +584,7 @@ function DW:Create()
     end)
 
     -- Left: controls (scrollable) — fill the entire left column height
-    local ctrlScroll = CreateFrame("ScrollFrame", nil, leftCol, "UIPanelScrollFrameTemplate")
+    local ctrlScroll = Widgets.CreateScrollFrame(leftCol)
     ctrlScroll:SetPoint("TOPLEFT", leftCol, "TOPLEFT", 0, 0)
     ctrlScroll:SetPoint("BOTTOMLEFT", leftCol, "BOTTOMLEFT", 0, 0)
     ctrlScroll:SetPoint("BOTTOMRIGHT", leftCol, "BOTTOMRIGHT", -20, 0)
@@ -772,36 +755,32 @@ function DW:Create()
     end
     local function addSlider(label, minV, maxV, step, onChanged, tooltip)
         local l = addLabel(label)
-        local s = CreateFrame("Slider", nil, ctrlPanel, "OptionsSliderTemplate")
-        s:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 0, y)
-        s:SetWidth(200)
+        local s = Widgets.CreateSlider(ctrlPanel)
+        s:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 4, y - 2)
+        s:SetWidth(190)
         s:SetMinMaxValues(minV, maxV)
         s:SetValueStep(step)
         s:SetObeyStepOnDrag(true)
-    -- Hide template's default Low/High/Text labels; we render our own value text
-    if s.Text then s.Text:Hide() end
-    if s.Low then s.Low:Hide() end
-    if s.High then s.High:Hide() end
-        -- When unnamed, OptionsSliderTemplate won't auto-create Low/High/Text globals; we don't need them here.
         s:SetScript("OnValueChanged", function(_, val)
             if onChanged then onChanged(s, val) end
         end)
         if tooltip then
-            s:EnableMouse(true)
-            s:SetScript("OnEnter", function(self)
+            -- HookScript keeps the slider's own hover glow.
+            s:HookScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(tooltip, 1,1,1,1, true)
             end)
-            s:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            s:HookScript("OnLeave", function() GameTooltip:Hide() end)
         end
         local vt = ctrlPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        vt:SetPoint("LEFT", s, "RIGHT", 6, 0)
+        vt:SetPoint("LEFT", s, "RIGHT", 8, 0)
+        vt:SetTextColor(Widgets.rgba(Widgets.Colors.accent))
         vt:SetText("0.000")
         s._valueText = vt
-        y = y - 36
+        y = y - 28
         return s
     end
     local function addButton(text, onClick, width, tooltip)
-        local b = CreateFrame("Button", nil, ctrlPanel, "UIPanelButtonTemplate")
+        local b = Widgets.CreateButton(ctrlPanel)
         b:SetSize(width or 90, 22)
         b:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 0, y)
         b:SetText(text)
@@ -817,11 +796,8 @@ function DW:Create()
         return b
     end
     local function addCheck(text, getter, setter, tooltip)
-        local cb = CreateFrame("CheckButton", nil, ctrlPanel, "UICheckButtonTemplate")
+        local cb = Widgets.CreateCheckButton(ctrlPanel, text)
         cb:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 0, y)
-        cb.text = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        cb.text:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-        cb.text:SetText(text)
         cb:SetScript("OnShow", function(self)
             if getter then self:SetChecked(getter()) end
         end)
@@ -992,13 +968,13 @@ function DW:Create()
     local displayRow = CreateFrame("Frame", nil, ctrlPanel)
     displayRow:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 0, y)
     displayRow:SetSize(220, 24)
-    local displayBox = CreateFrame("EditBox", nil, displayRow, "InputBoxTemplate")
+    local displayBox = Widgets.CreateEditBox(displayRow)
     displayBox:SetPoint("LEFT", displayRow, "LEFT", 0, 0)
     displayBox:SetSize(80, 22)
     displayBox:SetNumeric(true)
     if displayBox and displayBox.SetPropagateKeyboardInput then displayBox:SetPropagateKeyboardInput(true) end
     if displayBox and displayBox.EnableKeyboard then displayBox:EnableKeyboard(false) end
-    local loadBtn = CreateFrame("Button", nil, displayRow, "UIPanelButtonTemplate")
+    local loadBtn = Widgets.CreateButton(displayRow)
     loadBtn:SetPoint("LEFT", displayBox, "RIGHT", 6, 0)
     loadBtn:SetSize(70, 22)
     loadBtn:SetText("Load")
@@ -1052,13 +1028,13 @@ function DW:Create()
     local animRow = CreateFrame("Frame", nil, ctrlPanel)
     animRow:SetPoint("TOPLEFT", ctrlPanel, "TOPLEFT", 0, y)
     animRow:SetSize(220, 24)
-    local animBox = CreateFrame("EditBox", nil, animRow, "InputBoxTemplate")
+    local animBox = Widgets.CreateEditBox(animRow)
     animBox:SetPoint("LEFT", animRow, "LEFT", 0, 0)
     animBox:SetSize(60, 22)
     animBox:SetNumeric(true)
     if animBox and animBox.SetPropagateKeyboardInput then animBox:SetPropagateKeyboardInput(true) end
     if animBox and animBox.EnableKeyboard then animBox:EnableKeyboard(false) end
-    local animBtn = CreateFrame("Button", nil, animRow, "UIPanelButtonTemplate")
+    local animBtn = Widgets.CreateButton(animRow)
     animBtn:SetPoint("LEFT", animBox, "RIGHT", 6, 0)
     animBtn:SetSize(70, 22)
     animBtn:SetText("Play")
@@ -1101,7 +1077,7 @@ function DW:Create()
     end
     local function outBox(height)
         local parent = contentAnchor or rightCol
-        local sf = CreateFrame("ScrollFrame", nil, parent, "UIPanelScrollFrameTemplate")
+        local sf = Widgets.CreateScrollFrame(parent)
         sf:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, oy)
         sf:SetPoint("RIGHT", parent, "RIGHT", -20, 0)
         sf:SetHeight(height)
@@ -1193,7 +1169,7 @@ function DW:Create()
     end
 
     -- Copy info button (right column)
-    local copyInfoBtn = CreateFrame("Button", nil, contentAnchor or rightCol, "UIPanelButtonTemplate")
+    local copyInfoBtn = Widgets.CreateButton(contentAnchor or rightCol)
     copyInfoBtn:SetPoint("TOPLEFT", contentAnchor or rightCol, "TOPLEFT", 0, oy)
     copyInfoBtn:SetSize(100, 22)
     copyInfoBtn:SetText("Copy Info")
@@ -1205,7 +1181,7 @@ function DW:Create()
         if infoEdit.HighlightText then infoEdit:HighlightText(0, -1) end
     end)
     -- Quick help button next to Copy Info
-    local helpBtn = CreateFrame("Button", nil, contentAnchor or rightCol, "UIPanelButtonTemplate")
+    local helpBtn = Widgets.CreateButton(contentAnchor or rightCol)
     helpBtn:SetPoint("LEFT", copyInfoBtn, "RIGHT", 6, 0)
     helpBtn:SetSize(80, 22)
     helpBtn:SetText("Help")
@@ -1215,13 +1191,11 @@ function DW:Create()
             dlg:SetSize(520, 260)
             dlg:SetPoint("CENTER")
             dlg:SetFrameStrata("DIALOG")
-            dlg:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-            dlg:SetBackdropColor(0, 0, 0, 0.95)
-            local close = CreateFrame("Button", nil, dlg, "UIPanelCloseButton")
-            close:SetPoint("TOPRIGHT", dlg, "TOPRIGHT")
-            close:SetScript("OnClick", function() dlg:Hide() end)
+            Widgets.ApplyBackdrop(dlg, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
+            dlg:SetMovable(true)
+            Widgets.CreateTitleBar(dlg, "Model Debugger", { subtitle = "Help" })
             local fs = dlg:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-            fs:SetPoint("TOPLEFT", dlg, "TOPLEFT", 10, -10)
+            fs:SetPoint("TOPLEFT", dlg, "TOPLEFT", 12, -48)
             fs:SetJustifyH("LEFT")
             fs:SetJustifyV("TOP")
             fs:SetText("Mouse: Left-drag Pan, Right-drag Orbit, Wheel Zoom\nButtons: Reset, Face Camera, Flip Facing, Refit presets\nTips: Auto-face camera keeps facing toward camera. Auto-refit frames on load.\nLogs: Use Open Logs Window or /clnlogs.")
@@ -1237,7 +1211,7 @@ function DW:Create()
     local row = CreateFrame("Frame", nil, contentAnchor or rightCol)
     row:SetPoint("TOPLEFT", contentAnchor or rightCol, "TOPLEFT", 0, oy)
     row:SetSize(260, 24)
-    local openLogsBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    local openLogsBtn = Widgets.CreateButton(row)
     openLogsBtn:SetPoint("LEFT", row, "LEFT", 0, 0)
     openLogsBtn:SetSize(140, 22)
     openLogsBtn:SetText("Open Logs Window")
@@ -1271,7 +1245,7 @@ function DW:Create()
         end
     end
     -- Export JSON button (right column top-right)
-    local exportBtn = CreateFrame("Button", nil, contentAnchor or rightCol, "UIPanelButtonTemplate")
+    local exportBtn = Widgets.CreateButton(contentAnchor or rightCol)
     exportBtn:SetPoint("TOPRIGHT", contentAnchor or rightCol, "TOPRIGHT", 0, 0)
     exportBtn:SetSize(100, 22)
     exportBtn:SetText("Export JSON")
@@ -1302,14 +1276,12 @@ function DW:Create()
         dlg:SetSize(780, 360)
         dlg:SetPoint("CENTER")
         dlg:SetFrameStrata("DIALOG")
-        dlg:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background", edgeFile = "Interface/Tooltips/UI-Tooltip-Border", tile = true, tileSize = 16, edgeSize = 16, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-        dlg:SetBackdropColor(0, 0, 0, 0.95)
-        local close = CreateFrame("Button", nil, dlg, "UIPanelCloseButton")
-        close:SetPoint("TOPRIGHT", dlg, "TOPRIGHT")
-        close:SetScript("OnClick", function() dlg:Hide() end)
-        local sf = CreateFrame("ScrollFrame", nil, dlg, "UIPanelScrollFrameTemplate")
-        sf:SetPoint("TOPLEFT", dlg, "TOPLEFT", 10, -8)
-        sf:SetPoint("BOTTOMRIGHT", dlg, "BOTTOMRIGHT", -24, 10)
+        Widgets.ApplyBackdrop(dlg, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
+        dlg:SetMovable(true)
+        Widgets.CreateTitleBar(dlg, "Model Debugger", { subtitle = "Export JSON" })
+        local sf = Widgets.CreateScrollFrame(dlg)
+        sf:SetPoint("TOPLEFT", dlg, "TOPLEFT", 12, -46)
+        sf:SetPoint("BOTTOMRIGHT", dlg, "BOTTOMRIGHT", -26, 12)
         local eb = CreateFrame("EditBox", nil, sf)
         eb:SetMultiLine(true)
         eb:SetFontObject(ChatFontNormal or GameFontHighlightSmall)

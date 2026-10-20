@@ -4,6 +4,7 @@
 
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
+local Widgets = CLN.Widgets
 
 ---@class RaceModelManager
 local RaceModelManager = {}
@@ -19,8 +20,9 @@ local function isUnassigned(entry)
 end
 
 local function createFrame()
-    local f = CreateFrame("Frame", "CLN_RaceModelManager", UIParent, "BasicFrameTemplateWithInset")
-    f:SetSize(380, 560)
+    local f = CreateFrame("Frame", "CLN_RaceModelManager", UIParent, "BackdropTemplate")
+    f:SetSize(380, 572)
+    Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:EnableMouse(true)
@@ -32,31 +34,26 @@ local function createFrame()
     f:Hide()
     tinsert(UISpecialFrames, "CLN_RaceModelManager") -- close with Escape
 
-    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    f.title:SetPoint("TOP", 0, -5)
-    f.title:SetText("Unknown Race Models")
+    Widgets.CreateTitleBar(f, "Chatty Little NPC", { subtitle = "Race Models" })
 
     -- Header: model file ID
     f.header = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    f.header:SetPoint("TOP", 0, -36)
+    f.header:SetPoint("TOP", 0, -48)
 
     f.counter = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.counter:SetPoint("TOPRIGHT", -14, -32)
+    f.counter:SetPoint("TOPRIGHT", -14, -44)
 
     f.details = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.details:SetPoint("TOP", f.header, "BOTTOM", 0, -6)
     f.details:SetWidth(350)
 
     -- Model view (drag to rotate, mouse wheel to zoom)
-    -- Container sits above the template's inset so its background stays visible
-    local modelBg = CreateFrame("Frame", nil, f)
-    modelBg:SetPoint("TOPLEFT", 14, -84)
-    modelBg:SetPoint("TOPRIGHT", -14, -84)
+    local modelBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
+    modelBg:SetPoint("TOPLEFT", 14, -96)
+    modelBg:SetPoint("TOPRIGHT", -14, -96)
     modelBg:SetHeight(330)
     modelBg:SetFrameLevel(f:GetFrameLevel() + 5)
-    local bgTex = modelBg:CreateTexture(nil, "BACKGROUND")
-    bgTex:SetAllPoints()
-    bgTex:SetColorTexture(0, 0, 0, 0.5)
+    Widgets.ApplyBackdrop(modelBg, { 0, 0, 0, 0.5 }, Widgets.Colors.border)
 
     local model = CreateFrame("PlayerModel", nil, modelBg)
     model:SetAllPoints(modelBg)
@@ -90,7 +87,7 @@ local function createFrame()
     f.raceLabel:SetPoint("TOPLEFT", modelBg, "BOTTOMLEFT", 2, -14)
     f.raceLabel:SetText("Race:")
 
-    f.raceInput = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    f.raceInput = Widgets.CreateEditBox(f)
     f.raceInput:SetSize(270, 22)
     f.raceInput:SetPoint("LEFT", f.raceLabel, "RIGHT", 12, 0)
     f.raceInput:SetAutoFocus(false)
@@ -99,7 +96,7 @@ local function createFrame()
 
     -- Buttons
     local function button(text, width, onClick)
-        local b = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+        local b = Widgets.CreateButton(f)
         b:SetSize(width, 24)
         b:SetText(text)
         b:SetScript("OnClick", onClick)
@@ -118,15 +115,11 @@ local function createFrame()
     f.nextButton = button("Next >", 74, function() RaceModelManager:Step(1) end)
     f.nextButton:SetPoint("LEFT", f.ignoreButton, "RIGHT", 8, 0)
 
-    f.unassignedOnly = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
-    f.unassignedOnly:SetSize(24, 24)
-    f.unassignedOnly:SetPoint("TOPLEFT", f.prevButton, "BOTTOMLEFT", 0, -8)
+    f.unassignedOnly = Widgets.CreateCheckButton(f, "Only show unassigned models", "GameFontHighlightSmall")
+    f.unassignedOnly:SetPoint("TOPLEFT", f.prevButton, "BOTTOMLEFT", 0, -10)
     f.unassignedOnly:SetScript("OnClick", function(self)
         RaceModelManager:SetUnassignedOnly(self:GetChecked())
     end)
-    f.unassignedOnlyLabel = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    f.unassignedOnlyLabel:SetPoint("LEFT", f.unassignedOnly, "RIGHT", 2, 0)
-    f.unassignedOnlyLabel:SetText("Only show unassigned models")
 
     f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     f.hint:SetPoint("BOTTOM", 0, 12)

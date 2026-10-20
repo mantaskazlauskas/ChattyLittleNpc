@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
+local Widgets = CLN.Widgets
 
 ---@class ReplayFrame
 local ReplayFrame = CLN.ReplayFrame
@@ -292,11 +293,8 @@ function LW:_RebuildCategoryList()
     local cf = self._catFilter
     local y = -4
     local function addCheck(text, getter, setter)
-        local cb = CreateFrame("CheckButton", nil, self._catContainer, "UICheckButtonTemplate")
+        local cb = Widgets.CreateCheckButton(self._catContainer, text, "GameFontHighlightSmall")
         cb:SetPoint("TOPLEFT", self._catContainer, "TOPLEFT", 0, y)
-        cb.text = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        cb.text:SetPoint("LEFT", cb, "RIGHT", 2, 0)
-        cb.text:SetText(text)
         local get = getter
         local set = setter
         cb:SetScript("OnShow", function(self) if get then self:SetChecked(get()) end end)
@@ -503,13 +501,7 @@ function LW:Create()
         f:SetPoint("CENTER")
     end
     f:SetFrameStrata("DIALOG")
-    f:SetBackdrop({
-        bgFile = "Interface/Tooltips/UI-Tooltip-Background",
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    f:SetBackdropColor(0, 0, 0, 0.95)
+    Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:Hide()
 
     -- Movable + resizable
@@ -523,24 +515,11 @@ function LW:Create()
         if f.SetMaxResize then f:SetMaxResize(1600, 1000) end
     end
 
-    -- Drag bar (title region)
-    local dragBar = CreateFrame("Frame", nil, f)
-    dragBar:SetPoint("TOPLEFT", f, "TOPLEFT", 0, 0)
-    dragBar:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
-    dragBar:SetHeight(28)
-    dragBar:EnableMouse(true)
-    dragBar:RegisterForDrag("LeftButton")
-    dragBar:SetScript("OnDragStart", function() f:StartMoving() end)
-    dragBar:SetScript("OnDragStop", function() f:StopMovingOrSizing(); saveFrameLayout(f) end)
-
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", 10, -8)
-    title:SetText("Chatty Little NPC — Logs")
-
-    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", f, "TOPRIGHT")
-    close:SetFrameLevel(dragBar:GetFrameLevel() + 1)
-    close:SetScript("OnClick", function() f:Hide() end)
+    -- Title bar (drag to move)
+    Widgets.CreateTitleBar(f, "Chatty Little NPC", {
+        subtitle   = "Logs",
+        onDragStop = function() saveFrameLayout(f) end,
+    })
 
     -- Resize grip (bottom-right corner)
     local grip = CreateFrame("Frame", nil, f)
@@ -566,7 +545,7 @@ function LW:Create()
 
     -- ════════════════ LEFT PANEL ════════════════
     local left = CreateFrame("Frame", nil, f)
-    left:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -34)
+    left:SetPoint("TOPLEFT", f, "TOPLEFT", 12, -46)
     left:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT", 12, 10)
     left:SetWidth(210)
     left:SetFrameLevel(f:GetFrameLevel() + 1)
@@ -581,11 +560,8 @@ function LW:Create()
     -- All left-panel elements are chained via relative anchors to avoid overlap.
 
     -- ── Enable debug toggle ──
-    local enableDbg = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local enableDbg = Widgets.CreateCheckButton(left, "Enable debug + anim logs", "GameFontHighlightSmall")
     enableDbg:SetPoint("TOPLEFT", left, "TOPLEFT", 0, 0)
-    enableDbg.text = enableDbg:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    enableDbg.text:SetPoint("LEFT", enableDbg, "RIGHT", 2, 0)
-    enableDbg.text:SetText("Enable debug + anim logs")
     enableDbg:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Turns on debugMode and debugAnimations in settings.")
@@ -608,35 +584,23 @@ function LW:Create()
     sevLabel:SetPoint("TOPLEFT", enableDbg, "BOTTOMLEFT", 0, -8)
     sevLabel:SetText("Severity")
 
-    local sevErrChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local sevErrChk = Widgets.CreateCheckButton(left, "|cffff5555ERROR|r", "GameFontHighlightSmall")
     sevErrChk:SetPoint("TOPLEFT", sevLabel, "BOTTOMLEFT", 0, -2)
-    sevErrChk.text = sevErrChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sevErrChk.text:SetPoint("LEFT", sevErrChk, "RIGHT", 0, 0)
-    sevErrChk.text:SetText("|cffff5555ERROR|r")
     sevErrChk:SetScript("OnShow", function(self) self:SetChecked(LW._showError ~= false) end)
     sevErrChk:SetScript("OnClick", function(self) LW._showError = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local sevWarnChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local sevWarnChk = Widgets.CreateCheckButton(left, "|cffffff55WARN|r", "GameFontHighlightSmall")
     sevWarnChk:SetPoint("LEFT", sevErrChk, "RIGHT", 60, 0)
-    sevWarnChk.text = sevWarnChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sevWarnChk.text:SetPoint("LEFT", sevWarnChk, "RIGHT", 0, 0)
-    sevWarnChk.text:SetText("|cffffff55WARN|r")
     sevWarnChk:SetScript("OnShow", function(self) self:SetChecked(LW._showWarn ~= false) end)
     sevWarnChk:SetScript("OnClick", function(self) LW._showWarn = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local sevInfoChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local sevInfoChk = Widgets.CreateCheckButton(left, "|cffccccccINFO|r", "GameFontHighlightSmall")
     sevInfoChk:SetPoint("TOPLEFT", sevErrChk, "BOTTOMLEFT", 0, -2)
-    sevInfoChk.text = sevInfoChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sevInfoChk.text:SetPoint("LEFT", sevInfoChk, "RIGHT", 0, 0)
-    sevInfoChk.text:SetText("|cffccccccINFO|r")
     sevInfoChk:SetScript("OnShow", function(self) self:SetChecked(LW._showInfo ~= false) end)
     sevInfoChk:SetScript("OnClick", function(self) LW._showInfo = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local sevDbgChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local sevDbgChk = Widgets.CreateCheckButton(left, "|cff87CEEbDEBUG|r", "GameFontHighlightSmall")
     sevDbgChk:SetPoint("LEFT", sevInfoChk, "RIGHT", 60, 0)
-    sevDbgChk.text = sevDbgChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    sevDbgChk.text:SetPoint("LEFT", sevDbgChk, "RIGHT", 0, 0)
-    sevDbgChk.text:SetText("|cff87CEEbDEBUG|r")
     sevDbgChk:SetScript("OnShow", function(self) self:SetChecked(LW._showDebug ~= false) end)
     sevDbgChk:SetScript("OnClick", function(self) LW._showDebug = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
@@ -645,11 +609,8 @@ function LW:Create()
     srcLabel:SetPoint("TOPLEFT", sevInfoChk, "BOTTOMLEFT", 0, -8)
     srcLabel:SetText("Source")
 
-    local srcAddonChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local srcAddonChk = Widgets.CreateCheckButton(left, "Addon", "GameFontHighlightSmall")
     srcAddonChk:SetPoint("TOPLEFT", srcLabel, "BOTTOMLEFT", 0, -2)
-    srcAddonChk.text = srcAddonChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    srcAddonChk.text:SetPoint("LEFT", srcAddonChk, "RIGHT", 0, 0)
-    srcAddonChk.text:SetText("Addon")
     srcAddonChk:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Log lines from the addon's Logger (CLN:Print).")
@@ -659,11 +620,8 @@ function LW:Create()
     srcAddonChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcAddon ~= false) end)
     srcAddonChk:SetScript("OnClick", function(self) LW._showSrcAddon = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local srcAnimChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local srcAnimChk = Widgets.CreateCheckButton(left, "Anim", "GameFontHighlightSmall")
     srcAnimChk:SetPoint("LEFT", srcAddonChk, "RIGHT", 60, 0)
-    srcAnimChk.text = srcAnimChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    srcAnimChk.text:SetPoint("LEFT", srcAnimChk, "RIGHT", 0, 0)
-    srcAnimChk.text:SetText("Anim")
     srcAnimChk:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Animation debug lines (camera, framing, etc.).")
@@ -673,11 +631,8 @@ function LW:Create()
     srcAnimChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcAnim ~= false) end)
     srcAnimChk:SetScript("OnClick", function(self) LW._showSrcAnim = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local srcDebugChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local srcDebugChk = Widgets.CreateCheckButton(left, "Debug", "GameFontHighlightSmall")
     srcDebugChk:SetPoint("TOPLEFT", srcAddonChk, "BOTTOMLEFT", 0, -2)
-    srcDebugChk.text = srcDebugChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    srcDebugChk.text:SetPoint("LEFT", srcDebugChk, "RIGHT", 0, 0)
-    srcDebugChk.text:SetText("Debug")
     srcDebugChk:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("General debug lines from Utils:LogDebug.")
@@ -687,11 +642,8 @@ function LW:Create()
     srcDebugChk:SetScript("OnShow", function(self) self:SetChecked(LW._showSrcDebug ~= false) end)
     srcDebugChk:SetScript("OnClick", function(self) LW._showSrcDebug = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local srcPrintChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local srcPrintChk = Widgets.CreateCheckButton(left, "Print", "GameFontHighlightSmall")
     srcPrintChk:SetPoint("LEFT", srcDebugChk, "RIGHT", 60, 0)
-    srcPrintChk.text = srcPrintChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    srcPrintChk.text:SetPoint("LEFT", srcPrintChk, "RIGHT", 0, 0)
-    srcPrintChk.text:SetText("Print")
     srcPrintChk:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Raw print() output from Lua / other addons.")
@@ -706,11 +658,8 @@ function LW:Create()
     sessLabel:SetPoint("TOPLEFT", srcDebugChk, "BOTTOMLEFT", 0, -8)
     sessLabel:SetText("Session")
 
-    local followChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local followChk = Widgets.CreateCheckButton(left, "Follow active session", "GameFontHighlightSmall")
     followChk:SetPoint("TOPLEFT", sessLabel, "BOTTOMLEFT", 0, -2)
-    followChk.text = followChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    followChk.text:SetPoint("LEFT", followChk, "RIGHT", 2, 0)
-    followChk.text:SetText("Follow active session")
     followChk:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("Show only logs from the current model session.")
@@ -720,7 +669,7 @@ function LW:Create()
     followChk:SetScript("OnShow", function(self) self:SetChecked(LW._followSession == true) end)
     followChk:SetScript("OnClick", function(self) LW._followSession = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local sessBox = CreateFrame("EditBox", nil, left, "InputBoxTemplate")
+    local sessBox = Widgets.CreateEditBox(left)
     sessBox:SetPoint("TOPLEFT", followChk, "BOTTOMLEFT", 4, -2)
     sessBox:SetSize(190, 20)
     sessBox:SetAutoFocus(false)
@@ -733,7 +682,7 @@ function LW:Create()
     searchLabel:SetPoint("TOPLEFT", sessBox, "BOTTOMLEFT", -4, -8)
     searchLabel:SetText("Search  |cff888888!  = exclude|r")
 
-    local searchBox = CreateFrame("EditBox", nil, left, "InputBoxTemplate")
+    local searchBox = Widgets.CreateEditBox(left)
     searchBox:SetPoint("TOPLEFT", searchLabel, "BOTTOMLEFT", 4, -2)
     searchBox:SetSize(190, 20)
     searchBox:SetAutoFocus(false)
@@ -741,11 +690,8 @@ function LW:Create()
     searchBox:SetScript("OnTextChanged", function(self) LW._textFilter = self:GetText() or ""; LW._lastBufVersion = nil; LW:_Refresh() end)
     searchBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 
-    local csChk = CreateFrame("CheckButton", nil, left, "UICheckButtonTemplate")
+    local csChk = Widgets.CreateCheckButton(left, "Case sensitive", "GameFontHighlightSmall")
     csChk:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", -4, -2)
-    csChk.text = csChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    csChk.text:SetPoint("LEFT", csChk, "RIGHT", 2, 0)
-    csChk.text:SetText("Case sensitive")
     csChk:SetScript("OnShow", function(self) self:SetChecked(LW._filterCaseSensitive == true) end)
     csChk:SetScript("OnClick", function(self) LW._filterCaseSensitive = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
@@ -754,7 +700,7 @@ function LW:Create()
     catLabel:SetPoint("TOPLEFT", csChk, "BOTTOMLEFT", 0, -8)
     catLabel:SetText("Categories")
 
-    local catScroll = CreateFrame("ScrollFrame", nil, left, "UIPanelScrollFrameTemplate")
+    local catScroll = Widgets.CreateScrollFrame(left)
     catScroll:SetPoint("TOPLEFT", catLabel, "BOTTOMLEFT", 0, -4)
     catScroll:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 0, 36)
     catScroll:SetWidth(190)
@@ -767,7 +713,7 @@ function LW:Create()
     LW._catButtons = {}
 
     -- ── Left bottom controls ──
-    local markBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
+    local markBtn = Widgets.CreateButton(left)
     markBtn:SetSize(52, 22)
     markBtn:SetPoint("BOTTOMLEFT", left, "BOTTOMLEFT", 0, 4)
     markBtn:SetText("Mark")
@@ -779,13 +725,13 @@ function LW:Create()
     markBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
     markBtn:SetScript("OnClick", function() LW:Mark() end)
 
-    local refreshBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
+    local refreshBtn = Widgets.CreateButton(left)
     refreshBtn:SetSize(60, 22)
     refreshBtn:SetPoint("LEFT", markBtn, "RIGHT", 4, 0)
     refreshBtn:SetText("Refresh")
     refreshBtn:SetScript("OnClick", function() LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh(true) end)
 
-    local clearBtn = CreateFrame("Button", nil, left, "UIPanelButtonTemplate")
+    local clearBtn = Widgets.CreateButton(left)
     clearBtn:SetSize(52, 22)
     clearBtn:SetPoint("LEFT", refreshBtn, "RIGHT", 4, 0)
     clearBtn:SetText("Clear")
@@ -809,28 +755,28 @@ function LW:Create()
         LW._catFilter = tbl
         LW:_RebuildCategoryList(); LW._lastBufVersion = nil; LW:_Refresh()
     end
-    local bAll = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local bAll = Widgets.CreateButton(presets)
     bAll:SetSize(50, 20); bAll:SetPoint("LEFT", presets, "LEFT", 0, 0)
     bAll:SetText("All")
     bAll:SetScript("OnClick", function() setCats({ all = true }) end)
 
-    local bCam = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local bCam = Widgets.CreateButton(presets)
     bCam:SetSize(90, 20); bCam:SetPoint("LEFT", bAll, "RIGHT", 4, 0)
     bCam:SetText("Cam+Frame")
     bCam:SetScript("OnClick", function() setCats({ all = false, camera = true, framing = true }) end)
 
-    local bHost = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local bHost = Widgets.CreateButton(presets)
     bHost:SetSize(90, 20); bHost:SetPoint("LEFT", bCam, "RIGHT", 4, 0)
     bHost:SetText("Host+Load")
     bHost:SetScript("OnClick", function() setCats({ all = false, host = true, loader = true }) end)
 
-    local bNone = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local bNone = Widgets.CreateButton(presets)
     bNone:SetSize(50, 20); bNone:SetPoint("LEFT", bHost, "RIGHT", 4, 0)
     bNone:SetText("None")
     bNone:SetScript("OnClick", function() setCats({ all = false }) end)
 
     -- Buffer + Export (right-aligned on presets row)
-    local exportBtn = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local exportBtn = Widgets.CreateButton(presets)
     exportBtn:SetSize(80, 20)
     exportBtn:SetPoint("RIGHT", presets, "RIGHT", 0, 0)
     exportBtn:SetText("Export JSON")
@@ -873,7 +819,7 @@ function LW:Create()
         LW._edit:SetFocus()
     end)
 
-    local bufBox = CreateFrame("EditBox", nil, presets, "InputBoxTemplate")
+    local bufBox = Widgets.CreateEditBox(presets)
     bufBox:SetAutoFocus(false)
     bufBox:SetSize(50, 20)
     bufBox:SetPoint("RIGHT", exportBtn, "LEFT", -4, 0)
@@ -890,9 +836,9 @@ function LW:Create()
     bufLabel:SetText("Buf:")
 
     -- ── Scrollable log text area ──
-    local sf = CreateFrame("ScrollFrame", nil, right, "UIPanelScrollFrameTemplate")
+    local sf = Widgets.CreateScrollFrame(right)
     sf:SetPoint("TOPLEFT", presets, "BOTTOMLEFT", 0, -4)
-    sf:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", -24, 30)
+    sf:SetPoint("BOTTOMRIGHT", right, "BOTTOMRIGHT", -14, 30)
     local eb = CreateFrame("EditBox", nil, sf)
     eb:SetMultiLine(true)
     eb:SetFontObject(ChatFontNormal or SystemFont_Small or GameFontHighlightSmall)
@@ -901,7 +847,7 @@ function LW:Create()
     sf:SetScrollChild(eb)
     LW._edit = eb
     LW._scrollFrame = sf
-    -- HookScript (not SetScript!) so UIPanelScrollFrameTemplate's built-in
+    -- HookScript (not SetScript!) so Widgets.CreateScrollFrame's built-in
     -- handler runs first — it calls scrollbar:SetMinMaxValues which is
     -- required for mousewheel and scrollbar-thumb scrolling to work.
     sf:HookScript("OnScrollRangeChanged", function(self, _, yRange)
@@ -929,7 +875,7 @@ function LW:Create()
     end)
 
     -- "New entries" indicator (shown when scroll-paused)
-    local newBtn = CreateFrame("Button", nil, right, "UIPanelButtonTemplate")
+    local newBtn = Widgets.CreateButton(right)
     newBtn:SetSize(110, 20)
     newBtn:SetPoint("BOTTOM", sf, "BOTTOM", 0, 4)
     newBtn:SetFrameLevel(right:GetFrameLevel() + 5)
@@ -1073,7 +1019,7 @@ function LW:Create()
     end
 
     -- Table-view "new entries" indicator (anchored to table container)
-    local tableNewBtn = CreateFrame("Button", nil, right, "UIPanelButtonTemplate")
+    local tableNewBtn = Widgets.CreateButton(right)
     tableNewBtn:SetSize(110, 20)
     tableNewBtn:SetPoint("BOTTOM", tc, "BOTTOM", 0, 4)
     tableNewBtn:SetFrameLevel(right:GetFrameLevel() + 5)
@@ -1087,7 +1033,7 @@ function LW:Create()
     LW._tableNewEntriesBtn = tableNewBtn
 
     -- View toggle button (in presets row, after None)
-    local viewToggle = CreateFrame("Button", nil, presets, "UIPanelButtonTemplate")
+    local viewToggle = Widgets.CreateButton(presets)
     viewToggle:SetSize(50, 20)
     viewToggle:SetPoint("LEFT", bNone, "RIGHT", 8, 0)
     viewToggle:SetText("Table")
@@ -1135,7 +1081,7 @@ function LW:Create()
     row:SetHeight(26)
     row:SetFrameLevel(right:GetFrameLevel() + 2)
 
-    local copyBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    local copyBtn = Widgets.CreateButton(row)
     copyBtn:SetSize(70, 22)
     copyBtn:SetPoint("LEFT", row, "LEFT", 0, 0)
     copyBtn:SetText("Copy All")
@@ -1157,7 +1103,7 @@ function LW:Create()
         if LW._edit then LW._edit:HighlightText(0, -1); LW._edit:SetFocus() end
     end)
 
-    local copyVisBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+    local copyVisBtn = Widgets.CreateButton(row)
     copyVisBtn:SetSize(76, 22)
     copyVisBtn:SetPoint("LEFT", copyBtn, "RIGHT", 4, 0)
     copyVisBtn:SetText("Copy Vis")
@@ -1183,11 +1129,8 @@ function LW:Create()
         end
     end)
 
-    local pauseChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    local pauseChk = Widgets.CreateCheckButton(row, "Pause", "GameFontHighlightSmall")
     pauseChk:SetPoint("LEFT", copyVisBtn, "RIGHT", 10, 0)
-    pauseChk.text = pauseChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    pauseChk.text:SetPoint("LEFT", pauseChk, "RIGHT", 2, 0)
-    pauseChk.text:SetText("Pause")
     pauseChk:SetScript("OnShow", function(self) self:SetChecked(LW._auto == false) end)
     pauseChk:SetScript("OnClick", function(self)
         LW._auto = not self:GetChecked()
@@ -1196,19 +1139,13 @@ function LW:Create()
         if LW._auto then LW._lastBufVersion = nil; LW:_Refresh() end
     end)
 
-    local showTimeChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    local showTimeChk = Widgets.CreateCheckButton(row, "Time", "GameFontHighlightSmall")
     showTimeChk:SetPoint("LEFT", pauseChk, "RIGHT", 12, 0)
-    showTimeChk.text = showTimeChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    showTimeChk.text:SetPoint("LEFT", showTimeChk, "RIGHT", 2, 0)
-    showTimeChk.text:SetText("Time")
     showTimeChk:SetScript("OnShow", function(self) self:SetChecked(LW._showTime ~= false) end)
     showTimeChk:SetScript("OnClick", function(self) LW._showTime = self:GetChecked() and true or false; LW._lastBufVersion = nil; LW:_Refresh() end)
 
-    local autoScrollChk = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+    local autoScrollChk = Widgets.CreateCheckButton(row, "Scroll", "GameFontHighlightSmall")
     autoScrollChk:SetPoint("LEFT", showTimeChk, "RIGHT", 12, 0)
-    autoScrollChk.text = autoScrollChk:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    autoScrollChk.text:SetPoint("LEFT", autoScrollChk, "RIGHT", 2, 0)
-    autoScrollChk.text:SetText("Scroll")
     autoScrollChk:SetScript("OnShow", function(self) self:SetChecked(LW._autoScroll ~= false) end)
     autoScrollChk:SetScript("OnClick", function(self) LW._autoScroll = self:GetChecked() and true or false end)
 

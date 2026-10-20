@@ -68,9 +68,10 @@ end
 Widgets.Solid = solid
 
 --- Draw a 1px border around an existing region using four textures on its parent.
-function Widgets.AddBorder(parent, region, color)
+--- layer defaults to BORDER; use HIGHLIGHT for a hover-only border on buttons.
+function Widgets.AddBorder(parent, region, color, layer)
     local function line()
-        local t = parent:CreateTexture(nil, "BORDER")
+        local t = parent:CreateTexture(nil, layer or "BORDER")
         t:SetColorTexture(rgba(color or C.cardBorder))
         return t
     end
@@ -143,6 +144,8 @@ local function buttonSetActive(self, active)
 end
 
 --- Flat button with a centred label.
+--- Hover, press and disabled looks use native button states (no scripts), so
+--- callers are free to SetScript OnEnter/OnLeave/OnClick.
 ---@return table
 function Widgets.CreateButton(parent, text, width, height)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -150,15 +153,20 @@ function Widgets.CreateButton(parent, text, width, height)
     Widgets.ApplyBackdrop(b)
     local fs = b:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     fs:SetPoint("CENTER")
-    fs:SetTextColor(rgba(C.text))
     b:SetFontString(fs)
+    b:SetNormalFontObject(GameFontHighlight)
+    b:SetHighlightFontObject(GameFontHighlight)
+    b:SetDisabledFontObject(GameFontDisable)
+    b:SetPushedTextOffset(1, -1)
     b.Text = fs
     b:SetText(text or "")
-    hookBoxHover(b)
-    b:SetScript("OnMouseDown", function(self) if self:IsEnabled() then self.Text:SetPoint("CENTER", 1, -1) end end)
-    b:SetScript("OnMouseUp", function(self) self.Text:SetPoint("CENTER", 0, 0) end)
-    b:SetScript("OnEnable", function(self) self:SetAlpha(1) end)
-    b:SetScript("OnDisable", function(self) self:SetAlpha(0.4) end)
+
+    local hover = b:CreateTexture(nil, "HIGHLIGHT")
+    hover:SetPoint("TOPLEFT", 1, -1)
+    hover:SetPoint("BOTTOMRIGHT", -1, 1)
+    hover:SetColorTexture(1, 1, 1, 0.05)
+    Widgets.AddBorder(b, b, C.borderHover, "HIGHLIGHT")
+
     b.FitToText = buttonFitToText
     b.SetActive = buttonSetActive
     return b
@@ -173,6 +181,65 @@ function Widgets.CreateArrowButton(parent, direction, size)
     b._arrow:SetPoint("CENTER")
     hookBoxHover(b)
     return b
+end
+
+--- Title bar across the top of a window: tinted strip, addon icon, title,
+--- optional subtitle and a close button. Dragging the bar moves the window
+--- (when it is movable).
+--- opts = { height = 36, subtitle = string?, onClose = fn?, onDragStop = fn? }
+---@return table bar  bar.title, bar.subtitle and bar.close are exposed
+function Widgets.CreateTitleBar(f, titleText, opts)
+    opts = opts or {}
+    local height = opts.height or 36
+
+    local bar = CreateFrame("Frame", nil, f)
+    bar:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+    bar:SetPoint("TOPRIGHT", f, "TOPRIGHT", -1, -1)
+    bar:SetHeight(height - 1)
+    bar:EnableMouse(true)
+    bar:RegisterForDrag("LeftButton")
+    bar:SetScript("OnDragStart", function() if f:IsMovable() then f:StartMoving() end end)
+    bar:SetScript("OnDragStop", function()
+        f:StopMovingOrSizing()
+        if opts.onDragStop then opts.onDragStop() end
+    end)
+
+    local bg = bar:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(rgba(C.titleBg))
+
+    local sep = bar:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", bar, "BOTTOMLEFT")
+    sep:SetPoint("TOPRIGHT", bar, "BOTTOMRIGHT")
+    sep:SetColorTexture(rgba(C.cardBorder))
+
+    local iconSize = math.max(16, height - 18)
+    local icon = bar:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(iconSize, iconSize)
+    icon:SetPoint("LEFT", bar, "LEFT", 10, 0)
+    icon:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc.png")
+
+    local title = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    title:SetText(titleText or "")
+    title:SetTextColor(rgba(C.textHeader))
+    bar.title = title
+
+    local subtitle = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    subtitle:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 1)
+    subtitle:SetTextColor(rgba(C.textMuted))
+    subtitle:SetText(opts.subtitle or "")
+    bar.subtitle = subtitle
+
+    local close = Widgets.CreateCloseButton(bar)
+    close:SetPoint("RIGHT", bar, "RIGHT", -8, 0)
+    close:SetScript("OnClick", function()
+        if opts.onClose then opts.onClose() else f:Hide() end
+    end)
+    bar.close = close
+
+    return bar
 end
 
 --- Borderless close "X" drawn from two rotated bars.
@@ -264,44 +331,49 @@ end
 -- Checkbox
 -- ─────────────────────────────────────────────────────────────────────────────
 
-local function checkboxSetChecked(self, checked)
-    self._checked = checked and true or false
-    self._fill:SetVertexColor(rgba(self._checked and C.accent or C.controlBg))
-    self._check:SetShown(self._checked)
+local function checkButtonSetLabel(self, text)
+    self.Text:SetText(text or "")
+    -- Let clicks on the label toggle too.
+    self:SetHitRectInsets(0, -(math.ceil(self.Text:GetStringWidth()) + 8), 0, 0)
 end
 
---- Square checkbox with a label. Set an OnClick script to handle toggling.
-function Widgets.CreateCheckbox(parent, text)
-    local cb = CreateFrame("Button", nil, parent)
-    cb:SetHeight(20)
-    local border = solid(cb, "BACKGROUND", C.border)
-    border:SetSize(16, 16)
-    border:SetPoint("LEFT")
-    cb._border = border
+--- Square checkbox (a real CheckButton, so it toggles itself before OnClick
+--- runs and GetChecked/SetChecked behave natively) with a label to its right.
+--- font defaults to GameFontHighlight.
+---@return table
+function Widgets.CreateCheckButton(parent, text, font)
+    local cb = CreateFrame("CheckButton", nil, parent)
+    cb:SetSize(20, 20)
+
+    local box = solid(cb, "BACKGROUND", C.border)
+    box:SetSize(16, 16)
+    box:SetPoint("CENTER")
     local fill = solid(cb, "BORDER", C.controlBg)
-    fill:SetPoint("TOPLEFT", border, "TOPLEFT", 1, -1)
-    fill:SetPoint("BOTTOMRIGHT", border, "BOTTOMRIGHT", -1, 1)
-    cb._fill = fill
-    local check = cb:CreateTexture(nil, "ARTWORK")
-    check:SetTexture(CHECK)
-    check:SetDesaturated(true)
-    check:SetVertexColor(rgba(C.knobOn))
-    check:SetSize(18, 18)
-    check:SetPoint("CENTER", border, "CENTER", 0, 0)
-    cb._check = check
-    local label = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    label:SetPoint("LEFT", border, "RIGHT", 8, 0)
-    label:SetPoint("RIGHT", cb, "RIGHT", 0, 0)
+    fill:SetPoint("TOPLEFT", box, "TOPLEFT", 1, -1)
+    fill:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", -1, 1)
+    Widgets.AddBorder(cb, box, C.accent, "HIGHLIGHT")
+
+    cb:SetCheckedTexture(CHECK)
+    local check = cb:GetCheckedTexture()
+    check:ClearAllPoints()
+    check:SetSize(20, 20)
+    check:SetPoint("CENTER", box, "CENTER", 1, 0)
+    cb:SetDisabledCheckedTexture(CHECK)
+    local disabledCheck = cb:GetDisabledCheckedTexture()
+    disabledCheck:ClearAllPoints()
+    disabledCheck:SetSize(20, 20)
+    disabledCheck:SetPoint("CENTER", box, "CENTER", 1, 0)
+    disabledCheck:SetDesaturated(true)
+
+    local label = cb:CreateFontString(nil, "OVERLAY", font or "GameFontHighlight")
+    label:SetPoint("LEFT", cb, "RIGHT", 4, 0)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
     label:SetTextColor(rgba(C.text))
-    label:SetText(text or "")
     cb.Text = label
-    cb.SetChecked = checkboxSetChecked
-    cb.GetChecked = function(self) return self._checked end
-    cb:SetScript("OnEnter", function(self) self._border:SetVertexColor(rgba(C.accent)) end)
-    cb:SetScript("OnLeave", function(self) self._border:SetVertexColor(rgba(C.border)) end)
-    cb:SetChecked(false)
+    cb.text = label  -- name used by older call sites
+    cb.SetLabel = checkButtonSetLabel
+    cb:SetLabel(text)
     return cb
 end
 

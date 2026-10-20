@@ -166,7 +166,7 @@ function ConfigSystem:CreateMultiselect(parent, info)
     end
 
     local function refreshCheckbox(checkbox)
-        checkbox:SetChecked(info.get(nil, checkbox.key))
+        checkbox:SetChecked(info.get(nil, checkbox.key) and true or false)
         local disabled = evalField(info.disabled)
         checkbox:SetAlpha(disabled and 0.4 or 1)
         checkbox:EnableMouse(not disabled)
@@ -189,10 +189,13 @@ function ConfigSystem:CreateMultiselect(parent, info)
         for index, key in ipairs(keys) do
             local checkbox = self.checkboxes[index]
             if not checkbox then
-                checkbox = Widgets.CreateCheckbox(self)
+                checkbox = Widgets.CreateCheckButton(self)
                 checkbox:SetScript("OnClick", function(btn)
-                    if evalField(info.disabled) then return end
-                    info.set(nil, btn.key, not btn:GetChecked())
+                    if evalField(info.disabled) then
+                        refreshCheckbox(btn)
+                        return
+                    end
+                    info.set(nil, btn.key, btn:GetChecked() and true or false)
                     refreshCheckbox(btn)
                     Widgets.PlayClick(btn:GetChecked())
                     refreshSiblings(self)
@@ -201,15 +204,14 @@ function ConfigSystem:CreateMultiselect(parent, info)
                 self.checkboxes[index] = checkbox
             end
             checkbox.key = key
-            checkbox.Text:SetText(values[key] or key or "")
+            checkbox:SetLabel(values[key] or key or "")
             checkbox:ClearAllPoints()
-            -- Unlabelled lists use the full row width; labelled ones sit in the control column.
+            -- Unlabelled lists start at the row's left edge; labelled ones sit in the control column.
             if nameText ~= "" then
                 checkbox:SetPoint("TOPLEFT", self, "TOPRIGHT", -CONTROL_W, -5 - (index - 1) * CHECK_H)
             else
                 checkbox:SetPoint("TOPLEFT", self, "TOPLEFT", 8, -5 - (index - 1) * CHECK_H)
             end
-            checkbox:SetPoint("RIGHT", self, "RIGHT", -8, 0)
             checkbox:Show()
             refreshCheckbox(checkbox)
         end

@@ -176,38 +176,12 @@ local function buildFrame()
     tinsert(UISpecialFrames, "CLN_SettingsWindow")
 
     -- ── Title bar ────────────────────────────────────────────────────────────
-    local titleBg = f:CreateTexture(nil, "BACKGROUND")
-    titleBg:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
-    titleBg:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -1, -HEADER_H)
-    titleBg:SetColorTexture(rgba(C.titleBg))
-
-    local icon = f:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(26, 26)
-    icon:SetPoint("LEFT", titleBg, "LEFT", PADDING - 1, 0)
-    icon:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc.png")
-
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
-    title:SetText("Chatty Little NPC")
-    title:SetTextColor(rgba(C.textHeader))
-
-    local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    subtitle:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 1)
-    subtitle:SetTextColor(rgba(C.textMuted))
     local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
     local version = getMetadata and getMetadata("ChattyLittleNpc", "Version")
-    subtitle:SetText(version and ("Settings  ·  v" .. version) or "Settings")
-
-    local closeBtn = Widgets.CreateCloseButton(f)
-    closeBtn:SetPoint("RIGHT", titleBg, "RIGHT", -PADDING + 2, 0)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
-
-    -- Thin separator below title bar.
-    local titleSep = f:CreateTexture(nil, "ARTWORK")
-    titleSep:SetHeight(1)
-    titleSep:SetPoint("TOPLEFT",  titleBg, "BOTTOMLEFT")
-    titleSep:SetPoint("TOPRIGHT", titleBg, "BOTTOMRIGHT")
-    titleSep:SetColorTexture(rgba(C.cardBorder))
+    Widgets.CreateTitleBar(f, "Chatty Little NPC", {
+        height   = HEADER_H,
+        subtitle = version and ("Settings  ·  v" .. version) or "Settings",
+    })
 
     -- ── Tab bar ──────────────────────────────────────────────────────────────
     -- Tabs sit between the title separator and the content area.

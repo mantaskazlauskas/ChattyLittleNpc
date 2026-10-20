@@ -1,5 +1,6 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
+local Widgets = CLN.Widgets
 
 -- ============================================================================
 -- Whitelist Management Window
@@ -91,7 +92,7 @@ local function refreshRows()
             row._label:SetJustifyH("LEFT")
             if row._label.SetWordWrap then row._label:SetWordWrap(false) end
 
-            row._btn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+            row._btn = Widgets.CreateButton(row)
             row._btn:SetSize(64, 20)
             row._btn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
             row._btn:SetText("Remove")
@@ -168,14 +169,7 @@ local function buildFrame()
     f:SetSize(WIN_WIDTH, WIN_HEIGHT)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
-    f:SetBackdrop({
-        bgFile   = "Interface/Tooltips/UI-Tooltip-Background",
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    f:SetBackdropColor(0.05, 0.05, 0.08, 0.96)
-    f:SetBackdropBorderColor(0.25, 0.22, 0.20, 0.75)
+    Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:EnableMouse(true)
     f:SetMovable(true)
     f:RegisterForDrag("LeftButton")
@@ -183,48 +177,39 @@ local function buildFrame()
     f:SetScript("OnDragStop",  f.StopMovingOrSizing)
     f:Hide()
 
-    -- Close (X) button
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-    closeBtn:SetSize(26, 26)
-    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    -- Title bar
+    local bar = Widgets.CreateTitleBar(f, "Chatty Little NPC", { subtitle = "Whitelist" })
 
-    -- Title
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, -PADDING)
-    title:SetText("Whitelist Management")
-    title:SetTextColor(1.0, 0.82, 0.0)
-
-    -- Count badge next to title (updated in refreshRows via f._countLabel)
-    local countLabel = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    countLabel:SetPoint("LEFT", title, "RIGHT", 6, -1)
-    countLabel:SetTextColor(0.55, 0.55, 0.55)
+    -- Count badge next to the subtitle (updated in refreshRows via f._countLabel)
+    local countLabel = bar:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    countLabel:SetPoint("BOTTOMLEFT", bar.subtitle, "BOTTOMRIGHT", 6, 0)
+    countLabel:SetTextColor(Widgets.rgba(Widgets.Colors.textMuted))
     f._countLabel = countLabel
 
-    -- Subtitle
-    local sub = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    sub:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -3)
+    -- Description
+    local sub = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    sub:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, -46)
     sub:SetText("NPCs whose native speech pauses addon playback.")
-    sub:SetTextColor(0.6, 0.6, 0.6)
+    sub:SetTextColor(Widgets.rgba(Widgets.Colors.textMuted))
 
     -- Separator
     local sep = f:CreateTexture(nil, "ARTWORK")
-    sep:SetPoint("TOPLEFT",  sub, "BOTTOMLEFT",  -2, -6)
+    sep:SetPoint("TOPLEFT",  sub, "BOTTOMLEFT",  -2, -8)
     sep:SetPoint("TOPRIGHT", f,   "TOPRIGHT",   -PADDING, 0)
     sep:SetHeight(1)
-    sep:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    sep:SetColorTexture(Widgets.rgba(Widgets.Colors.cardBorder))
 
     -- Bottom bar: EditBox + Add button
     -- Add button sits flush at the right edge.
-    local addBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    local addBtn = Widgets.CreateButton(f)
     addBtn:SetSize(68, 24)
     addBtn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -PADDING, PADDING)
     addBtn:SetText("Add")
 
     -- EditBox stretches between left edge and the Add button.
-    local addBox = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    local addBox = Widgets.CreateEditBox(f)
     addBox:SetHeight(24)
-    addBox:SetPoint("BOTTOMLEFT",  f,      "BOTTOMLEFT",  PADDING + 4,  PADDING)
+    addBox:SetPoint("BOTTOMLEFT",  f,      "BOTTOMLEFT",  PADDING,  PADDING)
     addBox:SetPoint("BOTTOMRIGHT", addBtn, "BOTTOMLEFT",  -6, 0)
     addBox:SetAutoFocus(false)
     addBox:SetMaxLetters(128)
@@ -232,11 +217,13 @@ local function buildFrame()
 
     -- Placeholder hint text (shown when box is empty and unfocused)
     local hint = addBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetAllPoints(addBox)
+    hint:SetPoint("TOPLEFT", addBox, "TOPLEFT", 8, 0)
+    hint:SetPoint("BOTTOMRIGHT", addBox, "BOTTOMRIGHT", -8, 0)
     hint:SetJustifyH("LEFT")
     hint:SetText("NPC name…")
-    addBox:SetScript("OnEditFocusGained", function() hint:Hide() end)
-    addBox:SetScript("OnEditFocusLost", function(self)
+    -- HookScript keeps the edit box's own focus highlight.
+    addBox:HookScript("OnEditFocusGained", function() hint:Hide() end)
+    addBox:HookScript("OnEditFocusLost", function(self)
         if self:GetText() == "" then hint:Show() end
     end)
     addBox:SetScript("OnTextChanged", function(self)
@@ -258,9 +245,9 @@ local function buildFrame()
     addBox:SetScript("OnEnterPressed", function() doAdd() end)
 
     -- Scroll frame (fills the space between the separator and the bottom bar)
-    local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    local sf = Widgets.CreateScrollFrame(f)
     sf:SetPoint("TOPLEFT",    sep, "BOTTOMLEFT",  PADDING,        -4)
-    sf:SetPoint("BOTTOMRIGHT", f,  "BOTTOMRIGHT", -(PADDING + 2), PADDING + 28 + 4)
+    sf:SetPoint("BOTTOMRIGHT", f,  "BOTTOMRIGHT", -(PADDING + 14), PADDING + 28 + 4)
 
     local sc = CreateFrame("Frame", nil, sf)
     sc:SetWidth(SCROLL_CHILD_WIDTH)
