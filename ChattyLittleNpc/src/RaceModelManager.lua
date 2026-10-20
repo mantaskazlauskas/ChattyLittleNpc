@@ -13,15 +13,123 @@ CLN.RaceModelManager = RaceModelManager
 RaceModelManager.list = {}
 RaceModelManager.index = 1
 RaceModelManager.totalCount = 0 -- all recorded models, before filtering
+RaceModelManager.query = ""     -- search text for the model list panel
+
+local VIEWER_W = 380   -- left column: model viewer and labeling controls
+local LIST_W   = 280   -- right column: searchable model list
+local ROW_H    = 20
 
 --- True when a model has neither a race nor a "not a race" mark.
 local function isUnassigned(entry)
     return (not entry.race or entry.race == "") and not entry.ignored
 end
 
+--- Build the searchable list panel on the right side of the window.
+local function createListPanel(f)
+    local C = Widgets.Colors
+
+    local panel = CreateFrame("Frame", nil, f)
+    panel:SetPoint("TOPLEFT", f, "TOPLEFT", VIEWER_W, -36)
+    panel:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -1, 1)
+
+    local divider = panel:CreateTexture(nil, "ARTWORK")
+    divider:SetWidth(1)
+    divider:SetPoint("TOPLEFT", panel, "TOPLEFT")
+    divider:SetPoint("BOTTOMLEFT", panel, "BOTTOMLEFT")
+    divider:SetColorTexture(Widgets.rgba(C.cardBorder))
+
+    local search = Widgets.CreateEditBox(panel, LIST_W - 28, 24)
+    search:SetPoint("TOPLEFT", panel, "TOPLEFT", 14, -10)
+    local placeholder = search:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    placeholder:SetPoint("LEFT", search, "LEFT", 8, 0)
+    placeholder:SetText("Search model ID, NPC, race…")
+    search:SetScript("OnTextChanged", function(self)
+        placeholder:SetShown(self:GetText() == "")
+        RaceModelManager.query = self:GetText() or ""
+        RaceModelManager:RefreshList(true)
+    end)
+    -- Enter jumps to the first match.
+    search:SetScript("OnEnterPressed", function(self)
+        self:ClearFocus()
+        local first = RaceModelManager.filtered and RaceModelManager.filtered[1]
+        if first then RaceModelManager:Select(first) end
+    end)
+    search:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    -- HookScript keeps the edit box's own hover highlight.
+    search:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Search", 1, 1, 1)
+        GameTooltip:AddLine("Matches model ID, NPC name, NPC ID or race. Enter selects the first match.", nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
+    f.search = search
+
+    f.listCount = panel:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    f.listCount:SetPoint("TOPLEFT", search, "BOTTOMLEFT", 2, -6)
+
+    local sf, content = Widgets.CreateScrollFrame(panel)
+    sf:SetPoint("TOPLEFT", search, "BOTTOMLEFT", 0, -24)
+    sf:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", -26, 12)
+    content:SetWidth(LIST_W - 40)
+    f.listScroll, f.listContent = sf, content
+    f.listRows = {}
+
+    f.listEmpty = content:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    f.listEmpty:SetPoint("TOP", content, "TOP", 0, -12)
+    f.listEmpty:SetText("No matching models")
+end
+
+--- Pooled list row: model ID, NPC name, race / status.
+local function getListRow(f, i)
+    local row = f.listRows[i]
+    if row then return row end
+    local C = Widgets.Colors
+
+    row = CreateFrame("Button", nil, f.listContent)
+    row:SetHeight(ROW_H)
+    row:SetPoint("TOPLEFT", f.listContent, "TOPLEFT", 0, -(i - 1) * ROW_H)
+    row:SetPoint("RIGHT", f.listContent, "RIGHT", 0, 0)
+
+    local stripe = row:CreateTexture(nil, "BACKGROUND")
+    stripe:SetAllPoints()
+    stripe:SetColorTexture(1, 1, 1, i % 2 == 0 and 0.03 or 0)
+    row.selected = row:CreateTexture(nil, "BORDER")
+    row.selected:SetAllPoints()
+    row.selected:SetColorTexture(Widgets.rgba(C.accentSoft))
+    row.selBar = row:CreateTexture(nil, "ARTWORK")
+    row.selBar:SetWidth(2)
+    row.selBar:SetPoint("TOPLEFT")
+    row.selBar:SetPoint("BOTTOMLEFT")
+    row.selBar:SetColorTexture(Widgets.rgba(C.accent))
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.07)
+
+    local function col(font, justify)
+        local fs = row:CreateFontString(nil, "OVERLAY", font)
+        fs:SetJustifyH(justify)
+        fs:SetWordWrap(false)
+        return fs
+    end
+    row.id = col("GameFontHighlightSmall", "LEFT")
+    row.id:SetPoint("LEFT", row, "LEFT", 8, 0)
+    row.id:SetWidth(54)
+    row.race = col("GameFontHighlightSmall", "RIGHT")
+    row.race:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    row.race:SetWidth(72)
+    row.name = col("GameFontHighlightSmall", "LEFT")
+    row.name:SetPoint("LEFT", row.id, "RIGHT", 4, 0)
+    row.name:SetPoint("RIGHT", row.race, "LEFT", -4, 0)
+
+    row:SetScript("OnClick", function(self) RaceModelManager:Select(self.listIndex) end)
+    f.listRows[i] = row
+    return row
+end
+
 local function createFrame()
     local f = CreateFrame("Frame", "CLN_RaceModelManager", UIParent, "BackdropTemplate")
-    f:SetSize(380, 572)
+    f:SetSize(VIEWER_W + LIST_W, 572)
     Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:SetPoint("CENTER")
     f:SetMovable(true)
@@ -36,12 +144,18 @@ local function createFrame()
 
     Widgets.CreateTitleBar(f, "Chatty Little NPC", { subtitle = "Race Models" })
 
+    -- Left column holds the viewer; the list panel fills the rest.
+    local viewer = CreateFrame("Frame", nil, f)
+    viewer:SetPoint("TOPLEFT", f, "TOPLEFT")
+    viewer:SetPoint("BOTTOMLEFT", f, "BOTTOMLEFT")
+    viewer:SetWidth(VIEWER_W)
+
     -- Header: model file ID
     f.header = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    f.header:SetPoint("TOP", 0, -48)
+    f.header:SetPoint("TOP", viewer, "TOP", 0, -48)
 
     f.counter = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.counter:SetPoint("TOPRIGHT", -14, -44)
+    f.counter:SetPoint("TOPRIGHT", viewer, "TOPRIGHT", -14, -44)
 
     f.details = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     f.details:SetPoint("TOP", f.header, "BOTTOM", 0, -6)
@@ -49,8 +163,8 @@ local function createFrame()
 
     -- Model view (drag to rotate, mouse wheel to zoom)
     local modelBg = CreateFrame("Frame", nil, f, "BackdropTemplate")
-    modelBg:SetPoint("TOPLEFT", 14, -96)
-    modelBg:SetPoint("TOPRIGHT", -14, -96)
+    modelBg:SetPoint("TOPLEFT", viewer, "TOPLEFT", 14, -96)
+    modelBg:SetPoint("TOPRIGHT", viewer, "TOPRIGHT", -14, -96)
     modelBg:SetHeight(330)
     modelBg:SetFrameLevel(f:GetFrameLevel() + 5)
     Widgets.ApplyBackdrop(modelBg, { 0, 0, 0, 0.5 }, Widgets.Colors.border)
@@ -122,10 +236,88 @@ local function createFrame()
     end)
 
     f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    f.hint:SetPoint("BOTTOM", 0, 12)
+    f.hint:SetPoint("BOTTOM", viewer, "BOTTOM", 0, 12)
     f.hint:SetText("Drag model to rotate, scroll to zoom. Enter saves and moves on.")
 
+    createListPanel(f)
     return f
+end
+
+--- True when the model's ID, NPC name/ID or race contains the (lowercased) query.
+local function matchesQuery(item, query)
+    if query == "" then return true end
+    local e = item.entry
+    local haystack = table.concat({
+        tostring(item.fileId), e.name or "", tostring(e.npcId or ""), e.race or "",
+        e.ignored and "not a race" or "",
+    }, "\n"):lower()
+    return haystack:find(query, 1, true) ~= nil
+end
+
+--- Redraw the model list, keeping the current model in view.
+--- resetScroll jumps to the top instead (used when the search text changes).
+function RaceModelManager:RefreshList(resetScroll)
+    local f = self.frame
+    local query = strtrim(self.query or ""):lower()
+    local filtered = {}
+    for i, item in ipairs(self.list) do
+        if matchesQuery(item, query) then filtered[#filtered + 1] = i end
+    end
+    self.filtered = filtered
+
+    local C = Widgets.Colors
+    local selectedPos
+    for pos, listIndex in ipairs(filtered) do
+        local item = self.list[listIndex]
+        local e = item.entry
+        local row = getListRow(f, pos)
+        row.listIndex = listIndex
+        row.id:SetText(item.fileId)
+        row.name:SetText(e.name or "?")
+        if e.ignored then
+            row.race:SetText("not a race")
+            row.race:SetTextColor(1, 0.5, 0.5)
+        elseif e.race and e.race ~= "" then
+            row.race:SetText(e.race)
+            row.race:SetTextColor(0.5, 0.9, 0.5)
+        else
+            row.race:SetText("—")
+            row.race:SetTextColor(Widgets.rgba(C.textMuted))
+        end
+        local isSelected = listIndex == self.index
+        row.selected:SetShown(isSelected)
+        row.selBar:SetShown(isSelected)
+        if isSelected then selectedPos = pos end
+        row:Show()
+    end
+    for i = #filtered + 1, #f.listRows do f.listRows[i]:Hide() end
+
+    f.listEmpty:SetShown(#filtered == 0 and #self.list > 0)
+    f.listCount:SetText(query == "" and (#self.list .. " models")
+        or (#filtered .. " of " .. #self.list .. " models"))
+    f.listContent:SetHeight(math.max(1, #filtered * ROW_H))
+
+    -- Keep the selected row visible (or jump to the top after a new search).
+    local sf = f.listScroll
+    if sf.UpdateScrollChildRect then sf:UpdateScrollChildRect() end
+    if resetScroll then
+        sf.ScrollBar:SetValue(0)
+    elseif selectedPos then
+        local top, viewH = (selectedPos - 1) * ROW_H, sf:GetHeight()
+        local cur = sf:GetVerticalScroll()
+        if top < cur then
+            sf.ScrollBar:SetValue(top)
+        elseif top + ROW_H > cur + viewH then
+            sf.ScrollBar:SetValue(top + ROW_H - viewH)
+        end
+    end
+end
+
+--- Jump to a model by its index in self.list.
+function RaceModelManager:Select(listIndex)
+    if not self.list[listIndex] then return end
+    self.index = listIndex
+    self:Refresh()
 end
 
 function RaceModelManager:Refresh()
@@ -151,6 +343,7 @@ function RaceModelManager:Refresh()
         f.model.renderToken = (f.model.renderToken or 0) + 1 -- cancel a pending fallback
         f.model:ClearModel()
         f.noModel:Show()
+        self:RefreshList()
         return
     end
 
@@ -209,6 +402,7 @@ function RaceModelManager:Refresh()
     model:SetPortraitZoom(0)
     model:SetFacing(0)
     f.noModel:Hide()
+    self:RefreshList()
 end
 
 function RaceModelManager:Step(delta)
