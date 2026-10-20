@@ -391,21 +391,21 @@ function Library:QueueRowUpdate()
     end)
 end
 
-local function createDropdown(cfg, parent, label, width, values, sorting, key, x)
-    local dd = cfg:CreateDropdown(parent, {
-        name = label,
+local function createDropdown(parent, label, width, values, sorting, key, x)
+    local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    fs:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -8)
+    fs:SetText(label)
+    local dd = CLN.Widgets.CreateDropdown(parent, width, {
         values = values,
         sorting = sorting,
         get = function() return Library.state[key] end,
-        set = function(_, value)
+        set = function(value)
             Library.state[key] = value
             Library:Refresh()
         end,
     })
-    UIDropDownMenu_SetWidth(dd, width)
     dd:SetPoint("TOPLEFT", parent, "TOPLEFT", x, -22)
-    -- Created inside an already-visible frame, so OnShow (which sets the text) won't fire.
-    dd:GetScript("OnShow")(dd)
+    dd:Refresh()
     return dd
 end
 
@@ -476,20 +476,15 @@ end
 ---@param parent Frame
 function Library:Build(parent)
     if self._ui then return end
-    local cfg = CLN.ConfigSystem:New()
     local ui = { frame = parent, rows = {} }
     self._ui = ui
 
     -- Search box
-    local searchLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local searchLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -8)
     searchLabel:SetText("Search")
-    local search = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-    search:SetSize(150, 20)
-    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 14, -28)
-    search:SetAutoFocus(false)
-    search:SetScript("OnEscapePressed", function(selfBox) selfBox:ClearFocus() end)
-    search:SetScript("OnEnterPressed", function(selfBox) selfBox:ClearFocus() end)
+    local search = CLN.Widgets.CreateEditBox(parent, 156, 24)
+    search:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -22)
     local searchGen = 0
     search:SetScript("OnTextChanged", function(selfBox, userInput)
         if not userInput then return end
@@ -500,20 +495,20 @@ function Library:Build(parent)
             if gen == searchGen then Library:Refresh() end
         end)
     end)
-    search:SetScript("OnEnter", function(selfBox)
+    search:HookScript("OnEnter", function(selfBox)
         GameTooltip:SetOwner(selfBox, "ANCHOR_BOTTOM")
         GameTooltip:SetText("Search", 1, 1, 1)
         GameTooltip:AddLine("Type a quest, NPC or item ID, or part of a quest title or NPC name.", nil, nil, nil, true)
         GameTooltip:AddLine("Names are only known for quests and NPCs your game has already seen.", 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
     end)
-    search:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    search:HookScript("OnLeave", function() GameTooltip:Hide() end)
     ui.search = search
 
     -- Filters
-    createDropdown(cfg, parent, "Type", 90, {
+    createDropdown(parent, "Type", 110, {
         all = "All types", quest = "Quests", gossip = "Gossip", greeting = "Greetings", object = "Objects", item = "Items",
-    }, { "all", "quest", "gossip", "greeting", "object", "item" }, "type", 160)
+    }, { "all", "quest", "gossip", "greeting", "object", "item" }, "type", 176)
 
     local expansionValues, expansionSort = { all = "All expansions" }, { "all" }
     local localeValues, localeSort = { all = "All languages" }, { "all" }
@@ -527,18 +522,16 @@ function Library:Build(parent)
             localeSort[#localeSort + 1] = pack.locale
         end
     end
-    createDropdown(cfg, parent, "Expansion", 120, expansionValues, expansionSort, "expansion", 282)
-    createDropdown(cfg, parent, "Language", 110, localeValues, localeSort, "locale", 434)
+    createDropdown(parent, "Expansion", 150, expansionValues, expansionSort, "expansion", 298)
+    createDropdown(parent, "Language", 130, localeValues, localeSort, "locale", 460)
 
     -- Count + stop
     local count = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     count:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, -60)
     ui.count = count
 
-    local stop = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    stop:SetSize(80, 20)
+    local stop = CLN.Widgets.CreateButton(parent, "Stop", 80, 22)
     stop:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SCROLLBAR_W, -56)
-    stop:SetText("Stop")
     stop:SetScript("OnClick", function()
         if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.ForceStopCurrentSound then
             CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)

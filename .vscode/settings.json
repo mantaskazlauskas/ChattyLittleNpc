@@ -83,7 +83,8 @@
         "FauxScrollFrame_SetOffset",
         "FauxScrollFrame_Update",
         "FauxScrollFrame_GetOffset",
-        "FauxScrollFrame_OnVerticalScroll"
+        "FauxScrollFrame_OnVerticalScroll",
+        "SOUNDKIT"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

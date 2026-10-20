@@ -56,6 +56,7 @@
 ---@field EventHandler EventHandler
 ---@field Options table
 ---@field ConfigSystem ConfigSystem
+---@field Widgets table Custom-skinned UI widgets (Core/Widgets.lua)
 ---@field locale string
 ---@field gameVersion number
 ---@field useNamespaces boolean

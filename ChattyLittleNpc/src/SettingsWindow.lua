@@ -8,11 +8,14 @@ local CLN = _G.ChattyLittleNpc
 -- Based on the same draggable-popup pattern as WhitelistWindow.
 -- ============================================================================
 
+local Widgets = CLN.Widgets
+local C, rgba = Widgets.Colors, Widgets.rgba
+
 local WIN_WIDTH  = 660
-local WIN_HEIGHT = 530
+local WIN_HEIGHT = 540
 local PADDING    = 12
 local TAB_BAR_H  = 30     -- height of the tab strip
-local HEADER_H   = 42     -- height occupied by the title + separator
+local HEADER_H   = 44     -- height of the title bar
 
 -- Each tab maps to one or more option-group keys from CLN.OptionsDefinition.args.
 local TABS = {
@@ -81,12 +84,12 @@ local function applyTabActive(key, isActive)
     local btn = _tabButtons[key]
     if not btn then return end
     if isActive then
-        btn._bg:SetColorTexture(1, 0.82, 0, 0.15)
-        btn._text:SetTextColor(1, 0.82, 0)
-        btn._underline:SetColorTexture(1, 0.82, 0, 1)
+        btn._bg:SetColorTexture(1, 0.78, 0.2, 0.08)
+        btn._text:SetTextColor(rgba(C.accent))
+        btn._underline:SetColorTexture(rgba(C.accent))
     else
         btn._bg:SetColorTexture(0, 0, 0, 0)
-        btn._text:SetTextColor(0.65, 0.65, 0.65)
+        btn._text:SetTextColor(rgba(C.textMuted))
         btn._underline:SetColorTexture(0, 0, 0, 0)
     end
 end
@@ -160,14 +163,7 @@ local function buildFrame()
     f:SetSize(WIN_WIDTH, WIN_HEIGHT)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
-    f:SetBackdrop({
-        bgFile   = "Interface/Tooltips/UI-Tooltip-Background",
-        edgeFile = "Interface/Tooltips/UI-Tooltip-Border",
-        tile     = true, tileSize = 16, edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    f:SetBackdropColor(0.05, 0.05, 0.08, 0.97)
-    f:SetBackdropBorderColor(0.25, 0.22, 0.20, 0.80)
+    Widgets.ApplyBackdrop(f, C.windowBg, C.windowBorder)
     f:EnableMouse(true)
     f:SetMovable(true)
     f:RegisterForDrag("LeftButton")
@@ -179,24 +175,39 @@ local function buildFrame()
     -- Register so Escape closes the window.
     tinsert(UISpecialFrames, "CLN_SettingsWindow")
 
-    -- ── Close button ─────────────────────────────────────────────────────────
-    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -2, -2)
-    closeBtn:SetSize(26, 26)
+    -- ── Title bar ────────────────────────────────────────────────────────────
+    local titleBg = f:CreateTexture(nil, "BACKGROUND")
+    titleBg:SetPoint("TOPLEFT", f, "TOPLEFT", 1, -1)
+    titleBg:SetPoint("BOTTOMRIGHT", f, "TOPRIGHT", -1, -HEADER_H)
+    titleBg:SetColorTexture(rgba(C.titleBg))
+
+    local icon = f:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(26, 26)
+    icon:SetPoint("LEFT", titleBg, "LEFT", PADDING - 1, 0)
+    icon:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc.png")
+
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    title:SetText("Chatty Little NPC")
+    title:SetTextColor(rgba(C.textHeader))
+
+    local subtitle = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    subtitle:SetPoint("BOTTOMLEFT", title, "BOTTOMRIGHT", 8, 1)
+    subtitle:SetTextColor(rgba(C.textMuted))
+    local getMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local version = getMetadata and getMetadata("ChattyLittleNpc", "Version")
+    subtitle:SetText(version and ("Settings  ·  v" .. version) or "Settings")
+
+    local closeBtn = Widgets.CreateCloseButton(f)
+    closeBtn:SetPoint("RIGHT", titleBg, "RIGHT", -PADDING + 2, 0)
     closeBtn:SetScript("OnClick", function() f:Hide() end)
 
-    -- ── Title ────────────────────────────────────────────────────────────────
-    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", f, "TOPLEFT", PADDING + 2, -PADDING)
-    title:SetText("Chatty Little NPC  —  Settings")
-    title:SetTextColor(1.0, 0.82, 0.0)
-
-    -- Thin separator below title.
+    -- Thin separator below title bar.
     local titleSep = f:CreateTexture(nil, "ARTWORK")
     titleSep:SetHeight(1)
-    titleSep:SetPoint("TOPLEFT",  f, "TOPLEFT",   PADDING,  -HEADER_H + 2)
-    titleSep:SetPoint("TOPRIGHT", f, "TOPRIGHT",  -PADDING, -HEADER_H + 2)
-    titleSep:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    titleSep:SetPoint("TOPLEFT",  titleBg, "BOTTOMLEFT")
+    titleSep:SetPoint("TOPRIGHT", titleBg, "BOTTOMRIGHT")
+    titleSep:SetColorTexture(rgba(C.cardBorder))
 
     -- ── Tab bar ──────────────────────────────────────────────────────────────
     -- Tabs sit between the title separator and the content area.
@@ -227,7 +238,7 @@ local function buildFrame()
         lbl:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
         lbl:SetJustifyH("CENTER")
         lbl:SetText(tab.label)
-        lbl:SetTextColor(0.65, 0.65, 0.65)
+        lbl:SetTextColor(rgba(C.textMuted))
         btn._text = lbl
 
         -- Position
@@ -240,7 +251,8 @@ local function buildFrame()
         -- Hover scripts
         btn:SetScript("OnEnter", function(self)
             if self._key ~= _activeTabKey then
-                self._bg:SetColorTexture(1, 1, 1, 0.06)
+                self._bg:SetColorTexture(1, 1, 1, 0.04)
+                self._text:SetTextColor(rgba(C.text))
             end
             if tab.tip then
                 GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
@@ -251,6 +263,7 @@ local function buildFrame()
         btn:SetScript("OnLeave", function(self)
             if self._key ~= _activeTabKey then
                 self._bg:SetColorTexture(0, 0, 0, 0)
+                self._text:SetTextColor(rgba(C.textMuted))
             end
             GameTooltip:Hide()
         end)
@@ -266,16 +279,16 @@ local function buildFrame()
     tabSep:SetHeight(1)
     tabSep:SetPoint("TOPLEFT",  f, "TOPLEFT",   PADDING,  tabTopY - TAB_BAR_H)
     tabSep:SetPoint("TOPRIGHT", f, "TOPRIGHT",  -PADDING, tabTopY - TAB_BAR_H)
-    tabSep:SetColorTexture(0.3, 0.3, 0.3, 0.6)
+    tabSep:SetColorTexture(rgba(C.cardBorder))
 
     -- ── Per-tab scroll frames ─────────────────────────────────────────────────
     -- Content area spans from just below the tab bar to the bottom of the window.
-    local contentTopY    = tabTopY - TAB_BAR_H - 2
+    local contentTopY    = tabTopY - TAB_BAR_H - 10
     local contentBottomY = PADDING
 
-    -- UIPanelScrollFrameTemplate hangs its scrollbar outside the scroll frame's right
-    -- edge (6px gap + ~16px bar), so inset the scroll frame by that much.
-    local SCROLLBAR_W = 24
+    -- Widgets.CreateScrollFrame hangs its scrollbar outside the scroll frame's right
+    -- edge (8px gap + 6px bar), so inset the scroll frame by that much.
+    local SCROLLBAR_W = 14
     local contentW = WIN_WIDTH - PADDING * 2 - SCROLLBAR_W
 
     for _, tab in ipairs(TABS) do
@@ -287,15 +300,13 @@ local function buildFrame()
             panelFrame:Hide()
             _tabPanels[tab.key] = { sf = panelFrame, content = panelFrame, built = false }
         else
-            local sf = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+            local sf, content = Widgets.CreateScrollFrame(f)
             sf:SetPoint("TOPLEFT",     f, "TOPLEFT",     PADDING,       contentTopY)
             sf:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -(PADDING + SCROLLBAR_W), contentBottomY)
             sf:Hide()
 
-            local content = CreateFrame("Frame", nil, sf)
             content:SetWidth(contentW)
             content:SetHeight(1)  -- grows after buildTabContent
-            sf:SetScrollChild(content)
             content._trackedControls = {}
 
             _tabPanels[tab.key] = { sf = sf, content = content, built = false }
@@ -306,6 +317,7 @@ local function buildFrame()
     f:SetScript("OnShow", function()
         refreshTabControls(_activeTabKey)
     end)
+    f:SetScript("OnHide", Widgets.CloseMenu)
 
     -- Activate the default tab (builds its content immediately).
     activateTab(_activeTabKey)
