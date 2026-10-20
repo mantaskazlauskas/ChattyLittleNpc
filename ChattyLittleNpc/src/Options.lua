@@ -1238,21 +1238,6 @@ local options = {
                         end
                     end,
                 },
-                showGossipEditor = {
-                    order = 7,
-                    type = 'execute',
-                    name = 'Open Gossip Editor',
-                    desc = 'Open the Gossip Editor window for editing and fixing collected NPC gossip lines.',
-                    func = function()
-                        if CLN.Editor and CLN.Editor.Frame then
-                            if CLN.Editor.Frame:IsShown() then
-                                CLN.Editor.Frame:Hide()
-                            else
-                                CLN.Editor.Frame:Show()
-                            end
-                        end
-                    end,
-                },
                 openRaceModelManager = {
                     order = 7.5,
                     type = 'execute',
@@ -1261,13 +1246,6 @@ local options = {
                     func = function()
                         if CLN.RaceModelManager then CLN.RaceModelManager:Toggle() end
                     end,
-                },
-                printLoadedVoiceoverPackMetadata = {
-                    order = 8,
-                    type = 'execute',
-                    name = 'Print Voiceover Pack Info',
-                    desc = 'Print metadata and statistics for all loaded voiceover packs.',
-                    func = function() CLN:PrintLoadedVoiceoverPacks() end,
                 },
             },
         },
