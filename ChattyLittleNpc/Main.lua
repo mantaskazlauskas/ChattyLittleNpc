@@ -39,6 +39,8 @@ local defaults = {
         alwaysShowReplayFrame = true, -- legacy: kept for saved variable compat, not user-facing
         showSpeakButton = true,
         compactMode = false,
+        frameStyle = "minimal",
+        portraitPosition = "above",
         idleFadeDelay = 10,     -- seconds before frame fades to idle opacity
         idleFadeOpacity = 0.1,  -- target opacity when idle (0 = invisible, 1 = fully opaque)
         queueTextScale = 1.0,

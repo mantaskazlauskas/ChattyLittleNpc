@@ -66,6 +66,16 @@ local function buildRegionFromAnchors(anchors, widths, regionName)
             focusScreenY = 0.57,
             widthKey = "head",
         }
+    elseif regionName == "portrait" then
+        -- Head and shoulders: chest up, chin just below center so tall
+        -- headgear keeps some headroom
+        spec = {
+            focusAnchor = "chin",
+            bottomAnchor = "chest",
+            topAnchor = "headTop",
+            focusScreenY = 0.45,
+            widthKey = "upper_body",
+        }
     elseif regionName == "upper_body" then
         spec = {
             focusAnchor = "chest",

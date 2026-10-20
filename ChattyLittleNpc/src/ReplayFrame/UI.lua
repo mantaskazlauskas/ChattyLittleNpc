@@ -83,6 +83,9 @@ function ReplayFrame:GetDisplayFrame()
     self:_CreateDisplayFrameAnimations()
     self:_IdleFadeInit()
 
+    -- Visual style (backgrounds, portrait framing, header colors)
+    if self.ApplyFrameStyle then self:ApplyFrameStyle() end
+
     -- Start hidden; UpdateVisibility() is the sole gatekeeper for showing.
     frame:Hide()
     frame:SetAlpha(0)
@@ -661,10 +664,12 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     divider:SetHeight(1)
     self.HeaderDivider = divider
 
-    -- Subtitle display: shows current dialogue text below model area
+    -- Subtitle display: current dialogue text under the header line. While it
+    -- shows, the queue list moves below it (_SetSubtitleSpace); its height
+    -- follows the text (_SetSubtitleText).
     local subtitleBg = CreateFrame("Frame", nil, contentFrame, "BackdropTemplate")
-    subtitleBg:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 4, -4)
-    subtitleBg:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -4, -4)
+    subtitleBg:SetPoint("TOPLEFT", divider, "BOTTOMLEFT", 0, -4)
+    subtitleBg:SetPoint("TOPRIGHT", divider, "BOTTOMRIGHT", 2, -4)
     subtitleBg:SetHeight(36)
     subtitleBg:SetBackdrop({ bgFile = "Interface/Tooltips/UI-Tooltip-Background" })
     subtitleBg:SetBackdropColor(0, 0, 0, 0.5)
@@ -673,8 +678,9 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     self.SubtitleFrame = subtitleBg
 
     local subtitleText = subtitleBg:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    -- Width only: the box grows to the text's height
     subtitleText:SetPoint("TOPLEFT", subtitleBg, "TOPLEFT", 8, -6)
-    subtitleText:SetPoint("BOTTOMRIGHT", subtitleBg, "BOTTOMRIGHT", -8, 4)
+    subtitleText:SetPoint("TOPRIGHT", subtitleBg, "TOPRIGHT", -8, -6)
     subtitleText:SetJustifyH("CENTER")
     subtitleText:SetJustifyV("MIDDLE")
     if subtitleText.SetWordWrap then subtitleText:SetWordWrap(true) end
@@ -714,7 +720,8 @@ function ReplayFrame:ShowSubtitle(text)
     if not text or text == "" then return end
 
     local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
-    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+    local styleScale = self.GetFrameStyle and self:GetFrameStyle().subtitleScale or 1
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale * styleScale)), "")
 
     -- Split into sentences and reveal one at a time
     local sentences = self.SplitTooltipIntoSentences and self:SplitTooltipIntoSentences(text) or { text }
@@ -726,10 +733,9 @@ function ReplayFrame:ShowSubtitle(text)
     local token = self._subtitleToken
     self.SubtitleFrame:Show()
     self.SubtitleFrame:SetAlpha(0)
-    -- Push header below subtitle to avoid overlap
+    -- Move the queue list below the subtitle (header and buttons stay put)
     if self.HeaderText then
-        self.HeaderText:ClearAllPoints()
-        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+        self:_SetSubtitleSpace(true)
     end
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 
@@ -749,15 +755,14 @@ function ReplayFrame:ShowSubtitle(text)
                 self._subtitleTimer = nil
                 self:_SubtitleFadeOut(token, function()
                     if self.HeaderText and self.ContentFrame then
-                        self.HeaderText:ClearAllPoints()
-                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                        self:_SetSubtitleSpace(false)
                     end
                     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
                 end)
             end)
             return
         end
-        self.SubtitleText:SetText(sentences[idx])
+        self:_SetSubtitleText(sentences[idx])
         self:_SubtitleFadeIn()
         -- Duration scales with sentence length
         local S = self.Config and self.Config.Subtitle
@@ -770,6 +775,30 @@ function ReplayFrame:ShowSubtitle(text)
     -- Start first sentence after a brief fade-in delay
     self._subtitleTimer = C_Timer and C_Timer.After(
         self.Config and self.Config.Subtitle and self.Config.Subtitle.firstSentenceDelay or 0.3, showNext)
+end
+
+-- Make room for the subtitle: while shown, the queue list starts below it
+-- instead of below the header line. The header and its buttons never move.
+function ReplayFrame:_SetSubtitleSpace(shown)
+    local list, divider = self.QueueListFrame, self.HeaderDivider
+    if not (list and divider and self.ContentFrame) then return end
+    local top = (shown and self.SubtitleFrame) or divider
+    list:ClearAllPoints()
+    list:SetPoint("TOPLEFT", top, "BOTTOMLEFT", 0, -6)
+    list:SetPoint("TOPRIGHT", top, "BOTTOMRIGHT", (top == divider) and 2 or 0, -6)
+    list:SetPoint("BOTTOMLEFT", self.ContentFrame, "BOTTOMLEFT", 8, 8)
+    -- Row count depends on the list's height
+    if self.DisplayFrame and self.DisplayFrame:IsShown() and self.RefreshQueueDataProvider then
+        self:RefreshQueueDataProvider()
+    end
+end
+
+-- Set the subtitle text and grow the box to fit it.
+function ReplayFrame:_SetSubtitleText(text)
+    if not (self.SubtitleText and self.SubtitleFrame) then return end
+    self.SubtitleText:SetText(text or "")
+    local h = self.SubtitleText:GetStringHeight() or 0
+    self.SubtitleFrame:SetHeight(math.max(24, math.ceil(h) + 12))
 end
 
 function ReplayFrame:HideSubtitle()
@@ -795,8 +824,7 @@ function ReplayFrame:HideSubtitle()
     if self.SubtitleFrame then self.SubtitleFrame:Hide() end
     -- Restore header to original position
     if self.HeaderText and self.ContentFrame then
-        self.HeaderText:ClearAllPoints()
-        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+        self:_SetSubtitleSpace(false)
     end
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 end
@@ -906,7 +934,8 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
     startIndex = math.max(1, math.min(startIndex, #sentences))
 
     local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
-    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
+    local styleScale = self.GetFrameStyle and self:GetFrameStyle().subtitleScale or 1
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale * styleScale)), "")
 
     self._subtitleSentences = sentences
     self._subtitleIndex = 0
@@ -915,10 +944,9 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
 
     self.SubtitleFrame:Show()
     self.SubtitleFrame:SetAlpha(0)
-    -- Push header below subtitle to avoid overlap
+    -- Move the queue list below the subtitle (header and buttons stay put)
     if self.HeaderText then
-        self.HeaderText:ClearAllPoints()
-        self.HeaderText:SetPoint("TOPLEFT", self.SubtitleFrame, "BOTTOMLEFT", 6, -4)
+        self:_SetSubtitleSpace(true)
     end
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
 
@@ -942,7 +970,7 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
                 remaining[#remaining + 1] = curSentences[i]
             end
             if #remaining > 0 then
-                self.SubtitleText:SetText(table.concat(remaining, " "))
+                self:_SetSubtitleText(table.concat(remaining, " "))
                 self:_SubtitleFadeIn()
             end
             -- Cancel auto-advance timer and complete after a brief pause
@@ -1036,8 +1064,7 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
                 self._subtitleTimer = nil
                 self:_SubtitleFadeOut(token, function()
                     if self.HeaderText and self.ContentFrame then
-                        self.HeaderText:ClearAllPoints()
-                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                        self:_SetSubtitleSpace(false)
                     end
                     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
                     if onComplete then onComplete() end
@@ -1053,7 +1080,7 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
         end
 
         -- Focus mode: show context window (previous + current + next)
-        self.SubtitleText:SetText(buildFocusText(idx))
+        self:_SetSubtitleText(buildFocusText(idx))
         self:_SubtitleFadeIn()
         -- Lip-read: trigger talk animation on model
         triggerLipRead(sentences[idx])
@@ -1065,7 +1092,7 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
     -- Phase 1: Show recap of last-heard sentence (dimmed) if available
     local recapIndex = startIndex - 1
     if recapIndex >= 1 and sentences[recapIndex] then
-        self.SubtitleText:SetText("|cFF666666" .. sentences[recapIndex] .. "|r")
+        self:_SetSubtitleText("|cFF666666" .. sentences[recapIndex] .. "|r")
         self:_SubtitleFadeIn()
         self._subtitleIndex = startIndex - 1
         self._subtitleTimer = C_Timer and C_Timer.After(
@@ -1113,7 +1140,7 @@ function ReplayFrame:ScrubSentence(delta)
         parts[#parts + 1] = "|cFF999999" .. sentences[newIdx + 1] .. "|r"
     end
     if self.SubtitleText then
-        self.SubtitleText:SetText(table.concat(parts, " "))
+        self:_SetSubtitleText(table.concat(parts, " "))
         self:_SubtitleFadeIn()
     end
 
@@ -1155,8 +1182,7 @@ function ReplayFrame:ScrubSentence(delta)
                 if token ~= self._subtitleToken then return end
                 self:_SubtitleFadeOut(token, function()
                     if self.HeaderText and self.ContentFrame then
-                        self.HeaderText:ClearAllPoints()
-                        self.HeaderText:SetPoint("TOPLEFT", self.ContentFrame, "TOPLEFT", 10, -6)
+                        self:_SetSubtitleSpace(false)
                     end
                     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
                     local cb = self._tcOnComplete

@@ -521,9 +521,11 @@ function ReplayFrame:BuildQueueEntries()
                 local fn = item.questId .. "_" .. item.phase .. ".ogg"
                 qDur, qIsPack = player:GetBestDuration(fn, item.title)
             elseif item.npcId and item.title and item.entryType then
+                -- Resolve the file the way playback will (any hash variant, gender suffix)
                 local qHashes = CLN.Utils and CLN.Utils.GetHashes and CLN.Utils:GetHashes(item.npcId, item.title)
-                local qFn = qHashes and qHashes[1]
-                    and (item.npcId .. "_" .. item.entryType .. "_" .. qHashes[1] .. ".ogg") or nil
+                local qPath = qHashes and CLN.Utils.GetPathToNonQuestFile
+                    and CLN.Utils:GetPathToNonQuestFile(item.npcId, item.entryType, qHashes, item.gender) or nil
+                local qFn = qPath and qPath:match("([^\\/]+)$") or nil
                 qDur, qIsPack = player:GetBestDuration(qFn, item.title)
             end
             table.insert(entries, {
@@ -901,6 +903,9 @@ function ReplayFrame:ApplyProfileSettings()
 
     -- Queue text scale
     if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
+
+    -- Frame style
+    if self.ApplyFrameStyle then self:ApplyFrameStyle() end
 
     -- Visibility / show-replay-frame toggle
     if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end

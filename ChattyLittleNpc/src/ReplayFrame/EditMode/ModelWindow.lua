@@ -58,6 +58,18 @@ function ModelWindow:ReadState()
 
     if f then
         state.size = Window.SerializeSize(f)
+        -- Left/right portraits take the conversation window's height; save the
+        -- user's Portrait Height instead so Above/Below keep their size.
+        if state.size and ReplayFrame.GetPortraitResizeEdge and not ReplayFrame:GetPortraitResizeEdge() then
+            state.size.height = CLN.db.profile.npcModelFrameHeight or 140
+        elseif state.size and ReplayFrame.GetPortraitMinHeight then
+            -- A style's minimum height isn't the user's choice; only save a
+            -- height they resized beyond it
+            local minH = ReplayFrame:GetPortraitMinHeight()
+            if minH > 0 and (state.size.height or 0) <= minH + 1 then
+                state.size.height = CLN.db.profile.npcModelFrameHeight or 140
+            end
+        end
         if not state.docked then
             state.pos = Window.SerializePosition(f)
         end
@@ -135,8 +147,7 @@ function ModelWindow:Dock()
     if convFrame then
         self._docked = true
         f:ClearAllPoints()
-        f:SetPoint("BOTTOMLEFT", convFrame, "TOPLEFT", 0, 2)
-        f:SetPoint("BOTTOMRIGHT", convFrame, "TOPRIGHT", 0, 2)
+        ReplayFrame:AnchorModelContainer(f, convFrame)
         -- Clear legacy undocked position
         CLN.db.profile.modelFramePos = nil
     else

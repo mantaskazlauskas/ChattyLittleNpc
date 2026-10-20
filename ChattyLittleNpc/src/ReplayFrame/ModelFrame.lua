@@ -58,6 +58,8 @@ end
 function ReplayFrame:_CameraAnimsDisabled()
     return (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations)
         or self:_NoAnimDebugEnabled()
+        -- Styles with a fixed shot (e.g. Cinematic's face close-up) keep the camera still
+        or (self.GetFrameStyle and self:GetFrameStyle().noCameraAnims)
 end
 
 -- Position the standalone model container above DisplayFrame; show/hide based on state
@@ -85,22 +87,23 @@ function ReplayFrame:LayoutModelArea(frame)
     end
 
     if self.ModelContainer then
-        -- Always docked: anchor above DisplayFrame so the two move as one window
-        self.ModelContainer:ClearAllPoints()
-        self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-        self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
-        self.ModelContainer:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
+        -- Always docked to DisplayFrame (side chosen in settings) so the two move as one window
+        self:AnchorModelContainer(self.ModelContainer, frame)
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
 
     if self.NpcModelFrame then
         self.NpcModelFrame:ClearAllPoints()
         -- Shift model 10% lower inside the container; the container clips overflow.
+        -- Close-up styles (head/shoulders) skip it: it would clip the top of the head.
+        -- The model fills the container (whatever shape the docking gives it),
+        -- extended by dropPx below so the shift doesn't shrink it.
         local h = self.npcModelFrameHeight or math.floor(140 * 1.15)
-        local dropPx = math.floor(h * 0.10)
-        self.NpcModelFrame:SetPoint("TOPLEFT", (self.ModelContainer or frame), "TOPLEFT", 0, -dropPx)
-        self.NpcModelFrame:SetPoint("TOPRIGHT", (self.ModelContainer or frame), "TOPRIGHT", 0, -dropPx)
-        self.NpcModelFrame:SetHeight(h + dropPx)
+        local region = self.GetFrameStyle and self:GetFrameStyle().portraitRegion or "bust"
+        local dropPx = (region == "bust") and math.floor(h * 0.10) or 0
+        local box = self.ModelContainer or frame
+        self.NpcModelFrame:SetPoint("TOPLEFT", box, "TOPLEFT", 0, -dropPx)
+        self.NpcModelFrame:SetPoint("BOTTOMRIGHT", box, "BOTTOMRIGHT", 0, -2 * dropPx)
         if self.NpcModelFrame.SetFrameLevel and self.ModelContainer and self.ModelContainer.GetFrameLevel then
             self.NpcModelFrame:SetFrameLevel(self.ModelContainer:GetFrameLevel() + 1)
         end
@@ -136,7 +139,7 @@ function ReplayFrame:RebuildModelHost()
         -- Clear children to avoid multiple model frames; we'll create a fresh host
         local children = { self.ModelContainer:GetChildren() }
         for _, child in ipairs(children) do
-            if child and child ~= self.NpcModelFrame then child:Hide() end
+            if child and child ~= self.NpcModelFrame and not child._clnStyleOverlay then child:Hide() end
         end
     end
     -- Create a new host using current preference
@@ -243,7 +246,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         local children = { self.ModelContainer:GetChildren() }
         local modelChildren = {}
         for _, child in ipairs(children) do
-            if child and child.GetObjectType then
+            -- Skip the frame-style overlay (FrameStyles.lua); it isn't a model frame
+            if child and child.GetObjectType and not child._clnStyleOverlay then
                 local otype = child:GetObjectType()
                 if otype == "PlayerModel" or otype == "ModelScene" or otype == "Frame" then
                     table.insert(modelChildren, child)
@@ -562,6 +566,7 @@ function ReplayFrame:CheckAndShowModel()
     if (not self:IsCompactModeEnabled() and self:IsVoiceoverCurrenltyPlaying() and currentlyPlaying.npcId) then
     -- Update model first (sets _hasValidModel), then expand frame, then show container
     self:UpdateNpcModelDisplay(currentlyPlaying.npcId)
+    if self.UpdateFrameStyleNameplate then self:UpdateFrameStyleNameplate() end
     if self._hasValidModel then
         self:ExpandForNpcModel()
         if self.ModelContainer and not self.ModelContainer:IsShown() then self.ModelContainer:Show() end
@@ -658,6 +663,8 @@ end
 function ReplayFrame:ApplyDefaultFit(displayID)
     local host = self.NpcModelFrame
     if not host then return end
+    -- The frame style picks the shot: "bust" (default) or "head" (face close-up)
+    host._portraitRegion = self.GetFrameStyle and self:GetFrameStyle().portraitRegion or "bust"
     -- Defer to renderer's FitDefault which handles scale, composition bias,
     -- projector-based corrections, and clipping in one coherent step.
     if host.FitDefault then host:FitDefault() end

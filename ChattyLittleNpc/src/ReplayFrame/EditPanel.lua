@@ -409,7 +409,10 @@ function ReplayFrame:CreateEditPanel()
             ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H)
             ReplayFrame.DisplayFrame:SetScale(1.0)
         end
-        -- Re-dock model above conversation
+        -- Re-dock model to the conversation window at the default height.
+        -- Docking sizes the portrait from the saved height, so store it first.
+        if CLN.db and CLN.db.profile then CLN.db.profile.npcModelFrameHeight = 140 end
+        ReplayFrame.npcModelFrameHeight = 140
         local ModelWin = ReplayFrame.EditMode and ReplayFrame.EditMode.ModelWindow
         if ModelWin then
             if ModelWin.frame then
@@ -417,12 +420,10 @@ function ReplayFrame:CreateEditPanel()
             end
             ModelWin:Dock()
         elseif ReplayFrame.ModelContainer then
-            ReplayFrame.ModelContainer:ClearAllPoints()
-            if ReplayFrame.DisplayFrame then
-                ReplayFrame.ModelContainer:SetPoint("BOTTOMLEFT", ReplayFrame.DisplayFrame, "TOPLEFT", 0, 2)
-                ReplayFrame.ModelContainer:SetPoint("BOTTOMRIGHT", ReplayFrame.DisplayFrame, "TOPRIGHT", 0, 2)
-            end
             ReplayFrame.ModelContainer:SetSize(DEFAULT_W, 140)
+            if ReplayFrame.DisplayFrame then
+                ReplayFrame:AnchorModelContainer(ReplayFrame.ModelContainer, ReplayFrame.DisplayFrame)
+            end
         end
         -- Show model container if hidden
         if ReplayFrame.ModelContainer and not ReplayFrame.ModelContainer:IsShown() then
@@ -475,9 +476,7 @@ function ReplayFrame:CreateEditPanel()
             elseif row.key == "height" and ReplayFrame and ReplayFrame.DisplayFrame then
                 ReplayFrame.DisplayFrame:SetHeight(v); if ReplayFrame.Relayout then ReplayFrame:Relayout() end
             elseif row.key == "modelHeight" and ReplayFrame then
-                if ReplayFrame.ModelContainer then
-                    ReplayFrame.ModelContainer:SetHeight(v)
-                end
+                ReplayFrame:SetPortraitStripHeight(v)
                 if ReplayFrame.NpcModelFrame then
                     ReplayFrame.NpcModelFrame:SetHeight(v)
                 end
@@ -617,9 +616,7 @@ function ReplayFrame:CreateEditPanel()
         end
         if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H) end
         if ReplayFrame and ReplayFrame.NpcModelFrame then ReplayFrame.NpcModelFrame:SetHeight(140) end
-        if ReplayFrame and ReplayFrame.ModelContainer then
-            ReplayFrame.ModelContainer:SetHeight(140)
-        end
+        if ReplayFrame then ReplayFrame:SetPortraitStripHeight(140) end
         if ReplayFrame and ReplayFrame.Relayout then ReplayFrame:Relayout() end
         panel:RefreshDirtyIndicators()
     end)
@@ -837,7 +834,7 @@ function ReplayFrame:ShowEditPanel()
         -- Apply current slider-driven height immediately to preview
         if panel.modelHeightSlider then
             mf:SetHeight(panel.modelHeightSlider:GetValue() or (CLN.db.profile.npcModelFrameHeight or 140))
-            if self.ModelContainer then self.ModelContainer:SetHeight(panel.modelHeightSlider:GetValue() or (CLN.db.profile.npcModelFrameHeight or 140)) end
+            self:SetPortraitStripHeight(panel.modelHeightSlider:GetValue() or (CLN.db.profile.npcModelFrameHeight or 140))
         end
     end
 
@@ -877,13 +874,8 @@ function ReplayFrame:ApplyEditPanelSettings(panel)
     -- Update model frame height
     if self.npcModelFrameHeight ~= modelHeight then
         self.npcModelFrameHeight = modelHeight
-        if self.ModelContainer then
-            self.ModelContainer:SetHeight(modelHeight)
-        end
-        if self.NpcModelFrame then
-            self.NpcModelFrame:SetSize(self.npcModelFrameWidth or 150, modelHeight)
-        end
-        self:Relayout()
+        -- Re-dock with the saved height (honours portrait position and style minimum)
+        if self.DisplayFrame and self.LayoutModelArea then self:LayoutModelArea(self.DisplayFrame) end
     end
     
     if CLN.Logger then

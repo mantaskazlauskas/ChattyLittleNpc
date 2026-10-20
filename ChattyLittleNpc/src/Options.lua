@@ -476,6 +476,26 @@ local options = {
                         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
                     end,
                 },
+                frameStyle = {
+                    order = 1.5,
+                    type = 'select',
+                    width = 'double',
+                    name = 'Frame Style',
+                    desc = 'Look of the conversation frame and the NPC portrait.\n\n• Minimal — frameless, like the objectives tracker\n• Panel — dark panel with a framed portrait and nameplate\n• Cinematic — head-and-shoulders portrait with a large name and film-style subtitles',
+                    values = function()
+                        local values = {}
+                        for key, style in pairs(CLN.ReplayFrame and CLN.ReplayFrame.FrameStyles or {}) do
+                            values[key] = style.label
+                        end
+                        return values
+                    end,
+                    sorting = { 'minimal', 'panel', 'cinematic' },
+                    get = function() return CLN.db.profile.frameStyle or 'minimal' end,
+                    set = function(_, value)
+                        CLN.db.profile.frameStyle = value
+                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyFrameStyle then CLN.ReplayFrame:ApplyFrameStyle() end
+                    end,
+                },
                 compactMode = {
                     order = 2,
                     type = 'toggle',
@@ -715,6 +735,29 @@ local options = {
                             if CLN.ReplayFrame.NpcModelFrame then
                                 CLN.ReplayFrame.NpcModelFrame:SetHeight(value)
                             end
+                            -- Re-dock so Above/Below pick up the new height
+                            if CLN.ReplayFrame.LayoutModelArea and CLN.ReplayFrame.DisplayFrame then
+                                CLN.ReplayFrame:LayoutModelArea(CLN.ReplayFrame.DisplayFrame)
+                            end
+                        end
+                    end,
+                },
+                portraitPosition = {
+                    order = 5.1,
+                    type = 'select',
+                    width = 'double',
+                    name = 'Portrait Position',
+                    desc = 'Which side of the conversation window the NPC portrait is attached to.\n\nLeft and Right match the conversation window\'s height; Portrait Height applies to Above and Below.',
+                    values = { above = 'Above', below = 'Below', left = 'Left', right = 'Right' },
+                    sorting = { 'above', 'below', 'left', 'right' },
+                    get = function() return CLN.db.profile.portraitPosition or 'above' end,
+                    set = function(_, value)
+                        CLN.db.profile.portraitPosition = value
+                        local RF = CLN.ReplayFrame
+                        if RF and RF.LayoutModelArea and RF.DisplayFrame then
+                            RF:LayoutModelArea(RF.DisplayFrame)
+                            -- Re-frame for the new portrait shape
+                            if RF._hasValidModel and RF.ApplyDefaultFit then RF:ApplyDefaultFit() end
                         end
                     end,
                 },

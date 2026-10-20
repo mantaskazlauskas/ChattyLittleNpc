@@ -224,10 +224,16 @@ local function createResizeGrip(ov, controller)
         local parent = controller.frame
         if not parent then return end
 
-        -- Docked model: can only resize vertically (top edge free, bottom anchored)
+        -- Docked model: can only resize vertically, on the edge away from the window
         local sizeDir = "BOTTOMRIGHT"
         if controller.IsDocked and controller:IsDocked() then
-            sizeDir = "TOP"
+            if not ReplayFrame.GetPortraitResizeEdge then
+                sizeDir = "TOP"
+            else
+                sizeDir = ReplayFrame:GetPortraitResizeEdge()
+                -- Side portraits follow the conversation window's size
+                if not sizeDir then return end
+            end
         end
 
         parent:StartSizing(sizeDir)

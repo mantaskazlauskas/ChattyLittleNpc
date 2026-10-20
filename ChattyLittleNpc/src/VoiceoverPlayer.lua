@@ -887,6 +887,8 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         local pathToFile = CLN.Utils:GetPathToNonQuestFile(cp.npcId, cp.entryType, hashes, cp.gender)
         if pathToFile and not CLN.Utils:IsNilOrEmpty(pathToFile) then
             success, newSoundHandle = PlaySoundFile(pathToFile, CLN.db.profile.audioChannel)
+            -- Remember the real file so the duration lookup below finds it
+            cp._voiceoverFileName = cp._voiceoverFileName or pathToFile:match("([^\\/]+)$")
         end
     end
 
@@ -1700,10 +1702,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
             if GetTime then
                 VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
             end
-            -- Store duration: prefer pack-provided, fall back to text estimate
-            local nqHashes = CLN.Utils:GetHashes(npcId, text)
-            local nqFileName = nqHashes and nqHashes[1]
-                and (npcId .. "_" .. soundType .. "_" .. nqHashes[1] .. ".ogg") or nil
+            -- Store duration: prefer pack-provided, fall back to text estimate.
+            -- Use the file actually played: it may be another hash variant or a
+            -- gender-suffixed file, which a first-hash file name would miss.
+            local nqFileName = type(pathToFile) == "string" and pathToFile:match("([^\\/]+)$") or nil
             VoiceoverPlayer.currentlyPlaying._voiceoverFileName = nqFileName
             local nqDur, nqIsPack = self:GetBestDuration(nqFileName, text)
             VoiceoverPlayer.currentlyPlaying._estimatedDuration = nqDur

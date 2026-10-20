@@ -133,7 +133,7 @@ function ReplayFrame:ResetFramePosition()
     end
 end
 
--- The model portrait is always docked above the conversation window, so it has
+-- The model portrait is always docked to the conversation window, so it has
 -- no position of its own to save (its height is saved as npcModelFrameHeight).
 function ReplayFrame:SaveModelPosition()
     CLN.db.profile.modelFramePos = nil
@@ -142,6 +142,89 @@ end
 -- Always docked: the model portrait never floats independently.
 function ReplayFrame:IsModelUndocked()
     return false
+end
+
+-- Which side of the conversation window the portrait docks to.
+---@return "above"|"below"|"left"|"right"
+function ReplayFrame:GetPortraitPosition()
+    local pos = CLN.db and CLN.db.profile and CLN.db.profile.portraitPosition
+    if pos == "below" or pos == "left" or pos == "right" then return pos end
+    return "above"
+end
+
+-- Edge the Edit Mode resize grip drags: the one facing away from the window.
+-- nil for left/right, whose size follows the conversation window.
+function ReplayFrame:GetPortraitResizeEdge()
+    local pos = self:GetPortraitPosition()
+    if pos == "above" then return "TOP" end
+    if pos == "below" then return "BOTTOM" end
+    return nil
+end
+
+-- Minimum portrait height for above/below: close-up styles need a squarer box
+-- than a wide strip. A fraction of the window width (style.portraitMinAspect); 0 = none.
+function ReplayFrame:GetPortraitMinHeight()
+    local s = self.GetFrameStyle and self:GetFrameStyle()
+    local ratio = s and s.portraitMinAspect
+    local frame, container = self.DisplayFrame, self.ModelContainer
+    if not (ratio and frame) then return 0 end
+    -- The container lives under UIParent and doesn't share the window's
+    -- SetScale, so convert the window width into the container's units.
+    local width = frame:GetWidth() or 0
+    if container then
+        width = width * (frame:GetEffectiveScale() or 1) / (container:GetEffectiveScale() or 1)
+    end
+    -- Capped like Edit Mode's portrait resize bounds
+    return math.min(500, math.floor(width * ratio + 0.5))
+end
+
+-- Apply a portrait height without re-docking (Edit Panel live previews, where
+-- the profile isn't saved yet). Above/below respect the style's minimum;
+-- left/right follow the window's height and are left alone.
+function ReplayFrame:SetPortraitStripHeight(h)
+    local container = self.ModelContainer
+    if not (container and h) then return end
+    if self:GetPortraitResizeEdge() then
+        container:SetHeight(math.max(h, self:GetPortraitMinHeight()))
+    end
+end
+
+-- Dock the portrait container to the conversation window on the chosen side.
+-- Above/below span the window's width at the saved portrait height; left/right
+-- match the window's height, with a width of 80% of it (re-run on resize).
+function ReplayFrame:AnchorModelContainer(container, frame)
+    container = container or self.ModelContainer
+    frame = frame or self.DisplayFrame
+    if not (container and frame) then return end
+    -- The profile value is authoritative (Edit Mode resize saves only that); keep the cache in step
+    local h = (CLN.db and CLN.db.profile and CLN.db.profile.npcModelFrameHeight) or self.npcModelFrameHeight or 140
+    self.npcModelFrameHeight = h
+    local pos = self:GetPortraitPosition()
+    -- Above/below: the style may need a taller box than the saved height
+    -- (not saved back, so other styles keep the user's Portrait Height)
+    local stripH = math.max(h, self:GetPortraitMinHeight())
+    container:ClearAllPoints()
+    if pos == "below" then
+        container:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
+        container:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", 0, -2)
+        container:SetHeight(stripH)
+    elseif pos == "left" or pos == "right" then
+        local fh = frame:GetHeight() or h
+        if fh <= 0 then fh = h end
+        local w = math.floor(math.max(90, math.min(280, fh * 0.8)) + 0.5)
+        if pos == "left" then
+            container:SetPoint("TOPRIGHT", frame, "TOPLEFT", -2, 0)
+            container:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", -2, 0)
+        else
+            container:SetPoint("TOPLEFT", frame, "TOPRIGHT", 2, 0)
+            container:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", 2, 0)
+        end
+        container:SetWidth(w)
+    else
+        container:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+        container:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
+        container:SetHeight(stripH)
+    end
 end
 
 -- Reparent while preserving the on-screen position regardless of scale/parent

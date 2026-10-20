@@ -92,13 +92,14 @@ end
 -- Public: FitDefault with projector-based tweaks
 function FS.FitDefault(host, displayID, padding)
     if not host then return end
+    local region = host._portraitRegion or "bust" -- set from the frame style
     if host.FrameRegion then
-        host:FrameRegion("bust", padding)
-        debugf("framing", "FramerScene.FitDefault(host.FrameRegion)")
+        host:FrameRegion(region, padding)
+        debugf("framing", "FramerScene.FitDefault(host.FrameRegion %s)", region)
         return
     end
 
-    local world, class = solveWorldRegionForDisplay(host, displayID, "bust")
+    local world, class = solveWorldRegionForDisplay(host, displayID, region)
     if not world then
         local dist = computeDistanceFromBounds(host, padding)
         local b = host.GetBounds and host:GetBounds() or nil

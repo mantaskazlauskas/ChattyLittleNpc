@@ -339,6 +339,8 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         local toShow = math.min(#entries, maxRows)
         self:EnsureQueueRows(toShow)
         for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.durationText then r.durationText:Hide() end; r:SetScript("OnUpdate", nil) end
+        -- Progress bars are re-shown by the playing row's timer below
+        if self.SetFrameStyleProgress then self:SetFrameStyleProgress(nil, nil) end
         local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
@@ -346,6 +348,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
             row._element = element
             row._isActive = element.isPlaying
             row:Show()
+            if self.ApplyFrameStyleToRow then self:ApplyFrameStyleToRow(row, element) end
 
             if element.isDivider then
                 row.text:SetText(element.label or "— History —")
@@ -498,6 +501,9 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                                 if not (cp and cp.startTime and GetTime) then return end
                                 local elapsed = math.min(GetTime() - cp.startTime, totalDur)
                                 row.durationText:SetText(formatTime(elapsed) .. " / " .. formatTime(totalDur))
+                                if self.SetFrameStyleProgress and totalDur > 0 then
+                                    self:SetFrameStyleProgress(row, elapsed / totalDur)
+                                end
                             end
                             updateTimer()
                             row.durationText:Show()
