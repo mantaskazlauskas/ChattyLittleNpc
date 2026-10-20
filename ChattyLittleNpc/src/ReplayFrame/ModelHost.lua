@@ -107,17 +107,19 @@ function ReplayFrame:CreateModelHost(parent)
         ReplayFrame.HostCamera.Attach(host)
     end
 
-    -- Provide a helper for renderer fallback when scene actor can't handle displayIDs
-    function host:_SwitchToPlayerBackendAndApplyDisplay(displayID)
+    -- Swap to the PlayerModel backend for loads the scene actor can't do.
+    -- Returns true when the host is (now) on the player backend.
+    function host:_SwitchToPlayerBackend()
         local current = self._backend
+        if current and current.kind == "player" then return true end
         -- Hide current scene to avoid double render
         if current and current.kind == "scene" and current.frame and current.frame.Hide then
             pcall(current.frame.Hide, current.frame)
         end
         local playerR2 = ReplayFrame.PlayerModelRenderer
-        if not (playerR2 and playerR2.Create and playerR2.Attach) then return end
+        if not (playerR2 and playerR2.Create and playerR2.Attach) then return false end
         local b = playerR2.Create(self)
-        if not b then return end
+        if not b then return false end
         playerR2.Attach(self, b)
         self._backend = b
         -- Re-normalize camera API for the new player backend
@@ -126,6 +128,20 @@ function ReplayFrame:CreateModelHost(parent)
         end
         -- Best-effort: carry over zoom feel
         if self.SetPortraitZoom then self:SetPortraitZoom(self._zoom or 0) end
+        return true
+    end
+
+    --- Render an NPC by creature ID (model file as last resort), as the Race
+    --- Model Manager does. Needs PlayerModel, so a scene host switches over.
+    ---@return boolean started
+    function host:SetCreatureByNpcId(npcId, fileId)
+        if not self:_SwitchToPlayerBackend() then return false end
+        return self.SetCreatureModel and self:SetCreatureModel(npcId, fileId) or false
+    end
+
+    -- Provide a helper for renderer fallback when scene actor can't handle displayIDs
+    function host:_SwitchToPlayerBackendAndApplyDisplay(displayID)
+        if not self:_SwitchToPlayerBackend() then return end
         if self.SetDisplayInfo then self:SetDisplayInfo(displayID) end
         local U = CLN and CLN.Utils
         if U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug("host") and U.LogAnimDebug then

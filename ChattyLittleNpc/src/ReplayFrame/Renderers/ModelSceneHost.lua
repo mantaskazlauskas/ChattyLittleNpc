@@ -806,7 +806,21 @@ function M.Attach(host, backend)
     function host:GetAnimation()
         return self._lastAnimId
     end
-    
+
+    --- Whether the loaded actor has an animation. nil when unknown (no API, or
+    --- the actor hasn't loaded yet), which callers treat as supported.
+    function host:HasAnimation(animId)
+        local a = backend.actor
+        if not (a and a.HasAnimation) then return nil end
+        if a.IsLoaded then
+            local okL, loaded = pcall(a.IsLoaded, a)
+            if not (okL and loaded) then return nil end
+        end
+        local ok, has = pcall(a.HasAnimation, a, animId)
+        if not ok or type(has) ~= "boolean" then return nil end
+        return has
+    end
+
     -- Camera and positioning
     function host:SetPortraitZoom(v)
         self._zoom = tonumber(v) or self._zoom or 0.65

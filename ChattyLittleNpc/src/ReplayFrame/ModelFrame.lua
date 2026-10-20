@@ -85,16 +85,10 @@ function ReplayFrame:LayoutModelArea(frame)
     end
 
     if self.ModelContainer then
+        -- Always docked: anchor above DisplayFrame so the two move as one window
         self.ModelContainer:ClearAllPoints()
-        local undocked = self:IsModelUndocked()
-        if undocked then
-            -- Independent mode: anchor to UIParent using saved position
-            self:LoadModelPosition()
-        else
-            -- Docked mode: anchor above DisplayFrame (default)
-            self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
-            self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
-        end
+        self.ModelContainer:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, 2)
+        self.ModelContainer:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, 2)
         self.ModelContainer:SetHeight(self.npcModelFrameHeight or math.floor(140 * 1.15))
         if hasModel then self.ModelContainer:Show() else self.ModelContainer:Hide() end
     end
@@ -212,6 +206,26 @@ local function isNpcTokenValidFor(expectedNpcId)
     if not ok or not guid then return false end
     local tokenNpcId = npcIdFromGuid(guid)
     return tokenNpcId == expectedNpcId
+end
+
+-- Start the talk animation if this NPC's audio is playing, otherwise its idle,
+-- and make sure the animation hooks are attached before the model is shown.
+function ReplayFrame:_ApplyInitialModelAnim(npcId)
+    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local isPlaying = cur and cur.isPlaying and cur:isPlaying() and cur.npcId == npcId
+    if isPlaying then
+        local talkId = 60
+        if self.ChooseTalkAnimIdForText and cur and cur.title then
+            talkId = self:ChooseTalkAnimIdForText(cur.title)
+        end
+        -- Set initial talk animation; let FSM start the loop/camera
+        self:SetModelAnim(talkId)
+    else
+        -- Ensure any conversation loop is stopped when not playing
+        if self.StopEmoteLoop then self:StopEmoteLoop() end
+        self:SetModelAnim(self._naturalAnimId or 0)
+    end
+    if self.SetupModelAnimations then self:SetupModelAnimations() end
 end
 
 function ReplayFrame:UpdateNpcModelDisplay(npcId)
@@ -364,23 +378,8 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(displayID) end
             if self.ApplyDefaultFit then self:ApplyDefaultFit(displayID) end
         end
-        -- If audio is playing for this NPC, set talk immediately; otherwise idle
-        local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        local isPlaying = cur and cur.isPlaying and cur:isPlaying() and cur.npcId == npcId
-        if isPlaying then
-            local talkId = 60
-            if self.ChooseTalkAnimIdForText and cur and cur.title then
-                talkId = self:ChooseTalkAnimIdForText(cur.title)
-            end
-            -- Set initial talk animation; let FSM start the loop/camera
-            self:SetModelAnim(talkId)
-        else
-            -- Ensure any conversation loop is stopped when not playing
-            if self.StopEmoteLoop then self:StopEmoteLoop() end
-            self:SetModelAnim(self._naturalAnimId or 0)
-        end
-    -- Ensure hooks are attached before showing so OnShow fires
-    if self.SetupModelAnimations then self:SetupModelAnimations() end
+        self:_ApplyInitialModelAnim(npcId)
+    self._lastCreatureNpcId = nil
     self._hasValidModel = true
     if self.ModelContainer then self.ModelContainer:Show() end
     self.NpcModelFrame:Show()
@@ -457,6 +456,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             end
             self._naturalAnimId = natAnim
             self._lastUnitNpcId = npcId
+            self._lastCreatureNpcId = nil
             -- Snapshot displayID from the live unit so that same-NPC queue
             -- transitions can match _lastDisplayID and skip ClearModel.
             local unitDid = UnitCreatureDisplayID and UnitCreatureDisplayID("npc") or nil
@@ -485,12 +485,21 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                 self._unitModelLoaded = true -- prevent same-frame re-clear
                 self._lastDisplayID = cpDid
                 self._lastUnitNpcId = nil
+                self._lastCreatureNpcId = nil
                 -- Infer animation from the live NPC unit if still available
                 local infer = ReplayFrame.AnimationInfer
                 self._naturalAnimId = (infer and infer.Infer and isNpcTokenValidFor(npcId))
                     and infer.Infer("npc") or nil
                 if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(cpDid) end
                 if self.ApplyDefaultFit then self:ApplyDefaultFit(cpDid) end
+                self._hasValidModel = true
+            elseif self._lastCreatureNpcId == npcId and self._unitModelLoaded then
+                -- Already showing this NPC by creature ID; keep it (no reload flicker)
+                if self.ModelContainer then self.ModelContainer:Show() end
+                self.NpcModelFrame:Show()
+                self._hasValidModel = true
+            elseif self.NpcModelFrame.SetCreatureByNpcId and self:_ShowModelByCreature(npcId) then
+                -- Rendered by creature ID / cached model file, like the Race Model Manager
                 self._hasValidModel = true
             else
                 if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
@@ -501,11 +510,44 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                 self.NpcModelFrame:Hide()
                 if self.ModelContainer then self.ModelContainer:Hide() end
                 self._lastUnitNpcId = nil
+                self._lastCreatureNpcId = nil
                 self._hasValidModel = false
             end
         end
     end
     if self.Relayout then self:Relayout() end
+end
+
+-- Last-resort render when there is no display ID and the NPC is no longer the
+-- dialog unit: draw it by creature ID, falling back to the model file captured
+-- when we last talked to it (NpcMetadataCache). Returns true when started.
+-- Only for IDs known to be creatures: a captured model file proves it, and
+-- GameObject/Item entries reuse npcId for object/item IDs.
+function ReplayFrame:_ShowModelByCreature(npcId)
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local entryType = cur and cur.entryType
+    if entryType == "GameObject" or entryType == "Item" then return false end
+    local cached = CLN.NpcMetadataCache and CLN.NpcMetadataCache:Lookup(npcId)
+    if not (cached and cached.modelFileId) then return false end
+    self.NpcModelFrame:ClearModel()
+    self._unitModelLoaded = false
+    if self.ModelContainer then self.ModelContainer:Show() end
+    self.NpcModelFrame:Show()
+    if not self.NpcModelFrame:SetCreatureByNpcId(npcId, cached and cached.modelFileId) then
+        return false
+    end
+    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID/unit for npcId=%s; rendering by creature (fileId=%s)", tostring(npcId), tostring(cached and cached.modelFileId)))
+    end
+    self._unitModelLoaded = true -- prevent same-frame re-clear
+    self._lastCreatureNpcId = npcId
+    self._lastDisplayID = nil
+    self._lastUnitNpcId = nil
+    if self.ResetAnimationState then self:ResetAnimationState() end
+    self._naturalAnimId = nil
+    if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
+    self:_ApplyInitialModelAnim(npcId)
+    return true
 end
 
 function ReplayFrame:CheckAndShowModel()
@@ -969,6 +1011,22 @@ function ReplayFrame:SetModelAnim(animId)
     -- Dead NPC gate: force dead animation regardless of what callers request
     if self._npcIsDead then
         animId = self:_ResolveDeadAnim()
+    elseif self.ResolveTalkAnim then
+        -- Models without a Talk animation use another talk variant, a nod or idle
+        local requested = animId
+        animId = self:ResolveTalkAnim(animId)
+        if animId ~= requested then
+            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local key = tostring(cur and cur.npcId) .. ":" .. requested .. ">" .. animId
+            if key ~= self._lastTalkRemapKey then
+                self._lastTalkRemapKey = key
+                if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                    CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format(
+                        "Talk anim for npcId=%s: model lacks %d, using %d%s", tostring(cur and cur.npcId), requested, animId,
+                        (animId == 185 and " (nod)") or ((animId ~= 64 and animId ~= 65) and " (no talk animation, idle)") or ""))
+                end
+            end
+        end
     end
     -- Debug gate: do not drive animations when no-op mode is enabled
     if self:_NoAnimDebugEnabled() then

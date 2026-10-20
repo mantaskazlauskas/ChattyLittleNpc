@@ -51,11 +51,20 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
 
     NpcInfoDB[npcID][CLN.locale].sex = gender
 
-    -- UnitRace() is empty for NPCs; fall back to identifying the race by model file.
+    -- Read the NPC's model once: the model file ID is stored with the NPC and
+    -- identifies the race when UnitRace() is empty (as it is for NPCs). The
+    -- display ID isn't stored: the client doesn't reliably expose it.
+    local fileId, displayId
+    if (npcID ~= 0 and CLN.NpcRaceLookup) then
+        fileId, displayId = CLN.NpcRaceLookup:GetUnitModelFileID("npc")
+    end
+    if (fileId) then
+        NpcInfoDB[npcID][CLN.locale].modelFileId = fileId
+    end
+
     -- Unknown models yield "", and an empty result never overwrites a known race.
     if (npcID ~= 0 and (not race or race == "") and CLN.NpcRaceLookup) then
-        local fileId, displayId
-        race, fileId, displayId = CLN.NpcRaceLookup:GetRaceFromModel("npc")
+        race = CLN.NpcRaceLookup:GetRaceForFileID(fileId)
         if (race == "" and fileId) then
             CLN.NpcRaceLookup:RecordUnknown(fileId, {
                 npcId = npcID,
@@ -77,9 +86,11 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
     if (CLN.db.profile.printNpcTexts) and CLN.Logger then
         local info = NpcInfoDB[npcID][CLN.locale]
         local highlight = function(value)
-            return "|cffc080ff" .. ((value and value ~= "") and value or "?") .. "|r" -- light purple
+            return "|cffc080ff" .. ((value and value ~= "") and tostring(value) or "?") .. "|r" -- light purple
         end
-        CLN.Logger:info("Npc info collected: Id=" .. npcID .. ", Name=" .. info.name .. ", Gender=" .. highlight(info.sex) .. ", Race=" .. highlight(info.race), true, CLN.Utils.LogCategories.ui)
+        -- Model file ID from this read ("?" = not collected this time)
+        CLN.Logger:info("Npc info collected: Id=" .. npcID .. ", Name=" .. info.name .. ", Gender=" .. highlight(info.sex) .. ", Race=" .. highlight(info.race)
+            .. ", ModelFileId=" .. highlight(fileId), true, CLN.Utils.LogCategories.ui)
     end
 end
 

@@ -486,6 +486,8 @@ local options = {
                     set = function(info, value)
                         CLN.db.profile.compactMode = value
                         if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                        -- Show/hide the portrait now rather than at the next voiceover
+                        if CLN.ReplayFrame and CLN.ReplayFrame.CheckAndShowModel then CLN.ReplayFrame:CheckAndShowModel() end
                     end,
                 },
                 combatAutoCollapse = {

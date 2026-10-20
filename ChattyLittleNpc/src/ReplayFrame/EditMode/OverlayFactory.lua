@@ -122,6 +122,19 @@ local function saveAndPersist(controller)
     end
 end
 
+--- The controller whose frame actually moves. The model portrait is always
+--- docked above the conversation window, so moving it moves the conversation.
+---@param controller table
+---@return table
+local function moveTarget(controller)
+    if controller.id == "model" then
+        local Registry = EditMode.Registry
+        local conv = Registry and Registry:Get("conversation")
+        if conv then return conv end
+    end
+    return controller
+end
+
 --- Visually deselect the previously-selected controller (if any).
 --- Call after Registry:Select() to sync the old selection's overlay.
 ---@param excludeId string|nil  The newly-selected id to skip
@@ -340,22 +353,27 @@ local function wireInteraction(ov, controller)
             deselectPrevious(controller.id)
         end
 
-        -- Undock model if docked before dragging
-        if controller.id == "model" and controller.IsDocked and controller:IsDocked() then
-            controller:Undock()
-        end
+        -- Dragging the docked portrait moves the conversation window with it
+        local target = moveTarget(controller)
+        if target.locked then return end
+        ov._dragTarget = target
 
         OverlayFactory:SetState(controller, "dragging")
-        local liveFrame = controller:EnsureFrame()
-        if liveFrame then liveFrame:StartMoving() end
+        local liveFrame = target:EnsureFrame()
+        if liveFrame then
+            liveFrame:SetMovable(true)
+            liveFrame:StartMoving()
+        end
     end)
 
     -- ====== OnDragStop ======
     ov:SetScript("OnDragStop", function()
-        local liveFrame = controller:EnsureFrame()
+        local target = ov._dragTarget or controller
+        ov._dragTarget = nil
+        local liveFrame = target:EnsureFrame()
         if liveFrame then liveFrame:StopMovingOrSizing() end
         OverlayFactory:SetState(controller, "selected")
-        saveAndPersist(controller)
+        saveAndPersist(target)
         -- TODO: Wire SnapManager:Evaluate + Commit here
     end)
 
@@ -383,21 +401,19 @@ local function wireInteraction(ov, controller)
             elseif key == "DOWN" then dy = -px
             end
 
-            -- Undock model if docked before nudging
-            if controller.id == "model" and controller.IsDocked and controller:IsDocked() then
-                controller:Undock()
-            end
-
-            local f = controller.frame
+            -- Nudging the docked portrait moves the conversation window with it
+            local target = moveTarget(controller)
+            if target.locked then return end
+            local f = target:EnsureFrame()
             if f then
                 -- Nudging a docked window: convert to a screen position first
-                if controller.id == "conversation" and ReplayFrame.UndockFrame then
+                if target.id == "conversation" and ReplayFrame.UndockFrame then
                     ReplayFrame:UndockFrame()
                 end
                 local p, _, r, x, y = f:GetPoint(1)
                 f:ClearAllPoints()
                 f:SetPoint(p or "CENTER", UIParent, r or "BOTTOMLEFT", (x or 0) + dx, (y or 0) + dy)
-                saveAndPersist(controller)
+                saveAndPersist(target)
             end
             return
         end

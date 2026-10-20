@@ -421,12 +421,15 @@ function SnapManager:Commit(draggedId, snapResult)
         return false
     end
 
-    if draggedId == "model" and snapResult.dockEligible then
+    -- The model portrait is always docked above the conversation window;
+    -- snapping only (re)docks it, never moves it on its own.
+    if draggedId == "model" then
         local ModelWindow = EditMode.ModelWindow
         if ModelWindow and ModelWindow.Dock then
             ModelWindow:Dock()
             return true
         end
+        return false
     end
 
     local frame = controller:EnsureFrame()
@@ -438,15 +441,6 @@ function SnapManager:Commit(draggedId, snapResult)
     local dy = snapResult.dy or 0
     if dx == 0 and dy == 0 then
         return false
-    end
-
-    if draggedId == "model" then
-        local ModelWindow = EditMode.ModelWindow
-        if ModelWindow and ModelWindow.IsDocked and ModelWindow:IsDocked()
-            and ModelWindow.Undock then
-            ModelWindow:Undock()
-            frame = ModelWindow:EnsureFrame() or frame
-        end
     end
 
     local point, _, relativePoint, xOfs, yOfs = frame:GetPoint(1)

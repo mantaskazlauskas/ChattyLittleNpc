@@ -207,17 +207,33 @@ ReplayFrame.AnimIds = ReplayFrame.AnimIds or {
 }
 
 -- Check if the current model supports a given animation ID.
--- Uses HasAnimation() WoW API when available; returns true as fallback.
+-- Uses the host's HasAnimation() when it can answer; when it can't (no API,
+-- model still loading) the host returns nil and we assume supported.
 function ReplayFrame:ModelHasAnimation(animId)
     if animId == nil then return false end
     local m = self.NpcModelFrame
     if not m then return false end
     if m.HasAnimation then
         local ok, result = pcall(m.HasAnimation, m, animId)
-        if ok then return result end
+        if ok and result ~= nil then return result and true or false end
     end
-    -- API unavailable — assume supported to avoid blocking
+    -- Unknown — assume supported to avoid blocking
     return true
+end
+
+local TALK_ANIMS = { 60, 64, 65 } -- Talk, TalkExclamation, TalkQuestion
+
+--- Map a requested talk animation to one this model actually has: the
+--- requested variant, then the other talk variants, then a nod (185), and
+--- finally the NPC's idle. Non-talk animations are returned unchanged.
+function ReplayFrame:ResolveTalkAnim(animId)
+    if animId ~= 60 and animId ~= 64 and animId ~= 65 then return animId end
+    if self:ModelHasAnimation(animId) then return animId end
+    for _, id in ipairs(TALK_ANIMS) do
+        if id ~= animId and self:ModelHasAnimation(id) then return id end
+    end
+    if self:ModelHasAnimation(185) then return 185 end
+    return self._naturalAnimId or 0
 end
 -- Deprecated helpers for absolute zoom removed; percent-based APIs are used throughout
 

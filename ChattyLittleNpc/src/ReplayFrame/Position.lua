@@ -133,37 +133,15 @@ function ReplayFrame:ResetFramePosition()
     end
 end
 
--- Save the current model frame position to the database
+-- The model portrait is always docked above the conversation window, so it has
+-- no position of its own to save (its height is saved as npcModelFrameHeight).
 function ReplayFrame:SaveModelPosition()
-    if not self.ModelContainer then return end
-    local point, _, relativePoint, xOfs, yOfs = self.ModelContainer:GetPoint()
-    if not (point and xOfs and yOfs) then return end
-    local w = self.ModelContainer:GetWidth()
-    CLN.db.profile.modelFramePos = {
-        point         = point,
-        relativePoint = relativePoint,
-        xOfs          = xOfs,
-        yOfs          = yOfs,
-        width         = w and math.floor(w + 0.5) or nil,
-    }
+    CLN.db.profile.modelFramePos = nil
 end
 
--- Load saved model frame position from the database
-function ReplayFrame:LoadModelPosition()
-    if not self.ModelContainer then return end
-    local pos = CLN.db.profile.modelFramePos
-    if pos then
-        self.ModelContainer:ClearAllPoints()
-        self.ModelContainer:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
-        if pos.width then
-            self.ModelContainer:SetWidth(pos.width)
-        end
-    end
-end
-
--- Check if the model frame is in independent (undocked) mode
+-- Always docked: the model portrait never floats independently.
 function ReplayFrame:IsModelUndocked()
-    return CLN.db.profile.modelFramePos ~= nil
+    return false
 end
 
 -- Reparent while preserving the on-screen position regardless of scale/parent

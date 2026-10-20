@@ -24,7 +24,7 @@ end
 --- Store metadata for an NPC. Merges with existing data (never overwrites
 --- a valid field with nil). Updates lastSeen on every call.
 ---@param npcId number
----@param data table { displayID, creatureType, gender, name, race }
+---@param data table { displayID, modelFileId, creatureType, gender, name, race }
 function NpcMetadataCache:Store(npcId, data)
     if not npcId or not data then return end
     npcId = tonumber(npcId)
@@ -39,6 +39,7 @@ function NpcMetadataCache:Store(npcId, data)
 
     -- Merge fields: only overwrite with non-nil values
     if data.displayID and type(data.displayID) == "number" then existing.displayID = data.displayID end
+    if data.modelFileId and type(data.modelFileId) == "number" then existing.modelFileId = data.modelFileId end
     if data.creatureType and data.creatureType ~= "" then existing.creatureType = data.creatureType end
     if data.gender and data.gender ~= "" then existing.gender = data.gender end
     if data.name and data.name ~= "" then existing.name = data.name end
@@ -59,10 +60,19 @@ function NpcMetadataCache:CaptureFromUnit()
     end
     if not npcId then return nil end
 
-    local displayID = (UnitCreatureDisplayID and UnitCreatureDisplayID("npc")) or nil
+    -- Same model probe the Race Model Manager relies on: display ID via
+    -- PlayerModel:GetDisplayInfo (falling back to UnitCreatureDisplayID) plus
+    -- the model file ID, which still renders the NPC when no display ID exists.
+    -- Creatures only: GameObject IDs share this table but have no creature model.
+    local modelFileId, displayID
+    local isCreature = unitType == "Creature" or unitType == "Vehicle"
+    if isCreature and CLN.NpcRaceLookup and CLN.NpcRaceLookup.GetUnitModelFileID then
+        modelFileId, displayID = CLN.NpcRaceLookup:GetUnitModelFileID("npc")
+    end
 
     self:Store(npcId, {
         displayID = displayID,
+        modelFileId = modelFileId,
         creatureType = creatureType,
         gender = gender,
         name = unitName,

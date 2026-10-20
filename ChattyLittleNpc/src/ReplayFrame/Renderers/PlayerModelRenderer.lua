@@ -49,11 +49,45 @@ function M.Attach(host, backend)
     debugf("host", "PlayerModel.ClearModel()")
     host._pRef = nil
     host._zRef = nil
+    host._creatureToken = (host._creatureToken or 0) + 1 -- cancel a pending creature fallback
     safeCall(backend.frame, "ClearModel")
+    end
+
+    --- Render an NPC by creature ID, the way the Race Model Manager does when no
+    --- display ID is known. SetCreature only draws creatures the client has
+    --- cached, so if nothing loads, fall back to the bare model file (untextured).
+    ---@return boolean started
+    function host:SetCreatureModel(npcId, fileId)
+        host._pRef = nil
+        host._zRef = nil
+        host._currentDisplayID = nil
+        host._creatureToken = (host._creatureToken or 0) + 1
+        local token = host._creatureToken
+        local pm = backend.frame
+        local ok = npcId and pm.SetCreature and pcall(pm.SetCreature, pm, npcId)
+        debugf("loader", "PlayerModel.SetCreature(%s) ok=%s fileId=%s", tostring(npcId), tostring(ok), tostring(fileId))
+        if not ok then
+            if not fileId then return false end
+            safeCall(pm, "SetModel", fileId)
+            return true
+        end
+        if fileId and C_Timer and C_Timer.After then
+            C_Timer.After(0.5, function()
+                if host._creatureToken ~= token then return end
+                local loaded = safeCall(pm, "GetModelFileID")
+                if not loaded or loaded == 0 then
+                    debugf("loader", "SetCreature(%s) loaded nothing; SetModel(%s) untextured", tostring(npcId), tostring(fileId))
+                    safeCall(pm, "SetModel", fileId)
+                    if host._lastAnimId then host:SetAnimation(host._lastAnimId) end
+                end
+            end)
+        end
+        return true
     end
 
     function host:SetDisplayInfo(displayID)
     host._currentDisplayID = displayID
+        host._creatureToken = (host._creatureToken or 0) + 1
         host._pRef = nil  -- reset per-host ProjectFit refs for new model
         host._zRef = nil
         debugf("loader", "PlayerModel.SetDisplayInfo(%s)", tostring(displayID))
@@ -92,6 +126,18 @@ function M.Attach(host, backend)
         return safeCall(backend.frame, "GetAnimation") or self._lastAnimId
     end
 
+    --- Whether the loaded model has an animation. nil when unknown (no API, or
+    --- the model hasn't loaded yet), which callers treat as supported.
+    function host:HasAnimation(animId)
+        local pm = backend.frame
+        if not (pm and pm.HasAnimation) then return nil end
+        local fid = safeCall(pm, "GetModelFileID")
+        if not fid or fid == 0 then return nil end
+        local ok, has = pcall(pm.HasAnimation, pm, animId)
+        if not ok or type(has) ~= "boolean" then return nil end
+        return has
+    end
+
     function host:SetSheathed(b)
         safeCall(backend.frame, "SetSheathed", b and true or false)
     end
@@ -104,6 +150,7 @@ function M.Attach(host, backend)
     debugf("loader", "PlayerModel.SetUnit(%s)", tostring(unit))
     host._pRef = nil
     host._zRef = nil
+    host._creatureToken = (host._creatureToken or 0) + 1
     safeCall(backend.frame, "SetUnit", unit)
     end
 

@@ -83,27 +83,9 @@ function ModelWindow:ApplyState(state)
         end
     end
 
-    if state.docked ~= nil then
-        if state.docked then
-            self:Dock()
-        else
-            -- Always transition to undocked first, then apply position if present
-            self:Undock()
-            if state.pos then
-                Window.ApplyPosition(f, state.pos)
-                -- Sync legacy modelFramePos
-                CLN.db.profile.modelFramePos = {
-                    point         = state.pos.point,
-                    relativePoint = state.pos.relativePoint,
-                    xOfs          = state.pos.x or state.pos.xOfs or 0,
-                    yOfs          = state.pos.y or state.pos.yOfs or 0,
-                    width         = state.size and state.size.width or nil,
-                }
-            end
-        end
-    elseif state.pos and not self:IsDocked() then
-        Window.ApplyPosition(f, state.pos)
-    end
+    -- The portrait is always docked to the conversation window; saved layouts
+    -- from when it could float (docked = false + pos) dock it too.
+    self:Dock()
 end
 
 --- Return default state (docked above conversation).
@@ -167,49 +149,17 @@ function ModelWindow:Dock()
     end
 end
 
---- Undock the model: convert from relative anchor to absolute UIParent position.
---- Preserves current screen position so the frame doesn't visually jump.
+--- The portrait can no longer float on its own (a saved floating position
+--- could leave it off-screen), so undocking just keeps it docked.
 function ModelWindow:Undock()
-    local f = self:EnsureFrame()
-    if not f then return end
-
-    -- Capture current screen position before detaching
-    local cx, cy = f:GetCenter()
-    if not (cx and cy) then return end
-
-    local s = f:GetEffectiveScale() or 1
-    local uiS = UIParent:GetEffectiveScale() or 1
-    local relX = (cx * s) / uiS
-    local relY = (cy * s) / uiS
-
-    self._docked = false
-    f:ClearAllPoints()
-    f:SetPoint("CENTER", UIParent, "BOTTOMLEFT", relX, relY)
-
-    -- Sync legacy modelFramePos
-    local w = f:GetWidth()
-    CLN.db.profile.modelFramePos = {
-        point         = "CENTER",
-        relativePoint = "BOTTOMLEFT",
-        xOfs          = relX,
-        yOfs          = relY,
-        width         = w and math.floor(w + 0.5) or nil,
-    }
+    self:Dock()
 end
 
---- Initialize dock state from saved profile data.
---- Call on addon load to sync _docked flag with legacy modelFramePos.
+--- Initialize dock state on addon load. The portrait is always docked; drop
+--- any floating position saved by older versions.
 function ModelWindow:InitDockState()
-    local pos = CLN.db.profile.modelFramePos
-    if type(pos) == "table" and pos.point and pos.relativePoint then
-        self._docked = false
-    else
-        self._docked = true
-        -- Clean up any malformed truthy value
-        if pos ~= nil and type(pos) ~= "table" then
-            CLN.db.profile.modelFramePos = nil
-        end
-    end
+    self._docked = true
+    CLN.db.profile.modelFramePos = nil
 end
 
 return ModelWindow
