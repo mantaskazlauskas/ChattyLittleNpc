@@ -174,9 +174,6 @@ function ReplayFrame:ResolveNpcDisplayID(npcId)
     if currentlyPlaying and currentlyPlaying.npcId == npcId and currentlyPlaying.displayID then
         return currentlyPlaying.displayID
     end
-    -- Static DB lookup
-    local staticId = NpcDisplayIdDB and NpcDisplayIdDB[npcId] or nil
-    if staticId then return staticId end
     -- Persistent metadata cache fallback
     if CLN.NpcMetadataCache then
         local cached = CLN.NpcMetadataCache:Lookup(npcId)
@@ -295,6 +292,14 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     end
 
     local displayID = self:ResolveNpcDisplayID(npcId)
+    -- One creature ID can have several looks (e.g. male and female guards) and a
+    -- cached display ID holds only one. The live unit is always the right look:
+    -- use it while we're talking to the NPC, and keep that live-drawn model for
+    -- the rest of the line after the dialog closes (no swap to another look).
+    if displayID and (isNpcTokenValidFor(npcId)
+        or (self._lastUnitNpcId == npcId and self._unitModelLoaded)) then
+        displayID = nil
+    end
     if (displayID) then
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
                 CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))
@@ -398,6 +403,12 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             local stillLoaded = false
             if be and be.actor and be.actor.IsLoaded then
                 stillLoaded = be.actor:IsLoaded()
+                -- Scene actors load asynchronously: while the NPC is still targeted,
+                -- a pending load counts as loaded so rapid updates don't restart it
+                -- (blank-frame flicker), as on the displayID path.
+                if not stillLoaded and self._unitModelLoaded and isNpcTokenValidFor(npcId) then
+                    stillLoaded = true
+                end
             elseif be and be.kind == "player" then
                 -- PlayerModel retains its model in GPU memory after SetUnit even when
                 -- the unit token becomes invalid (e.g. after GOSSIP_CLOSED).
@@ -525,14 +536,17 @@ end
 -- Last-resort render when there is no display ID and the NPC is no longer the
 -- dialog unit: draw it by creature ID, falling back to the model file captured
 -- when we last talked to it (NpcMetadataCache). Returns true when started.
--- Only for IDs known to be creatures: a captured model file proves it, and
--- GameObject/Item entries reuse npcId for object/item IDs.
+-- Only for IDs known to be creatures: a captured model file proves it, and so
+-- do gossip / quest-greeting lines (spoken by NPCs). Quests can start from
+-- objects, and GameObject/Item entries reuse npcId for object/item IDs.
 function ReplayFrame:_ShowModelByCreature(npcId)
     local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
     local entryType = cur and cur.entryType
     if entryType == "GameObject" or entryType == "Item" then return false end
     local cached = CLN.NpcMetadataCache and CLN.NpcMetadataCache:Lookup(npcId)
-    if not (cached and cached.modelFileId) then return false end
+    local knownCreature = (cached and cached.modelFileId)
+        or entryType == "Gossip" or entryType == "QuestGreeting"
+    if not knownCreature then return false end
     self.NpcModelFrame:ClearModel()
     self._unitModelLoaded = false
     if self.ModelContainer then self.ModelContainer:Show() end

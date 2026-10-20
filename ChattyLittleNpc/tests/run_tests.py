@@ -1274,17 +1274,15 @@ class TestNativeVOPausePlaybackGating(unittest.TestCase):
 
 
 class TestReplayModelDisplayIDResolution(unittest.TestCase):
-    """Replay model selection should prefer runtime-captured displayID over static DB."""
+    """Replay model selection should prefer runtime-captured displayID over the metadata cache."""
 
     @classmethod
     def setUpClass(cls):
         cls.lua = make_lua()
         cls.lua.execute("""
-            NpcDisplayIdDB = {
-                [100] = 9999,
-                [200] = 2222,
-            }
             local CLN = _G.ChattyLittleNpc
+            local cache = { [100] = { displayID = 9999 }, [200] = { displayID = 2222 } }
+            CLN.NpcMetadataCache = { Lookup = function(_, id) return cache[id] end }
             CLN.VoiceoverPlayer = CLN.VoiceoverPlayer or {}
             CLN.VoiceoverPlayer.currentlyPlaying = {
                 npcId = 100,
@@ -1309,7 +1307,7 @@ class TestReplayModelDisplayIDResolution(unittest.TestCase):
         ''')
         self.assertEqual(value, 5555)
 
-    def test_falls_back_to_db_when_runtime_display_missing(self):
+    def test_falls_back_to_cache_when_runtime_display_missing(self):
         value = lua_call(self.lua, '''
             local CLN = _G.ChattyLittleNpc
             CLN.VoiceoverPlayer.currentlyPlaying.displayID = nil
@@ -1318,7 +1316,7 @@ class TestReplayModelDisplayIDResolution(unittest.TestCase):
         ''')
         self.assertEqual(value, 9999)
 
-    def test_falls_back_to_db_when_runtime_npc_mismatch(self):
+    def test_falls_back_to_cache_when_runtime_npc_mismatch(self):
         value = lua_call(self.lua, '''
             local CLN = _G.ChattyLittleNpc
             CLN.VoiceoverPlayer.currentlyPlaying = {

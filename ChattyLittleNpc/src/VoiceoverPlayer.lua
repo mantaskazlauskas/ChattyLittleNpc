@@ -1220,12 +1220,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
         return -- fail fast if no quest ID
     end
 
-    -- Resolve displayID from static DB or metadata cache if not captured from the live unit
+    -- Resolve displayID from the metadata cache if not captured from the live unit
     if npcId then
-        if not displayID then
-            displayID = _G.NpcDisplayIdDB and _G.NpcDisplayIdDB[npcId] or nil
-        end
-        -- Fall back to persistent metadata cache (auto-populated during gameplay)
+        -- Persistent metadata cache (auto-populated during gameplay)
         if CLN.NpcMetadataCache then
             local cached = CLN.NpcMetadataCache:Lookup(npcId)
             if cached then
@@ -1509,10 +1506,9 @@ function VoiceoverPlayer:PlayLibraryFile(entry, opts)
         cp.title = entry.name
         cp.gender = entry.gender
         if entry.id and entry.kind ~= 6 and entry.kind ~= 7 then
-            cp.displayID = _G.NpcDisplayIdDB and _G.NpcDisplayIdDB[entry.id] or nil
             local cached = CLN.NpcMetadataCache and CLN.NpcMetadataCache:Lookup(entry.id)
             if cached then
-                cp.displayID = cp.displayID or cached.displayID
+                cp.displayID = cached.displayID
                 cp.creatureType = cached.creatureType
                 if not cp.gender or cp.gender == "Neutral" then cp.gender = cached.gender end
             end
@@ -1547,11 +1543,8 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
         return
     end
 
-    -- Resolve displayID from static DB or metadata cache if not captured from the live unit
+    -- Resolve displayID from the metadata cache if not captured from the live unit
     if npcId then
-        if not displayID then
-            displayID = _G.NpcDisplayIdDB and _G.NpcDisplayIdDB[npcId] or nil
-        end
         if CLN.NpcMetadataCache then
             local cached = CLN.NpcMetadataCache:Lookup(npcId)
             if cached then

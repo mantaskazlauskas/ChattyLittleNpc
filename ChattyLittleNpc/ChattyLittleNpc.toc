@@ -94,7 +94,6 @@ Utils/Md5.lua
 Utils/SimHash.lua
 
 # Database
-Db/NpcDisplayIdDB.lua
 Db/KnownVoicedNpcs.lua
 
 # Initialization - MUST load last
