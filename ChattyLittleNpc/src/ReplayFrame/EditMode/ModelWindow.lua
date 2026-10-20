@@ -115,8 +115,10 @@ function ModelWindow:GetResizeBounds()
     return { minW = 100, minH = 80, maxW = 600, maxH = 500 }
 end
 
+--- The portrait is sized by its docking and the Portrait Height setting, not
+--- dragged in Edit Mode (no resize grip).
 function ModelWindow:CanResize()
-    return true
+    return false
 end
 
 --- Always visible in Edit Mode, even if hidden in Compact Mode.

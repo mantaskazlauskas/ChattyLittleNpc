@@ -481,7 +481,7 @@ local options = {
                     type = 'select',
                     width = 'double',
                     name = 'Frame Style',
-                    desc = 'Look of the conversation frame and the NPC portrait.\n\n• Minimal — frameless, like the objectives tracker\n• Panel — dark panel with a framed portrait and nameplate\n• Cinematic — head-and-shoulders portrait with a large name and film-style subtitles',
+                    desc = 'Look of the conversation frame and the NPC portrait.\n\n• Minimal — frameless, like the objectives tracker\n• Panel — dark panel with a framed portrait and nameplate\n• Cinematic — head-and-shoulders portrait with a large name',
                     values = function()
                         local values = {}
                         for key, style in pairs(CLN.ReplayFrame and CLN.ReplayFrame.FrameStyles or {}) do
@@ -558,47 +558,6 @@ local options = {
                     set = function(info, value)
                         CLN.db.profile.showQuestTypeBadges = value
                         if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
-                    end,
-                },
-                showSubtitles = {
-                    order = 6,
-                    type = 'toggle',
-                    width = 'full',
-                    name = 'Show Subtitles',
-                    desc = 'Display subtitle text below the NPC portrait during voiceover playback.',
-                    get = function(info) return CLN.db.profile.showSubtitles end,
-                    set = function(info, value)
-                        CLN.db.profile.showSubtitles = value
-                        if (not value) and CLN.ReplayFrame and CLN.ReplayFrame.HideSubtitle then
-                            CLN.ReplayFrame:HideSubtitle()
-                        end
-                    end,
-                },
-                subtitleFontScale = {
-                    order = 7,
-                    type = 'range',
-                    width = 'double',
-                    name = 'Subtitle Text Size',
-                    desc = 'Adjust the size of subtitle text.',
-                    min = 0.5,
-                    max = 2.0,
-                    step = 0.05,
-                    disabled = function() return not CLN.db.profile.showSubtitles end,
-                    get = function(info)
-                        return CLN.db.profile.subtitleFontScale or 1.0
-                    end,
-                    set = function(info, value)
-                        CLN.db.profile.subtitleFontScale = value
-                        -- Apply font change live
-                        if CLN.ReplayFrame and CLN.ReplayFrame.SubtitleText then
-                            local fontScale = math.max(8, math.floor(12 * value))
-                            CLN.ReplayFrame.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", fontScale, "")
-                        end
-                        -- Re-show subtitle if currently playing
-                        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                        if CLN.db.profile.showSubtitles and cur and cur.title and CLN.ReplayFrame and CLN.ReplayFrame.ShowSubtitle then
-                            CLN.ReplayFrame:ShowSubtitle(cur.title)
-                        end
                     end,
                 },
                 queueHistoryMaxEntries = {

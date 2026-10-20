@@ -159,10 +159,11 @@ function M.Attach(host, backend)
     function host:FrameFullBodyFront()
         -- Upper 2/3 shot: full-body zoom + negative z to crop feet/lower legs.
         -- Closer regions (frame style) use PlayerModel's built-in portrait zoom:
-        -- 1.0 frames the face, 0.75 head and shoulders.
+        -- 1.0 frames the face, 0.75 head and shoulders, 0.45 head to waist.
         -- _lastCamSnapshot.tz tells the breathing animation to preserve our offset.
         local region = self._portraitRegion
-        local zoom = (region == "head" and 1.0) or (region == "portrait" and 0.75) or nil
+        local zoom = (region == "head" and 1.0) or (region == "portrait" and 0.75)
+            or ((region == "upper_body" or region == "side") and 0.45) or nil
         local z = zoom and 0 or -0.15
         if self.SetPortraitZoom then self:SetPortraitZoom(zoom or 0.01) end
         if self.SetPosition then self:SetPosition(0, 0, z) end

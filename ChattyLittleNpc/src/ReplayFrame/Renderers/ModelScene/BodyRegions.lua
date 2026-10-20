@@ -15,12 +15,14 @@ BR.ANCHORS = {
     tiny_critter = { feet = 0.00, upperThigh = 0.33, waist = 0.35, chest = 0.55, shoulders = 0.70, chin = 0.80, eyeLine = 0.88, headTop = 1.00, talkFocus = 0.75 },
 }
 
+-- side: head-to-waist shot for tall, narrow (side-docked) portraits; fits a
+-- narrower slice of the model's width so the model fills the box's height
 BR.REGION_WIDTHS = {
-    tall_humanoid = { bust = 0.70, head = 0.40, upper_body = 0.65, full_body = 1.00 },
-    stocky_humanoid = { bust = 0.75, head = 0.45, upper_body = 0.70, full_body = 1.00 },
-    wide_beast = { bust = 0.55, head = 0.60, upper_body = 0.85, full_body = 1.00 },
-    dragon = { bust = 0.75, head = 0.50, upper_body = 0.75, full_body = 1.00 },
-    tiny_critter = { bust = 1.00, head = 1.00, upper_body = 1.00, full_body = 1.00 },
+    tall_humanoid = { bust = 0.70, head = 0.40, upper_body = 0.65, full_body = 1.00, side = 0.50 },
+    stocky_humanoid = { bust = 0.75, head = 0.45, upper_body = 0.70, full_body = 1.00, side = 0.55 },
+    wide_beast = { bust = 0.55, head = 0.60, upper_body = 0.85, full_body = 1.00, side = 1.00 },
+    dragon = { bust = 0.75, head = 0.50, upper_body = 0.75, full_body = 1.00, side = 0.60 },
+    tiny_critter = { bust = 1.00, head = 1.00, upper_body = 1.00, full_body = 1.00, side = 1.00 },
 }
 
 local function clamp01(v)
@@ -75,6 +77,15 @@ local function buildRegionFromAnchors(anchors, widths, regionName)
             topAnchor = "headTop",
             focusScreenY = 0.45,
             widthKey = "upper_body",
+        }
+    elseif regionName == "side" then
+        -- Upper-body height with a narrow width fit (side-docked portraits)
+        spec = {
+            focusAnchor = "chest",
+            bottomAnchor = "waist",
+            topAnchor = "headTop",
+            focusScreenY = 0.54,
+            widthKey = "side",
         }
     elseif regionName == "upper_body" then
         spec = {
@@ -204,8 +215,8 @@ function BR.GetRegion(class, regionName)
             shoulderW = 1.00,
         }
     end
-    -- wide_beast bust defaults to full body framing
-    if useClass == "wide_beast" and regionName == "bust" then
+    -- wide_beast bust (and its side-docked variant) defaults to full body framing
+    if useClass == "wide_beast" and (regionName == "bust" or regionName == "side") then
         local anchors = BR.GetAnchors(useClass)
         local widths = BR.REGION_WIDTHS[useClass] or BR.REGION_WIDTHS.tall_humanoid
         return buildRegionFromAnchors(anchors, widths, "full_body")

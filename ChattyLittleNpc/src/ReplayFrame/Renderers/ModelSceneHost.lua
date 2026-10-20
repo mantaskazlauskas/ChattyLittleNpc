@@ -1081,7 +1081,7 @@ function M.Attach(host, backend)
     -- Immediate framing implementation (called by coordinator)
     function host:FrameFullBodyFront_Immediate(paddingFrac)
         paddingFrac = tonumber(paddingFrac) or 0.12
-        -- _portraitRegion is set from the frame style ("bust" or "head")
+        -- _portraitRegion is set by ApplyDefaultFit from the frame style and dock side
         self:FrameRegion(self._portraitRegion or "bust", paddingFrac)
         if self._DumpState then self:_DumpState("after-framing") end
     end

@@ -80,8 +80,6 @@ local defaults = {
         -- Replay UI: combat behavior
         combatAutoCollapse = true,
         -- Replay UI: subtitles
-        showSubtitles = false,
-        subtitleFontScale = 1.0,
         -- Replay UI: queue type badges
         showQuestTypeBadges = true,
         -- Replay UI: history
@@ -342,13 +340,6 @@ function CLN:OnEnable()
                 elseif (not self.db.profile.combatAutoCollapse) and self.ReplayFrame._combatAutoCollapsed and self.ReplayFrame.OnCombatEnd then
                     self.ReplayFrame:OnCombatEnd()
                 end
-            elseif key == "showSubtitles" and self.ReplayFrame then
-                local cur = self.VoiceoverPlayer and self.VoiceoverPlayer.currentlyPlaying
-                if self.db.profile.showSubtitles and cur and cur.title and self.ReplayFrame.ShowSubtitle then
-                    self.ReplayFrame:ShowSubtitle(cur.title)
-                elseif self.ReplayFrame.HideSubtitle then
-                    self.ReplayFrame:HideSubtitle()
-                end
             elseif key == "editModeGlowHints" and self.ReplayFrame then
                 if self.db.profile.editModeGlowHints and self.ReplayFrame.StartEditGlowPulse then
                     self.ReplayFrame:StartEditGlowPulse()
@@ -359,15 +350,6 @@ function CLN:OnEnable()
                 self.ReplayFrame:MarkQueueDirty()
             elseif key == "highContrastMode" and self.ReplayFrame and self.ReplayFrame.MarkQueueDirty then
                 self.ReplayFrame:MarkQueueDirty()
-            elseif key == "subtitleFontScale" and self.ReplayFrame then
-                if self.ReplayFrame.SubtitleText then
-                    local fontScale = (self.db and self.db.profile and self.db.profile.subtitleFontScale) or 1.0
-                    self.ReplayFrame.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale)), "")
-                end
-                local cur = self.VoiceoverPlayer and self.VoiceoverPlayer.currentlyPlaying
-                if self.db.profile.showSubtitles and cur and cur.title and self.ReplayFrame.ShowSubtitle then
-                    self.ReplayFrame:ShowSubtitle(cur.title)
-                end
             elseif key == "debugMode" or key == "debugAnimations" then
                 -- no-op: toggles just affect logging gates
             elseif key == "debugNoAnim" and self.ReplayFrame and self.ReplayFrame.SetNoAnimDebug then
@@ -407,17 +389,15 @@ function CLN:OnEnable()
             applyKey("showReplayFrame")
             applyKey("debugNoAnim")
             applyKey("combatAutoCollapse")
-            applyKey("showSubtitles")
             applyKey("editModeGlowHints")
             applyKey("showQuestTypeBadges")
-            applyKey("subtitleFontScale")
             applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileCopied", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("highContrastMode")
         end)
         self.db:RegisterCallback("OnProfileReset", function()
-                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("showSubtitles"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("subtitleFontScale"); applyKey("highContrastMode")
+                    applyKey("queueTextScale"); applyKey("compactMode"); applyKey("showReplayFrame"); applyKey("debugNoAnim"); applyKey("disableCameraAnimations"); applyKey("combatAutoCollapse"); applyKey("editModeGlowHints"); applyKey("showQuestTypeBadges"); applyKey("highContrastMode")
         end)
         self._dbProfileHooked = true
     end

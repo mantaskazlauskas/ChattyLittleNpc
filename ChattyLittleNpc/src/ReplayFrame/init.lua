@@ -802,13 +802,6 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
     end
         self:UpdateConversationAnimation()
-        -- Show subtitle if enabled and not already showing
-        if self.ShowSubtitle and not self._subtitleSentences then
-            local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-            if cur2 and cur2.title and not cur2._libraryNoText then
-                self:ShowSubtitle(cur2.title)
-            end
-        end
     else
     if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
@@ -913,22 +906,6 @@ function ReplayFrame:ApplyProfileSettings()
     -- Play button position
     if CLN.PlayButton and CLN.PlayButton.UpdateButtonPositions then
         CLN.PlayButton:UpdateButtonPositions()
-    end
-
-    -- Subtitle visibility
-    if not p.showSubtitles then
-        if self.HideSubtitle then self:HideSubtitle() end
-    else
-        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        if cur and cur.title and not cur._libraryNoText and self.ShowSubtitle then
-            self:ShowSubtitle(cur.title)
-        end
-    end
-
-    -- Subtitle font scale
-    if self.SubtitleText then
-        local fontScale = math.max(8, math.floor(12 * (p.subtitleFontScale or 1.0)))
-        self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", fontScale, "")
     end
 
     -- Queue dirty (badges, history)

@@ -712,71 +712,6 @@ function ReplayFrame:CreateHeaderElements(contentFrame)
     end)
 end
 
-function ReplayFrame:ShowSubtitle(text)
-    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showSubtitles
-    if not enabled or not self.SubtitleFrame or not self.SubtitleText then return end
-    -- Cancel any existing subtitle timer
-    self:HideSubtitle()
-    if not text or text == "" then return end
-
-    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
-    local styleScale = self.GetFrameStyle and self:GetFrameStyle().subtitleScale or 1
-    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale * styleScale)), "")
-
-    -- Split into sentences and reveal one at a time
-    local sentences = self.SplitTooltipIntoSentences and self:SplitTooltipIntoSentences(text) or { text }
-    self._subtitleSentences = sentences
-    self._subtitleIndex = 0
-    -- Generation token: prevents stale C_Timer callbacks from a prior
-    -- ShowSubtitle call from corrupting the new subtitle sequence.
-    self._subtitleToken = (self._subtitleToken or 0) + 1
-    local token = self._subtitleToken
-    self.SubtitleFrame:Show()
-    self.SubtitleFrame:SetAlpha(0)
-    -- Move the queue list below the subtitle (header and buttons stay put)
-    if self.HeaderText then
-        self:_SetSubtitleSpace(true)
-    end
-    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
-
-    local function showNext()
-        if token ~= self._subtitleToken then return end
-        if not self.SubtitleFrame or not self.SubtitleFrame:IsShown() then return end
-        self._subtitleIndex = (self._subtitleIndex or 0) + 1
-        local idx = self._subtitleIndex
-        if idx > #sentences then
-            -- All sentences shown; hide visuals after a pause but keep
-            -- _subtitleSentences non-nil so UpdateAnimationsIfNeeded
-            -- won't re-trigger the same text while the voiceover plays.
-            local S = self.Config and self.Config.Subtitle
-            self._subtitleTimer = C_Timer and C_Timer.After(
-                S and S.lastSentencePause or 2.0, function()
-                if token ~= self._subtitleToken then return end
-                self._subtitleTimer = nil
-                self:_SubtitleFadeOut(token, function()
-                    if self.HeaderText and self.ContentFrame then
-                        self:_SetSubtitleSpace(false)
-                    end
-                    if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
-                end)
-            end)
-            return
-        end
-        self:_SetSubtitleText(sentences[idx])
-        self:_SubtitleFadeIn()
-        -- Duration scales with sentence length
-        local S = self.Config and self.Config.Subtitle
-        local dur = math.max(S and S.sentenceDurMin or 1.5,
-            math.min(S and S.sentenceDurMax or 5.0,
-                #sentences[idx] * (S and S.perCharCoeff or 0.07) * (S and S.durationMultiplier or 1.2)))
-        self._subtitleTimer = C_Timer and C_Timer.After(dur, showNext)
-    end
-
-    -- Start first sentence after a brief fade-in delay
-    self._subtitleTimer = C_Timer and C_Timer.After(
-        self.Config and self.Config.Subtitle and self.Config.Subtitle.firstSentenceDelay or 0.3, showNext)
-end
-
 -- Make room for the subtitle: while shown, the queue list starts below it
 -- instead of below the header line. The header and its buttons never move.
 function ReplayFrame:_SetSubtitleSpace(shown)
@@ -933,9 +868,8 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
 
     startIndex = math.max(1, math.min(startIndex, #sentences))
 
-    local fontScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.subtitleFontScale) or 1.0
     local styleScale = self.GetFrameStyle and self:GetFrameStyle().subtitleScale or 1
-    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * fontScale * styleScale)), "")
+    self.SubtitleText:SetFont("Fonts\\FRIZQT__.TTF", math.max(8, math.floor(12 * styleScale)), "")
 
     self._subtitleSentences = sentences
     self._subtitleIndex = 0

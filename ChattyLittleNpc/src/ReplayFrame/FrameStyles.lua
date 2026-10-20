@@ -68,7 +68,7 @@ local STYLES = {
         portraitRegion = "bust",
         noCameraAnims  = false,
     },
-    -- The portrait is the hero: face close-up, big name, film-style subtitles.
+    -- The portrait is the hero: head-and-shoulders shot and a big name.
     -- Portrait and list share one translucent backing so they read as a column.
     cinematic = {
         label          = "Cinematic",
@@ -104,6 +104,18 @@ local function rgba(c) return c[1], c[2], c[3], c[4] or 1 end
 function ReplayFrame:GetFrameStyle()
     local key = CLN.db and CLN.db.profile and CLN.db.profile.frameStyle
     return STYLES[key] or STYLES.minimal
+end
+
+--- The shot the portrait uses: the style's region, except that a side-docked
+--- (tall, narrow) portrait swaps the waist-up "bust" for "side" (head to waist,
+--- narrow width fit) so the model isn't shrunk to fit the narrow width.
+function ReplayFrame:GetPortraitRegion()
+    local region = self:GetFrameStyle().portraitRegion or "bust"
+    local pos = self.GetPortraitPosition and self:GetPortraitPosition()
+    if region == "bust" and (pos == "left" or pos == "right") then
+        return "side"
+    end
+    return region
 end
 
 -- ----------------------------------------------------------------------------

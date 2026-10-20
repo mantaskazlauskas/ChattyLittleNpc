@@ -99,7 +99,7 @@ function ReplayFrame:LayoutModelArea(frame)
         -- The model fills the container (whatever shape the docking gives it),
         -- extended by dropPx below so the shift doesn't shrink it.
         local h = self.npcModelFrameHeight or math.floor(140 * 1.15)
-        local region = self.GetFrameStyle and self:GetFrameStyle().portraitRegion or "bust"
+        local region = self.GetPortraitRegion and self:GetPortraitRegion() or "bust"
         local dropPx = (region == "bust") and math.floor(h * 0.10) or 0
         local box = self.ModelContainer or frame
         self.NpcModelFrame:SetPoint("TOPLEFT", box, "TOPLEFT", 0, -dropPx)
@@ -663,8 +663,8 @@ end
 function ReplayFrame:ApplyDefaultFit(displayID)
     local host = self.NpcModelFrame
     if not host then return end
-    -- The frame style picks the shot: "bust" (default) or "head" (face close-up)
-    host._portraitRegion = self.GetFrameStyle and self:GetFrameStyle().portraitRegion or "bust"
+    -- The frame style and dock side pick the shot (bust / upper_body / portrait / head)
+    host._portraitRegion = self.GetPortraitRegion and self:GetPortraitRegion() or "bust"
     -- Defer to renderer's FitDefault which handles scale, composition bias,
     -- projector-based corrections, and clipping in one coherent step.
     if host.FitDefault then host:FitDefault() end
