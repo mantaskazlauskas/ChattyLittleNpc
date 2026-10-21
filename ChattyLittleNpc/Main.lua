@@ -21,6 +21,8 @@ CLN.currentItemInfo = {
     ItemName = nil,
     ItemText = nil
 }
+-- Page style of read item texts this session, keyed "<unitType>:<id>"
+CLN.itemTextStyles = {}
 
 local defaults = {
     profile = {
@@ -75,6 +77,10 @@ local defaults = {
         disableCameraAnimations = false,
         -- Race Model Manager: hide models that already have a race or are marked "not a race"
         raceModelsUnassignedOnly = true,
+        -- Item Prop Picker: per-key ("book", "scroll", ...) { fileId, pitch, facing, distance }
+        itemPropOverrides = {},
+        -- Portrait Tuner: per-shot camera tuning, keyed "shot" or "shot:bodyType"
+        portraitShotTuning = {},
         -- Per Edit Mode layout overrides (keyed by layoutName)
         editModeLayouts = {},
         -- Replay UI: combat behavior

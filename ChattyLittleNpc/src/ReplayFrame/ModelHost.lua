@@ -7,8 +7,9 @@ local ReplayFrame = CLN.ReplayFrame
 -- Refactored ModelHost: delegates renderer-specific logic to Renderers/{ModelSceneHost,PlayerModelRenderer}
 
 -- Public factory: create a host frame inside parent and choose backend
-function ReplayFrame:CreateModelHost(parent)
-    local host = CreateFrame("Frame", "ChattyLittleNpcModelHost", parent)
+---@param name string|nil global frame name (default: the portrait's)
+function ReplayFrame:CreateModelHost(parent, name)
+    local host = CreateFrame("Frame", name or "ChattyLittleNpcModelHost", parent)
     host:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, 0)
     host:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
     host:SetHeight(140)

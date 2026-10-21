@@ -45,12 +45,68 @@ function M.Attach(host, backend)
     host._targetZ = host._targetZ or 0
     host._yaw = host._yaw or 0
 
+    -- Drop prop (book/scroll) state so the next model isn't left tilted
+    local function clearProp()
+        if not host._propFileId then return end
+        host._propFileId = nil
+        safeCall(backend.frame, "SetPitch", 0)
+        safeCall(backend.frame, "SetCamDistanceScale", 1)
+    end
+
     function host:ClearModel()
     debugf("host", "PlayerModel.ClearModel()")
     host._pRef = nil
     host._zRef = nil
     host._creatureToken = (host._creatureToken or 0) + 1 -- cancel a pending creature fallback
+    clearProp()
     safeCall(backend.frame, "ClearModel")
+    end
+
+    --- Fixed framing for a prop model: whole model in view, tilted by pitch.
+    ---@param prop table? new { pitch?, facing?, distance? } for the loaded prop
+    function host:FrameProp(prop)
+        if prop then
+            self._propPitch, self._propFacing, self._propDistance = prop.pitch, prop.facing, prop.distance
+        end
+        local pm = backend.frame
+        self._zoom = 0
+        safeCall(pm, "SetPortraitZoom", 0)
+        -- Below 1 moves the camera closer
+        safeCall(pm, "SetCamDistanceScale", self._propDistance or 1)
+        safeCall(pm, "SetPosition", 0, 0, 0)
+        safeCall(pm, "SetFacing", self._propFacing or 0) -- same call as the Item Prop Picker preview
+        safeCall(pm, "SetPitch", self._propPitch or 0)
+    end
+
+    --- True while this prop is set and its model is still loaded in the frame.
+    function host:HasPropLoaded(fileId)
+        if not fileId or self._propFileId ~= fileId then return false end
+        return safeCall(backend.frame, "GetModelFileID") == fileId
+    end
+
+    --- Render a world doodad (book, scroll, plaque) by model file ID. Doodads
+    --- carry their own textures, so SetModel draws them fully textured.
+    ---@param prop table { fileId, pitch?, facing?, distance? }
+    function host:SetPropModel(prop)
+        host._pRef = nil
+        host._zRef = nil
+        host._currentDisplayID = nil
+        host._creatureToken = (host._creatureToken or 0) + 1
+        local token = host._creatureToken
+        host._propFileId = prop.fileId
+        host._tuneSide = nil -- shot tuning is for NPCs, not props
+        host._propPitch = prop.pitch
+        host._propFacing = prop.facing
+        host._propDistance = prop.distance
+        debugf("loader", "PlayerModel.SetModel(%s) prop", tostring(prop.fileId))
+        safeCall(backend.frame, "SetModel", prop.fileId)
+        self:FrameProp()
+        -- The camera can reset once the model finishes loading; frame again
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0.1, function()
+                if host._creatureToken == token and host._propFileId then host:FrameProp() end
+            end)
+        end
     end
 
     --- Render an NPC by creature ID, the way the Race Model Manager does when no
@@ -63,6 +119,7 @@ function M.Attach(host, backend)
         host._currentDisplayID = nil
         host._creatureToken = (host._creatureToken or 0) + 1
         local token = host._creatureToken
+        clearProp()
         local pm = backend.frame
         local ok = npcId and pm.SetCreature and pcall(pm.SetCreature, pm, npcId)
         debugf("loader", "PlayerModel.SetCreature(%s) ok=%s fileId=%s", tostring(npcId), tostring(ok), tostring(fileId))
@@ -90,6 +147,7 @@ function M.Attach(host, backend)
         host._creatureToken = (host._creatureToken or 0) + 1
         host._pRef = nil  -- reset per-host ProjectFit refs for new model
         host._zRef = nil
+        clearProp()
         debugf("loader", "PlayerModel.SetDisplayInfo(%s)", tostring(displayID))
         safeCall(backend.frame, "SetDisplayInfo", displayID)
     end
@@ -105,6 +163,8 @@ function M.Attach(host, backend)
 
     function host:SetPosition(x, y, z)
         self._targetZ = z or self._targetZ or 0
+        -- Breathing / pans pass y = 0; keep the shot tuning's side offset
+        if (y == nil or y == 0) and self._tuneSide then y = self._tuneSide end
         safeCall(backend.frame, "SetPosition", x, y, z)
         -- Keep snapshot in sync so breathing animation preserves the Z offset
         if self._lastCamSnapshot then self._lastCamSnapshot.tz = z end
@@ -118,7 +178,7 @@ function M.Attach(host, backend)
         self._lastAnimId = animId
     -- Respect ReplayFrame debug no-op animation mode
     local r = ReplayFrame
-    if r and r:_NoAnimDebugEnabled() then return end
+    if r and r:_NoAnimDebugEnabled() and not self._isPreview then return end -- preview hosts ignore portrait state
     safeCall(backend.frame, "SetAnimation", animId)
     end
 
@@ -151,12 +211,14 @@ function M.Attach(host, backend)
     host._pRef = nil
     host._zRef = nil
     host._creatureToken = (host._creatureToken or 0) + 1
+    clearProp()
     safeCall(backend.frame, "SetUnit", unit)
     end
 
     -- Compatibility stubs used by presets/code calling scene-style helpers
     function host:PointCameraAtHead() end
     function host:FrameFullBodyFront()
+        if self._propFileId then return self:FrameProp() end
         -- Upper 2/3 shot: full-body zoom + negative z to crop feet/lower legs.
         -- Closer regions (frame style) use PlayerModel's built-in portrait zoom:
         -- 1.0 frames the face, 0.75 head and shoulders, 0.45 head to waist.
@@ -165,9 +227,17 @@ function M.Attach(host, backend)
         local zoom = (region == "head" and 1.0) or (region == "portrait" and 0.75)
             or ((region == "upper_body" or region == "side") and 0.45) or nil
         local z = zoom and 0 or -0.15
+        -- Portrait Tuner shot tuning. PlayerModel has no free camera, so this is an
+        -- approximation: zoom = camera distance, height/side = model offset, orbit
+        -- and facing = model rotation, pitch = model tilt.
+        local t = self._tuningPreview or (ReplayFrame.GetShotTuning and ReplayFrame:GetShotTuning(region or "bust")) or {}
+        z = z + (tonumber(t.height) or 0)
+        self._tuneSide = tonumber(t.side) or nil
         if self.SetPortraitZoom then self:SetPortraitZoom(zoom or 0.01) end
-        if self.SetPosition then self:SetPosition(0, 0, z) end
-        if self.SetRotation then self:SetRotation(0) end
+        safeCall(backend.frame, "SetCamDistanceScale", 1 / math.max(0.1, tonumber(t.zoom) or 1))
+        safeCall(backend.frame, "SetPitch", math.rad(tonumber(t.pitch) or 0))
+        if self.SetPosition then self:SetPosition(0, tonumber(t.side) or 0, z) end
+        if self.SetRotation then self:SetRotation(math.rad((tonumber(t.facing) or 0) - (tonumber(t.orbit) or 0))) end
         self._lastCamSnapshot = self._lastCamSnapshot or {}
         self._lastCamSnapshot.tz = z
     end
@@ -312,6 +382,7 @@ function M.Attach(host, backend)
     -- Keep backend visibility in sync with the host so it actually renders when shown
     if host.HookScript then
         host:HookScript("OnShow", function()
+            if host._backend ~= backend then return end -- a later backend replaced this one
             if backend.frame and backend.frame.Show then pcall(backend.frame.Show, backend.frame) end
         end)
         host:HookScript("OnHide", function()

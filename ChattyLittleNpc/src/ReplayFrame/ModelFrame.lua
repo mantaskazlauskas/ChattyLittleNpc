@@ -50,6 +50,8 @@ function ReplayFrame:SetNoAnimDebug(enabled)
 end
 
 function ReplayFrame:_NoAnimDebugEnabled()
+    -- Props (books, scrolls) have no animations; keep them still
+    if self._propModelShown and self.NpcModelFrame and self.NpcModelFrame._propFileId then return true end
     if self._debugNoAnim ~= nil then return self._debugNoAnim end
     local prof = CLN and CLN.db and CLN.db.profile
     return (prof and prof.debugNoAnim) and true or false
@@ -277,6 +279,21 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         return
     end
 
+    -- Items and game objects have no model we can draw (SetUnit on an object
+    -- gives the invisible stalker): show a book, scroll or plaque instead.
+    -- Quests from objects (posters, boards) are caught by the dialog unit's GUID.
+    local entryType = currentlyPlaying.entryType
+    if entryType ~= "Item" and entryType ~= "GameObject" and isNpcTokenValidFor(npcId) then
+        local ok, guid = pcall(UnitGUID, "npc")
+        local okFind, isObject = pcall(string.find, guid, "^GameObject%-")
+        if ok and okFind and isObject then entryType = "GameObject" end
+    end
+    if (entryType == "Item" or entryType == "GameObject") and self:_ShowItemProp(npcId, entryType) then
+        if self.Relayout then self:Relayout() end
+        return
+    end
+    self._propModelShown = false
+
     -- Detect whether the NPC we're about to display is dead.
     -- Check the "npc" dialog unit first; fall back to "target" if it matches our npcId.
     self._npcIsDead = false
@@ -398,7 +415,16 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
         end
-        if self._lastUnitNpcId == npcId then
+        -- Same creature ID can be another spawn with another look (male/female
+        -- guards): only keep the drawn model if it's the same spawn or we're not
+        -- talking to anyone now.
+        local sameSpawn = true
+        if self._lastUnitNpcId == npcId and isNpcTokenValidFor(npcId) then
+            local ok, guid = pcall(UnitGUID, "npc")
+            local okCmp, same = pcall(function() return guid == self._lastUnitGuid end)
+            sameSpawn = not (ok and okCmp) or same
+        end
+        if self._lastUnitNpcId == npcId and sameSpawn then
             local be = self.NpcModelFrame and self.NpcModelFrame._backend
             local stillLoaded = false
             if be and be.actor and be.actor.IsLoaded then
@@ -471,6 +497,12 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             end
             self._naturalAnimId = natAnim
             self._lastUnitNpcId = npcId
+            -- Which spawn was drawn (GUID includes the spawn UID); may be a secret value
+            local okGuid, guid = pcall(UnitGUID, "npc")
+            guid = okGuid and guid or nil
+            local okCmp, sameAsLast = pcall(function() return guid ~= nil and guid == self._lastUnitGuid end)
+            local spawnChanged = not (okCmp and sameAsLast)
+            self._lastUnitGuid = guid
             self._lastCreatureNpcId = nil
             -- Snapshot displayID from the live unit so that same-NPC queue
             -- transitions can match _lastDisplayID and skip ClearModel.
@@ -479,7 +511,12 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
             if unitDid and currentlyPlaying and not currentlyPlaying.displayID then
                 currentlyPlaying.displayID = unitDid
             end
-            -- Build metadata and apply default fit when unit is loaded
+            -- Build metadata and apply default fit when unit is loaded. Metadata here is
+            -- keyed by npcId, so another spawn (other look) has to be measured again.
+            if spawnChanged and self._modelMeta then
+                local key = self:ResolveModelMetaKey(nil, npcId)
+                if key then self._modelMeta[key] = nil end
+            end
             if self.BuildModelMetadataOnce then self:BuildModelMetadataOnce(nil) end
             if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
             -- Show container + model
@@ -565,6 +602,83 @@ function ReplayFrame:_ShowModelByCreature(npcId)
     self._naturalAnimId = nil
     if self.ApplyDefaultFit then self:ApplyDefaultFit(nil) end
     self:_ApplyInitialModelAnim(npcId)
+    return true
+end
+
+-- World doodad models (file IDs from the community listfile) shown for item
+-- texts. pitch tilts flat models toward the camera; facing turns them;
+-- distance below 1 zooms in (small models like books and scrolls).
+-- The Item Prop Picker (dev window) can override these per profile.
+local ITEM_PROPS = {
+    book   = { fileId = 198029, pitch = 0.53, facing = 0.45, distance = 0.95 },  -- human/passive doodads/books/bookmediumopen01
+    scroll = { fileId = 1331239, pitch = -0.04, facing = 2.11, distance = 0.55 }, -- expansion06/doodads/dalaran/7dl_dalaran_postofficeletter02
+    stone  = { fileId = 199989, pitch = -0.42, facing = 0.78 },                  -- passivedoodads/plaque/plaquestone01
+    bronze = { fileId = 199981, pitch = -0.23, facing = 0.33 },                  -- passivedoodads/plaque/plaquebronze01
+    silver = { fileId = 199985, pitch = -0.16, facing = 0.31 },                  -- passivedoodads/plaque/plaquesilver01
+}
+ReplayFrame.ItemProps = ITEM_PROPS
+
+-- ItemTextGetMaterial() values to props; parchment-like pages are a scroll
+-- for one page and a book for several.
+local MATERIAL_PROPS = {
+    Stone = "stone", Marble = "stone",
+    Bronze = "bronze", Gold = "bronze",
+    Silver = "silver",
+}
+
+local function pickItemPropKey(style)
+    if not style then return "book" end
+    return MATERIAL_PROPS[style.material] or (style.multiPage and "book" or "scroll")
+end
+
+--- The prop for a key ("book", "scroll", ...): the picker's override, else the default.
+function ReplayFrame:GetItemProp(key)
+    local overrides = CLN.db and CLN.db.profile and CLN.db.profile.itemPropOverrides
+    local o = overrides and overrides[key]
+    if o and tonumber(o.fileId) then return o end
+    return ITEM_PROPS[key]
+end
+
+--- Redraw the portrait if it is showing a prop, e.g. after the picker changed one.
+function ReplayFrame:RefreshItemProp()
+    if not self._propModelShown then return end
+    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    if cur and cur.npcId and self.UpdateNpcModelDisplay then self:UpdateNpcModelDisplay(cur.npcId) end
+end
+
+-- Show a prop model (book / scroll / plaque) for an item or game object. The
+-- page style recorded when its text was read this session picks the prop;
+-- without one it is a book. Returns true when shown.
+function ReplayFrame:_ShowItemProp(npcId, entryType)
+    local style = CLN.itemTextStyles and CLN.itemTextStyles[entryType .. ":" .. tostring(npcId)]
+    local host = self.NpcModelFrame
+    if not (host and host._SwitchToPlayerBackend and host:_SwitchToPlayerBackend() and host.SetPropModel) then
+        return false
+    end
+    local prop = self:GetItemProp(pickItemPropKey(style))
+    -- Reload unless the frame still has this model (it can drop it while hidden)
+    if not host:HasPropLoaded(prop.fileId) then
+        if self.ResetAnimationState then self:ResetAnimationState() end
+        host:ClearModel()
+        host:SetPropModel(prop)
+        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: %s %s shown as prop fileId=%s (material=%s)",
+                entryType, tostring(npcId), tostring(prop.fileId), tostring(style and style.material)))
+        end
+    else
+        host:FrameProp(prop) -- same model; pick up any changed framing
+    end
+    self._propModelShown = true
+    self._unitModelLoaded = true
+    self._lastDisplayID = nil
+    self._lastUnitNpcId = nil
+    self._lastCreatureNpcId = nil
+    self._npcIsDead = false
+    self._hasValidModel = true
+    if self.ModelContainer then self.ModelContainer:Show() end
+    host:Show()
+    -- Drop any OnUpdate left from the previous NPC model
+    if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
     return true
 end
 

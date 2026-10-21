@@ -118,6 +118,28 @@ function ReplayFrame:GetPortraitRegion()
     return region
 end
 
+-- Camera tuning per shot, set in the Portrait Tuner (developer window) and
+-- saved per profile; paste its Lua lines here to make them the defaults.
+-- Key: shot ("bust", "side", ...) or "shot:bodyType" ("bust:wide_beast").
+-- Fields: height / side (fractions of model height), zoom (x closer),
+-- pitch / orbit (camera angle, degrees), facing (model turn, degrees).
+ReplayFrame.ShotTuningDefaults = {}
+
+--- Camera tuning for a shot: body-type specific first, then the whole shot.
+---@param shot string
+---@param bodyType string|nil morphology class, e.g. "tall_humanoid"
+---@return table|nil
+function ReplayFrame:GetShotTuning(shot, bodyType)
+    local saved = CLN.db and CLN.db.profile and CLN.db.profile.portraitShotTuning
+    local defaults = ReplayFrame.ShotTuningDefaults
+    if shot and bodyType then
+        local key = shot .. ":" .. bodyType
+        local t = (saved and saved[key]) or defaults[key]
+        if t then return t end
+    end
+    return shot and ((saved and saved[shot]) or defaults[shot]) or nil
+end
+
 -- ----------------------------------------------------------------------------
 -- Small drawing helpers
 -- ----------------------------------------------------------------------------

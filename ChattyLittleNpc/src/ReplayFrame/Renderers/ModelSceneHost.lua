@@ -528,7 +528,9 @@ function M.Attach(host, backend)
         -- Invalidate canonical bbox cache when displayID changes
         if MS and MS.CanonicalBbox and MS.CanonicalBbox.Invalidate then
             local prevID = self._currentDisplayID
-            if prevID and prevID ~= displayID then
+            -- The cache is shared by display ID; a preview host (Portrait Tuner)
+            -- must not drop the live portrait's entry
+            if prevID and prevID ~= displayID and not self._isPreview then
                 MS.CanonicalBbox.Invalidate(prevID)
             end
         end
@@ -791,9 +793,9 @@ function M.Attach(host, backend)
             self._animCtrl:setDesired(animId)
         end
         
-        -- Respect debug no-op mode
+        -- Respect debug no-op mode (global portrait state; a preview host ignores it)
         local r = ReplayFrame
-        if r and r:_NoAnimDebugEnabled() then return end
+        if r and r:_NoAnimDebugEnabled() and not self._isPreview then return end
         
         if backend.actor and backend.actor.SetAnimation then
             local okLoaded = not backend.actor.IsLoaded or backend.actor:IsLoaded()
@@ -901,8 +903,20 @@ function M.Attach(host, backend)
     function host:FaceCamera()
         -- Preserve user camera placement; only rotate actor to face forward
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
+            pcall(backend.actor.SetYaw, backend.actor, (self._frontYaw or math.pi) + (self._shotFacing or 0))
         end
+    end
+
+    --- Camera tuning for a shot: the Portrait Tuner's live preview, else saved/default.
+    function host:_GetShotTuning(regionName, class)
+        if self._tuningPreview then return self._tuningPreview end
+        return ReplayFrame.GetShotTuning and ReplayFrame:GetShotTuning(regionName, class) or nil
+    end
+
+    --- Set camera angle and model facing from a tuning (nil clears them).
+    function host:_SetShotAngles(tuning)
+        self._camOrbit = tuning and { pitch = math.rad(tonumber(tuning.pitch) or 0), yaw = math.rad(tonumber(tuning.orbit) or 0) } or nil
+        self._shotFacing = tuning and math.rad(tonumber(tuning.facing) or 0) or 0
     end
 
     -- Enable panning for ModelScene host by explicitly setting camera target
@@ -953,7 +967,18 @@ function M.Attach(host, backend)
     
     function host:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         if backend.kind ~= "scene" or not backend.frame then return end
-        
+        -- Shot tuning camera angle: every caller places the camera on the +Y axis
+        -- in front of the target, so orbit it here (keeping the distance) and the
+        -- angle survives zooms, pans and breathing.
+        local orbit = self._camOrbit
+        if orbit and (orbit.pitch ~= 0 or orbit.yaw ~= 0) then
+            local d = math.sqrt(((px or 0) - (tx or 0))^2 + ((py or 0) - (ty or 0))^2 + ((pz or 0) - (tz or 0))^2)
+            local cp = math.cos(orbit.pitch)
+            px = (tx or 0) + d * cp * math.sin(orbit.yaw)
+            py = (ty or 0) + d * cp * math.cos(orbit.yaw)
+            pz = (tz or 0) + d * math.sin(orbit.pitch)
+        end
+
         if backend.frame.SetCameraPosition then
             pcall(backend.frame.SetCameraPosition, backend.frame, px, py, pz)
         end
@@ -1052,6 +1077,9 @@ function M.Attach(host, backend)
         end
         d = d or math.max(tonumber(self._camDist) or 1.0, 1.0)
         d = math.max(d, 1.0)
+        -- Same tuned zoom as FrameRegion, so the tz re-derivation below stays on the tuned spot
+        local tuning = self:_GetShotTuning(regionName, self._lastFrameClass)
+        if tuning then d = d / math.max(0.1, tonumber(tuning.zoom) or 1) end
         self._camDist = d
         -- Keep _zoom consistent so GetPortraitZoom won't desync AnimZoomTo
         self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
@@ -1102,6 +1130,8 @@ function M.Attach(host, backend)
         self._lastBounds = bbox or self._lastBounds
         if not bbox then
             self:_DebugLog("framing", "FrameRegion(%s): no bbox available, fallback to head", regionName)
+            self:_SetShotAngles(nil) -- don't keep the previous shot's angle or facing
+            self:FaceCamera()
             return self:PointCameraAtHead()
         end
 
@@ -1125,6 +1155,12 @@ function M.Attach(host, backend)
             }
             class = "fallback"
         end
+
+        local tuning = self:_GetShotTuning(regionName, class)
+        self._lastFrameClass = class
+        -- Solve and correct with a level camera; the tuned angle goes on at the end,
+        -- so the projection corrections don't compensate for it per model
+        self:_SetShotAngles(nil)
 
         local fov = self:GetFovV()
         local aspect = self:GetAspect()
@@ -1212,7 +1248,7 @@ function M.Attach(host, backend)
         self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
         self:_UpdateClipPlanesForFit(d, bbox, paddingFrac)
         if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
-            pcall(backend.actor.SetYaw, backend.actor, self._frontYaw or math.pi)
+            pcall(backend.actor.SetYaw, backend.actor, (self._frontYaw or math.pi) + (self._shotFacing or 0))
         end
         self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
 
@@ -1235,6 +1271,28 @@ function M.Attach(host, backend)
                     self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
                 end
             end
+        end
+
+        -- Shot tuning position and zoom, on top of the solved and corrected framing.
+        -- Offsets are fractions of the model's height so one setting fits all sizes.
+        if tuning then
+            self:_SetShotAngles(tuning)
+            if self._autoFaceCamera ~= false and backend.actor and backend.actor.SetYaw then
+                pcall(backend.actor.SetYaw, backend.actor, (self._frontYaw or math.pi) + (self._shotFacing or 0))
+            end
+            local h = (bbox.size and bbox.size.z) or 1
+            d = d / math.max(0.1, tonumber(tuning.zoom) or 1)
+            tz = tz + (tonumber(tuning.height) or 0) * h
+            tx = tx + (tonumber(tuning.side) or 0) * h
+            px, py, pz = tx, ty + d, tz
+            self._camDist = d
+            self._zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+            self._camBaseZ = tz
+            -- Keep the zoom re-derivation (tz = _anchorTop - _anchorFactor * d) on this spot
+            if self._anchorFactor then self._anchorTop = tz + self._anchorFactor * d end
+            self:_ApplyCameraLookAt(px, py, pz, tx, ty, tz)
+            self:_UpdateClipPlanesForFit(d, bbox, paddingFrac)
+            self:_UpdateSnapshot({ tx = tx, ty = ty, tz = tz, px = px, py = py, pz = pz, dist = d })
         end
 
         self:_LogFrameDiagnostics(regionName, source, class, bbox, world, d, fw, fh)
@@ -1279,6 +1337,13 @@ function M.Attach(host, backend)
         end
         d = math.max(d, 1.0)
         local aimTargetZ = (solveDetails and solveDetails.aimTargetZ) or world.targetZ or world.focusZ or 0
+        -- Same shot tuning as FrameRegion, so the transition ends on the tuned spot
+        local tuning = self:_GetShotTuning(regionName, class)
+        self:_SetShotAngles(tuning)
+        if tuning then
+            d = d / math.max(0.1, tonumber(tuning.zoom) or 1)
+            aimTargetZ = aimTargetZ + (tonumber(tuning.height) or 0) * ((cbox.size and cbox.size.z) or 1)
+        end
 
         local dur = tonumber(duration) or 0.3
         local r = CLN and CLN.ReplayFrame
@@ -1451,6 +1516,8 @@ function M.Attach(host, backend)
     -- Keep scene visibility in sync with host
     if host.HookScript then
         host:HookScript("OnShow", function()
+            -- Hooks outlive a switch to the PlayerModel backend; don't re-show this scene over it
+            if host._backend ~= backend then return end
             local f, a = backend.frame, backend.actor
             host:_DebugLog("host", "OnShow (frame+actor shown)")
             if f and f.Show then pcall(f.Show, f) end
@@ -1487,6 +1554,7 @@ function M.Attach(host, backend)
             if f and f.Hide then pcall(f.Hide, f) end
         end)
         host:HookScript("OnSizeChanged", function(_, w, h)
+            if host._backend ~= backend then return end
             host:_DebugLog("host", "OnSizeChanged -> %.1fx%.1f", tonumber(w) or -1, tonumber(h) or -1)
             -- [Trigger] and [Size] details for live viewport & scales
             local sF = host.GetEffectiveScale and host:GetEffectiveScale() or 1

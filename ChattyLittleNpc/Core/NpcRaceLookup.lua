@@ -77,6 +77,8 @@ local RACE_BY_MODEL_FILE_ID = {
 local probeFrame
 
 -- Lazy-create a hidden off-screen PlayerModel used solely to read model file IDs.
+local INVISIBLE_STALKER_FILE_ID = 124640 -- creature/invisiblestalker/invisiblestalker.m2
+
 local function getProbe()
     if probeFrame then return probeFrame end
     local ok, frame = pcall(CreateFrame, "PlayerModel", "CLN_RaceProbe", UIParent)
@@ -103,7 +105,8 @@ function NpcRaceLookup:GetUnitModelFileID(unit)
     local fileId, displayId
     if pcall(probe.SetUnit, probe, unit) then
         local ok, fid = pcall(probe.GetModelFileID, probe)
-        if ok and type(fid) == "number" and fid > 0 then
+        -- creature/invisiblestalker is what SetUnit draws for game objects: no real model
+        if ok and type(fid) == "number" and fid > 0 and fid ~= INVISIBLE_STALKER_FILE_ID then
             fileId = fid
         end
         if probe.GetDisplayInfo then

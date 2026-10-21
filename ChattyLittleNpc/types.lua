@@ -65,6 +65,7 @@
 ---@field isDUIAddonLoaded boolean
 ---@field isElvuiAddonLoaded boolean
 ---@field currentItemInfo table
+---@field itemTextStyles table<string, {material: string?, multiPage: boolean}>
 ---@field Utils table
 ---@field VoiceoverPlayer table
 ---@field NpcDialogTracker table

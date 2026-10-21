@@ -334,6 +334,15 @@ function EventHandler:ITEM_TEXT_READY()
         CLN.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
     end
 
+    -- Remember the page style so the portrait can show a book, scroll or plaque
+    if type(itemId) == "number" then
+        local page = ItemTextGetPage and ItemTextGetPage() or 1
+        CLN.itemTextStyles[unitType .. ":" .. itemId] = {
+            material = ItemTextGetMaterial and ItemTextGetMaterial() or nil,
+            multiPage = page > 1 or (ItemTextHasNextPage and ItemTextHasNextPage()) or false,
+        }
+    end
+
     if type(itemId) == "number" then
         CLN:HandleGossipPlaybackStart(itemId, itemText, unitType)
     end
