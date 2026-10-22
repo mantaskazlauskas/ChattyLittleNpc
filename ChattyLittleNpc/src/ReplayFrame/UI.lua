@@ -150,6 +150,21 @@ function ReplayFrame:StopEditGlowPulse()
     if self.EditGlow then self.EditGlow:Hide() end
 end
 
+--- Stop an Alpha animation group and keep the frame at the alpha it had
+--- reached. Stop() alone snaps the frame back to its own alpha, which the
+--- animation never changed (e.g. full opacity in the middle of an idle fade).
+local function stopAtCurrentAlpha(ag, frame)
+    if not (ag and ag:IsPlaying()) then return end
+    local anim = ag._anim
+    local alpha
+    if anim then
+        local from, to = anim:GetFromAlpha(), anim:GetToAlpha()
+        alpha = from + (to - from) * (anim:GetSmoothProgress() or 0)
+    end
+    ag:Stop()
+    if alpha then frame:SetAlpha(alpha) end
+end
+
 --- Create fade-in/fade-out AnimationGroups on DisplayFrame.
 --- Called once from GetDisplayFrame after the frame is built.
 function ReplayFrame:_CreateDisplayFrameAnimations()
@@ -164,6 +179,7 @@ function ReplayFrame:_CreateDisplayFrameAnimations()
     local F = self.Config and self.Config.Fade
     fi:SetDuration(F and F.frameFadeIn or 0.2)
     fi:SetSmoothing("OUT")
+    fadeIn._anim = fi
     fadeIn:SetScript("OnFinished", function()
         frame:SetAlpha(1)
     end)
@@ -190,15 +206,19 @@ end
 function ReplayFrame:_DisplayFrameFadeIn()
     local frame = self.DisplayFrame
     if not frame then return end
-    -- Cancel idle-fade if active — playback/visibility is restoring
+    -- Cancel idle-fade if active — playback/visibility is restoring. The idle
+    -- restore animates the shown frame itself; a second fade on top would fight it.
     if self._idleFadeState and self._idleFadeState ~= "active" then
-        self:_IdleFadeRestore()
-    end
-    -- Cancel any fade-out in progress
-    if self._frameFadingOut then
-        if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then
-            self._frameFadeOutAG:Stop()
+        if frame:IsShown() then
+            self:_IdleFadeRestore()
+            return
         end
+        -- Hidden: nothing to restore, just reset the idle state
+        self:_IdleFadeCancel()
+    end
+    -- Cancel any fade-out in progress, keeping the alpha it reached
+    if self._frameFadingOut then
+        stopAtCurrentAlpha(self._frameFadeOutAG, frame)
         self._frameFadingOut = false
     end
     -- Already playing fade-in? Let it continue
@@ -211,10 +231,14 @@ function ReplayFrame:_DisplayFrameFadeIn()
     -- Reset idle timer so the countdown starts from when the frame re-appears
     -- (covers post-combat restore and any other hide→show cycle).
     self._idleLastActivity = GetTime()
-    -- Start fade-in
-    frame:SetAlpha(0)
+    -- Fade in from where the frame is (0 when hidden, partway when a fade-out was cut short)
+    local startAlpha = frame:IsShown() and frame:GetAlpha() or 0
+    frame:SetAlpha(startAlpha)
     frame:Show()
     if self._frameFadeInAG then
+        local F = self.Config and self.Config.Fade
+        self._frameFadeInAG._anim:SetFromAlpha(startAlpha)
+        self._frameFadeInAG._anim:SetDuration((F and F.frameFadeIn or 0.2) * (1 - startAlpha))
         self._frameFadeInAG:Play()
     else
         frame:SetAlpha(1)
@@ -228,6 +252,22 @@ function ReplayFrame:_DisplayFrameFadeIn()
     end
 end
 
+--- Show the frame at full opacity right away, cancelling every fade.
+--- Used by Edit Mode, which needs the frame visible even if it was hidden
+--- by a fade-out (alpha 0) or dimmed by the idle fade.
+function ReplayFrame:_ShowImmediately()
+    local frame = self.DisplayFrame
+    if not frame then return end
+    if self._frameFadeInAG then self._frameFadeInAG:Stop() end
+    if self._frameFadeOutAG then self._frameFadeOutAG:Stop() end
+    self._frameFadingOut = false
+    self:_IdleFadeCancel()
+    self._idleLastActivity = GetTime()
+    frame:SetAlpha(1)
+    frame:Show()
+    self:_SetModelVisualAlpha(1)
+end
+
 --- Smoothly hide the main DisplayFrame with a fade-out.
 --- Idempotent: safe to call every frame from UpdateVisibility.
 --- On completion, calls frame:Hide() to fully remove the frame.
@@ -236,10 +276,8 @@ function ReplayFrame:_DisplayFrameFadeOut()
     if not frame or not frame:IsShown() then return end
     -- Already fading out? Let it continue
     if self._frameFadingOut then return end
-    -- Cancel any fade-in
-    if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then
-        self._frameFadeInAG:Stop()
-    end
+    -- Cancel any fade-in, keeping the alpha it reached
+    stopAtCurrentAlpha(self._frameFadeInAG, frame)
     -- Cancel idle-fade if in progress (we're doing a full hide)
     self:_IdleFadeCancel()
     -- Start fade-out from current alpha (avoid flash when idle-faded)
@@ -317,11 +355,9 @@ end
 
 --- Cancel idle fade entirely (used before a full hide).
 function ReplayFrame:_IdleFadeCancel()
-    if self._idleFadingOutAG and self._idleFadingOutAG:IsPlaying() then
-        self._idleFadingOutAG:Stop()
-    end
-    if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then
-        self._idleFadingInAG:Stop()
+    if self.DisplayFrame then
+        stopAtCurrentAlpha(self._idleFadingOutAG, self.DisplayFrame)
+        stopAtCurrentAlpha(self._idleFadingInAG, self.DisplayFrame)
     end
     self:_CancelModelFade()
     self._idleFadeState = "active"
@@ -422,10 +458,8 @@ function ReplayFrame:_IdleFadeToIdle()
     local targetAlpha = (p and p.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
     local dur = F and F.idleFadeOut or 0.8
 
-    -- Cancel any in-progress idle-fade-in
-    if self._idleFadingInAG and self._idleFadingInAG:IsPlaying() then
-        self._idleFadingInAG:Stop()
-    end
+    -- Cancel any in-progress idle-fade-in, keeping the alpha it reached
+    stopAtCurrentAlpha(self._idleFadingInAG, frame)
 
     -- Create animation group on first use
     if not self._idleFadingOutAG then
@@ -434,8 +468,10 @@ function ReplayFrame:_IdleFadeToIdle()
         anim:SetSmoothing("IN")
         ag._anim = anim
         ag:SetScript("OnFinished", function()
+            -- Read the target from the animation: the Idle Opacity setting
+            -- may have changed since this handler was created.
             if frame:IsShown() then
-                frame:SetAlpha(targetAlpha)
+                frame:SetAlpha(anim:GetToAlpha())
             end
             self._idleFadeState = "idle"
         end)
@@ -446,13 +482,14 @@ function ReplayFrame:_IdleFadeToIdle()
     local curAlpha = frame:GetAlpha()
     self._idleFadingOutAG._anim:SetFromAlpha(curAlpha)
     self._idleFadingOutAG._anim:SetToAlpha(targetAlpha)
-    self._idleFadingOutAG._anim:SetDuration(dur * (curAlpha - targetAlpha) / (1 - targetAlpha + 0.01))
+    -- abs: the frame can sit below a newly raised Idle Opacity
+    local fadeDur = dur * math.abs(curAlpha - targetAlpha) / (1 - targetAlpha + 0.01)
+    self._idleFadingOutAG._anim:SetDuration(fadeDur)
 
     self._idleFadeState = "fading_out"
     self._idleFadingOutAG:Play()
     -- Sync ModelContainer to same idle alpha
-    local modelDur = dur * (curAlpha - targetAlpha) / (1 - targetAlpha + 0.01)
-    self:_FadeModelTo(targetAlpha, modelDur)
+    self:_FadeModelTo(targetAlpha, fadeDur)
 end
 
 --- Smoothly restore frame from idle alpha to full opacity.
@@ -463,10 +500,8 @@ function ReplayFrame:_IdleFadeRestore()
     local F = self.Config and self.Config.Fade
     local dur = F and F.idleFadeIn or 0.25
 
-    -- Cancel any in-progress idle-fade-out
-    if self._idleFadingOutAG and self._idleFadingOutAG:IsPlaying() then
-        self._idleFadingOutAG:Stop()
-    end
+    -- Cancel any in-progress idle-fade-out, keeping the alpha it reached
+    stopAtCurrentAlpha(self._idleFadingOutAG, frame)
 
     -- Create animation group on first use
     if not self._idleFadingInAG then
@@ -488,7 +523,7 @@ function ReplayFrame:_IdleFadeRestore()
     local targetAlpha = (p2 and p2.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
     self._idleFadingInAG._anim:SetFromAlpha(curAlpha)
     self._idleFadingInAG._anim:SetToAlpha(1)
-    local restoreDur = dur * (1 - curAlpha) / (1 - targetAlpha + 0.01)
+    local restoreDur = math.max(0, dur * (1 - curAlpha) / (1 - targetAlpha + 0.01))
     self._idleFadingInAG._anim:SetDuration(restoreDur)
 
     self._idleFadeState = "fading_in"
@@ -502,6 +537,8 @@ end
 function ReplayFrame:_IdleFadeTick()
     local frame = self.DisplayFrame
     if not frame or not frame:IsShown() then return end
+    -- A full fade-out owns the frame's alpha until it hides it
+    if self._frameFadingOut then return end
 
     -- Detect hover via IsMouseOver (works even with EnableMouse(false))
     local hovered = (frame.IsMouseOver and frame:IsMouseOver())

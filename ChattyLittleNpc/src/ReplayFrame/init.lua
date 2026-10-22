@@ -692,7 +692,8 @@ function ReplayFrame:UpdateVisibility()
     self:UpdateParent()
     -- Show frame (idle-fade system handles opacity when nothing is playing)
     if self.DisplayFrame then
-        if not self.DisplayFrame:IsShown() then
+        -- Also when a fade-out is still running (toggle switched off and back on)
+        if not self.DisplayFrame:IsShown() or self._frameFadingOut then
             self:_DisplayFrameFadeIn()
         elseif playbackPending or self:IsVoiceoverCurrenltyPlaying() then
             -- Playback active: ensure full opacity
@@ -748,7 +749,7 @@ function ReplayFrame:OnCombatEnd()
         local isPlaying = CLN.VoiceoverPlayer
             and CLN.VoiceoverPlayer.IsEffectivelyPlaying
             and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
-        if wasIdle and not isPlaying then
+        if wasIdle and not isPlaying and self:IsShowReplayFrameToggleIsEnabled() then
             -- Frame was already idle-faded before combat and nothing is playing —
             -- restore it directly at the idle alpha to avoid a spurious full
             -- fade-in followed immediately by another idle fade-out.

@@ -223,9 +223,9 @@ function Integration:Init()
             if ReplayFrame._editPanel and ReplayFrame._editPanel:IsShown() then ReplayFrame._editPanel:Hide() end
             if ReplayFrame.DisplayFrame then
                 ReplayFrame._forceShow = false
-                local playing = ReplayFrame.IsVoiceoverCurrenltyPlaying and ReplayFrame:IsVoiceoverCurrenltyPlaying()
-                local empty = ReplayFrame.IsQuestQueueEmpty and ReplayFrame:IsQuestQueueEmpty()
-                if not playing and empty and not ReplayFrame._manualEdit then ReplayFrame.DisplayFrame:Hide() end
+                -- Back to the normal rules: the frame stays up and idle-fades.
+                -- Hiding it here made it pop back in on the next queue/playback update.
+                if not ReplayFrame._manualEdit then ReplayFrame:UpdateDisplayFrameState() end
             end
         end)
         self._exitHooked = true
@@ -266,7 +266,7 @@ function Integration:Init()
             ReplayFrame._forceShow = true
             ReplayFrame.userHidden = false
             ReplayFrame:GetDisplayFrame()
-            if ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:Show() end
+            if ReplayFrame.DisplayFrame then ReplayFrame:_ShowImmediately() end
             self:ShowOverlay()
         end)
         self._enterHooked = true
@@ -327,7 +327,7 @@ function ReplayFrame:ShowForEdit()
     self._forceShow = true
     self.userHidden = false
     self:GetDisplayFrame()
-    if self.DisplayFrame then self.DisplayFrame:Show() end
+    if self.DisplayFrame then self:_ShowImmediately() end
     self:SetEditMode(true)
 end
 function ReplayFrame:BeginManualEdit()
@@ -335,7 +335,7 @@ function ReplayFrame:BeginManualEdit()
     self._forceShow = true
     self.userHidden = false
     self:GetDisplayFrame()
-    if self.DisplayFrame then self.DisplayFrame:Show() end
+    if self.DisplayFrame then self:_ShowImmediately() end
     self:SetEditMode(true)
 end
 function ReplayFrame:EndManualEdit()
@@ -346,9 +346,7 @@ function ReplayFrame:EndManualEdit()
         and EditModeManagerFrame.IsInEditMode and EditModeManagerFrame:IsInEditMode()
     if not blizActive then
         self._forceShow = false
-        local playing = self.IsVoiceoverCurrenltyPlaying and self:IsVoiceoverCurrenltyPlaying()
-        local empty = self.IsQuestQueueEmpty and self:IsQuestQueueEmpty()
-        if not playing and empty and self.DisplayFrame then self.DisplayFrame:Hide() end
+        if self.DisplayFrame then self:UpdateDisplayFrameState() end
     end
 end
 C_Timer.After(2, function()
@@ -357,7 +355,7 @@ C_Timer.After(2, function()
         ReplayFrame._forceShow = true
         ReplayFrame.userHidden = false
         ReplayFrame:GetDisplayFrame()
-        if ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:Show() end
+        if ReplayFrame.DisplayFrame then ReplayFrame:_ShowImmediately() end
         Integration:ShowOverlay()
         local Registry = ReplayFrame.EditMode and ReplayFrame.EditMode.Registry
         if Registry then Registry:OnEnter() end
