@@ -548,6 +548,16 @@ local options = {
                         CLN.db.profile.idleFadeOpacity = value
                     end,
                 },
+                showIdleFadeCountdown = {
+                    order = 4.3,
+                    type = 'toggle',
+                    width = 'full',
+                    name = 'Show Fade Countdown',
+                    desc = 'Show the seconds left until the frame fades, in the top-right of the voiceover frame.',
+                    disabled = function() return (CLN.db.profile.idleFadeOpacity or 0.1) >= 1 end,
+                    get = function(info) return CLN.db.profile.showIdleFadeCountdown ~= false end,
+                    set = function(info, value) CLN.db.profile.showIdleFadeCountdown = value end,
+                },
                 showQuestTypeBadges = {
                     order = 5,
                     type = 'toggle',

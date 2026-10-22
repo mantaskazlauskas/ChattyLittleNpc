@@ -45,6 +45,7 @@ local defaults = {
         portraitPosition = "above",
         idleFadeDelay = 10,     -- seconds before frame fades to idle opacity
         idleFadeOpacity = 0.1,  -- target opacity when idle (0 = invisible, 1 = fully opaque)
+        showIdleFadeCountdown = true, -- seconds-until-fade counter in the frame header
         queueTextScale = 1.0,
         frameScale = 1.0,
         npcModelFrameHeight = 140,

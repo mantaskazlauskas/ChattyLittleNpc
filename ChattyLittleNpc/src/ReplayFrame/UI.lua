@@ -538,7 +538,10 @@ function ReplayFrame:_IdleFadeTick()
     local frame = self.DisplayFrame
     if not frame or not frame:IsShown() then return end
     -- A full fade-out owns the frame's alpha until it hides it
-    if self._frameFadingOut then return end
+    if self._frameFadingOut then
+        self:_UpdateIdleCountdown(nil)
+        return
+    end
 
     -- Detect hover via IsMouseOver (works even with EnableMouse(false))
     local hovered = (frame.IsMouseOver and frame:IsMouseOver())
@@ -546,6 +549,9 @@ function ReplayFrame:_IdleFadeTick()
     if hovered and not self._idleHovered then
         -- Mouse entered
         self:_IdleFadeTouch()
+    elseif self._idleHovered and not hovered then
+        -- Mouse left: count the full delay from now, not from when it entered
+        self._idleLastActivity = GetTime()
     end
     self._idleHovered = hovered
 
@@ -561,13 +567,18 @@ function ReplayFrame:_IdleFadeTick()
         if self._idleFadeState ~= "active" then
             self:_IdleFadeTouch()
         end
+        self:_UpdateIdleCountdown(nil)
         return
     end
 
     -- If hovered, stay active
-    if hovered then return end
+    if hovered then
+        self:_UpdateIdleCountdown(nil)
+        return
+    end
 
     -- Check idle timer
+    local remaining
     if self._idleFadeState == "active" then
         local F = self.Config and self.Config.Fade
         local p = CLN and CLN.db and CLN.db.profile
@@ -575,8 +586,26 @@ function ReplayFrame:_IdleFadeTick()
         local elapsed = GetTime() - (self._idleLastActivity or 0)
         if elapsed >= delay then
             self:_IdleFadeToIdle()
+        else
+            remaining = delay - elapsed
         end
     end
+    self:_UpdateIdleCountdown(remaining)
+end
+
+--- Show the seconds left until the idle fade in the header, or hide the
+--- counter (remaining = nil). Hidden when the setting is off or the fade
+--- would change nothing (Idle Opacity at 100%).
+function ReplayFrame:_UpdateIdleCountdown(remaining)
+    local fs = self.IdleCountdownText
+    if not fs then return end
+    local p = CLN and CLN.db and CLN.db.profile
+    local enabled = p and p.showIdleFadeCountdown ~= false and (p.idleFadeOpacity or 0.1) < 1
+    local text = (enabled and remaining) and (math.ceil(remaining) .. "s") or ""
+    if fs._text == text then return end
+    fs._text = text
+    fs:SetText(text)
+    fs:SetWidth(text == "" and 1 or 28)
 end
 
 -- Create the minimized button that appears when frame is hidden
@@ -1173,7 +1202,7 @@ end
 function ReplayFrame:AnchorHeaderToButtons()
     if not (self.HeaderText and self.ContentFrame) then return end
     -- Prefer the left-most always-visible button as the right anchor (editBtn exists even when lock is hidden)
-    local rightAnchor = self.EditModeButton or self.OptionsButton or self.ClearButton or self.CollapseButton
+    local rightAnchor = self.IdleCountdownText or self.EditModeButton or self.OptionsButton or self.ClearButton or self.CollapseButton
     -- Only set the RIGHT anchor; preserve existing TOPLEFT (may be relative to SubtitleFrame)
     if rightAnchor then
         self.HeaderText:SetPoint("RIGHT", rightAnchor, "LEFT", -6, 0)
@@ -1386,6 +1415,14 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
     lockBtn._tex = lockBtn.tex
     self.LockButton = lockBtn
     if self.UpdateLockUI then self:UpdateLockUI() end
+
+    -- Seconds until the idle fade, left of the buttons. Collapsed to 1px while
+    -- hidden so the header keeps its width (see _UpdateIdleCountdown).
+    local countdown = contentFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    countdown:SetPoint("RIGHT", editBtn, "LEFT", -4, 0)
+    countdown:SetJustifyH("RIGHT")
+    countdown:SetWidth(1)
+    self.IdleCountdownText = countdown
 
     -- Re-anchor the header now that all buttons exist
     if self.AnchorHeaderToButtons then self:AnchorHeaderToButtons() end
