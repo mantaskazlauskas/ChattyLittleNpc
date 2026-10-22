@@ -176,6 +176,20 @@ function CLN:IterateVoiceoverPacks()
     end
 end
 
+--- Whether the active packs have the voiceover for a quest phase.
+---@param questId number
+---@param phase string  one of CLN.Utils.QuestPhases
+---@return boolean
+function CLN:HasQuestVoiceover(questId, phase)
+    local fileName = questId .. "_" .. phase .. ".ogg"
+    for _, packData in self:IterateVoiceoverPacks() do
+        if packData._voiceoverIndex and packData._voiceoverIndex[fileName] then
+            return true
+        end
+    end
+    return false
+end
+
 --- Register every voiceover pack that is already loaded.
 function CLN:GetLoadedExpansionVoiceoverPacks()
     for _, pack in ipairs(self:GetInstalledVoiceoverPacks()) do

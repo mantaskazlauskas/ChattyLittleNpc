@@ -187,16 +187,17 @@ function EventHandler:GOSSIP_SHOW()
     if CLN.NpcMetadataCache then
         CLN.NpcMetadataCache:CaptureFromUnit()
     end
+    -- Look up the same file type playback will use
+    local soundType = (unitType == "GameObject") and "GameObject" or "Gossip"
     local hashes = CLN.Utils:GetHashes(unitId, text)
-    local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, "Gossip", hashes, gender)
+    local filePath = CLN.Utils:GetPathToNonQuestFile(unitId, soundType, hashes, gender)
     if not filePath or CLN.Utils:IsNilOrEmpty(filePath) then
         if CLN and CLN.Logger then CLN.Logger:debug("No file path found for gossip voiceover.", false, CLN.Utils.LogCategories.loader) end
+        CLN.PlayButton:CreateDialogPlayButton("gossip", CLN.PlayButton.GossipButton, nil)
         return
     end
 
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-
-    local soundType = (unitType == "GameObject") and "GameObject" or "Gossip"
 
     CLN.PlayButton:CreateDialogPlayButton("gossip", CLN.PlayButton.GossipButton, function()
         -- Explicit click always plays; the cooldown only throttles auto-play.
@@ -224,17 +225,28 @@ function EventHandler:QUEST_GREETING()
     end
 end
 
+--- Play button for the open quest dialog, or the "?" marker when the
+--- active packs have no voiceover for this quest phase.
+local function CreateQuestPlayButton(phase)
+    local questId = GetQuestID()
+    if questId and questId ~= 0 and not CLN:HasQuestVoiceover(questId, phase) then
+        CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, nil)
+        return
+    end
+    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
+        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
+        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
+        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), phase, nid, did, gen, ct)
+    end)
+end
+
 function EventHandler:QUEST_DETAIL()
     if CLN and CLN.Logger then CLN.Logger:debug("QUEST_DETAIL", false, CLN.Utils.LogCategories.loader) end
 
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
-        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.DESC, nid, did, gen, ct)
-    end)
+    CreateQuestPlayButton(CLN.Utils.QuestPhases.DESC)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
@@ -251,11 +263,7 @@ function EventHandler:QUEST_PROGRESS()
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
-        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.PROG, nid, did, gen, ct)
-    end)
+    CreateQuestPlayButton(CLN.Utils.QuestPhases.PROG)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
@@ -272,11 +280,7 @@ function EventHandler:QUEST_COMPLETE()
     -- Capture NPC metadata for the persistent cache
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
-    CLN.PlayButton:CreateDialogPlayButton("quest", CLN.PlayButton.QuestButton, function()
-        local did = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-        local _, gen, _, _, _, nid, ct = CLN:GetUnitInfo("npc")
-        CLN.VoiceoverPlayer:PlayQuestSound(GetQuestID(), CLN.Utils.QuestPhases.COMP, nid, did, gen, ct)
-    end)
+    CreateQuestPlayButton(CLN.Utils.QuestPhases.COMP)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
@@ -318,10 +322,6 @@ function EventHandler:ITEM_TEXT_READY()
     end
 
     local displayID = (UnitCreatureDisplayID and UnitExists and UnitExists("npc")) and UnitCreatureDisplayID("npc") or nil
-    CLN.PlayButton:CreateDialogPlayButton("itemText", CLN.PlayButton.ItemTextButton, function()
-        CLN.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText, nil, displayID)
-    end)
-
     if (not itemId and itemName and itemText and unitGuid) then
         unitType = select(1, string.split('-', unitGuid))
         if (unitType == "GameObject") then
@@ -329,6 +329,16 @@ function EventHandler:ITEM_TEXT_READY()
             itemId = tonumber(itemId) or 0
         end
     end
+
+    -- "?" marker instead of the play button when the packs don't voice this page
+    local hasVoiceover = true
+    if type(itemId) == "number" and itemText then
+        local hashes = CLN.Utils:GetHashes(itemId, itemText)
+        hasVoiceover = CLN.Utils:GetPathToNonQuestFile(itemId, unitType, hashes) ~= nil
+    end
+    CLN.PlayButton:CreateDialogPlayButton("itemText", CLN.PlayButton.ItemTextButton, hasVoiceover and function()
+        CLN.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText, nil, displayID)
+    end or nil)
 
     if (CLN.db.profile.logNpcTexts) then
         CLN.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)

@@ -27,6 +27,10 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
         self:UnregisterEvent("ADDON_LOADED")
         self:UnregisterEvent("PLAYER_LOGIN")
         if CLN.FlushSavedVarsDiag then CLN:FlushSavedVarsDiag() end
+        -- Give the loading screen time to clear before the first-run welcome.
+        if CLN.WelcomeWindow then
+            C_Timer.After(3, function() CLN.WelcomeWindow:ShowIfFirstRun() end)
+        end
         return
     end
 

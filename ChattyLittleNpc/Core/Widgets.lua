@@ -658,6 +658,29 @@ function Widgets.CreateEditBox(parent, width, height)
     return eb
 end
 
+--- Read-only edit box holding text to copy (WoW cannot open links itself).
+--- Clicking it selects everything so Ctrl+C copies the whole value.
+---@return table
+function Widgets.CreateCopyBox(parent, text, width, height)
+    local eb = Widgets.CreateEditBox(parent, width, height)
+    eb:SetText(text)
+    eb:SetCursorPosition(0)
+    eb:HookScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    -- A click on an already focused box moves the cursor; select everything again.
+    eb:HookScript("OnMouseUp", function(self) self:HighlightText() end)
+    eb:HookScript("OnEditFocusLost", function(self)
+        self:HighlightText(0, 0)
+        self:SetCursorPosition(0)
+    end)
+    eb:SetScript("OnTextChanged", function(self, userInput)
+        if userInput then
+            self:SetText(text)
+            self:HighlightText()
+        end
+    end)
+    return eb
+end
+
 -- ─────────────────────────────────────────────────────────────────────────────
 -- Scroll frame
 -- ─────────────────────────────────────────────────────────────────────────────

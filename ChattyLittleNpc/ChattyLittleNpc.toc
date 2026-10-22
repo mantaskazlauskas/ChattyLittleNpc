@@ -2,7 +2,7 @@
 ## Title: Chatty Little NPC
 ## Notes: A simple addon that plays pre-recorded voice files for quests, gossip items and more.
 ## Author: Tuubby
-## Version: 3.5.1
+## Version: 3.5.2
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB, VoicedNpcContributions, NpcMetadataCache, UnknownRaceModelsDB
 ## SavedVariablesPerCharacter: ChattyLittleNpcCharDB
 ## OptionalDeps: EditModeExpanded, DialogueUI, ElvUI
@@ -24,6 +24,8 @@ src/VoiceoverPacks.lua
 src/EventHandler.lua
 src/Options.lua
 src/SettingsWindow.lua
+src/AddonInfo.lua
+src/WelcomeWindow.lua
 src/MinimapButton.lua
 
 # UI and features

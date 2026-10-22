@@ -11,7 +11,7 @@ local CLN = _G.ChattyLittleNpc
 local Widgets = CLN.Widgets
 local C, rgba = Widgets.Colors, Widgets.rgba
 
-local WIN_WIDTH  = 660
+local WIN_WIDTH  = 720
 local WIN_HEIGHT = 540
 local PADDING    = 12
 local TAB_BAR_H  = 30     -- height of the tab strip
@@ -61,6 +61,12 @@ local TABS = {
         label  = "Developer",
         groups = { "DataCollection", "DeveloperDebug" },
         tip    = "Data collection, debug logging and developer diagnostics.",
+    },
+    {
+        key    = "about",
+        label  = "About",
+        build  = function(parent) if CLN.AddonInfo then CLN.AddonInfo:BuildAboutPanel(parent) end end,
+        tip    = "Voiceover pack download links and how to help expand the voiceover database.",
     },
 }
 
@@ -340,7 +346,7 @@ function SettingsWindow:Refresh()
 end
 
 --- Switch to a specific tab and open the window.
----@param tabKey string  One of: "general", "language", "library", "display", "npcs", "profiles", "developer"
+---@param tabKey string  One of: "general", "language", "library", "display", "npcs", "profiles", "developer", "about"
 function SettingsWindow:OpenTab(tabKey)
     buildFrame()
     activateTab(tabKey)

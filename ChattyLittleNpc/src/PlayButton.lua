@@ -68,14 +68,7 @@ function PlayButton:AttachPlayButton(parentFrame, offsetX, offsetY, buttonName)
 
     local questID = PlayButton:GetSelectedQuest()
     if (questID) then
-        local questFileName = questID .. "_Desc.ogg"
-        local fileNameFound = false
-        for packName, packData in CLN:IterateVoiceoverPacks() do
-            if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
-                fileNameFound = true
-                break
-            end
-        end
+        local fileNameFound = CLN:HasQuestVoiceover(questID, CLN.Utils.QuestPhases.DESC)
 
         if (CLN.isElvuiAddonLoaded) then
             PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, function()
@@ -131,7 +124,9 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     local offsetY = CLN.db.profile.buttonPosY
 
     local button
-    if (CLN.isElvuiAddonLoaded) then
+    if not onMouseUpFunction then
+        button = PlayButton:GenerateMissingVoiceoverMarker(parentFrame, buttonName, offsetX, offsetY, UIParent)
+    elseif (CLN.isElvuiAddonLoaded) then
         button = PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
     else
         button = PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
@@ -172,6 +167,8 @@ function PlayButton:ResolveDialogAnchor(kind)
 end
 
 --- Create a dialog window play button on whichever dialog frame shows it.
+--- Pass nil for onMouseUpFunction when the dialog has no voiceover: a "?"
+--- marker asking players to share their data is shown instead.
 function PlayButton:CreateDialogPlayButton(kind, buttonName, onMouseUpFunction)
     local anchor, visible = PlayButton:ResolveDialogAnchor(kind)
     local button = PlayButton:CreatePlayVoiceoverButton(anchor, buttonName, onMouseUpFunction)
@@ -459,8 +456,9 @@ function PlayButton:UpdateButtonPositions()
         local button = _G[name]
         local anchor = button and button._clnAnchor
         if anchor then
+            local inset = button._clnInset or 0
             button:ClearAllPoints()
-            button:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", x, y)
+            button:SetPoint("TOPRIGHT", anchor, "TOPRIGHT", x - inset, y - inset)
         end
     end
 end
@@ -537,6 +535,63 @@ function PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offse
 
         CLN.db.profile.buttonPosX = -newX
         CLN.db.profile.buttonPosY = -newY
+    end)
+
+    return button
+end
+
+-- Size of the "?" marker; it is centred where the 64px speech bubble would be.
+local MARKER_SIZE = 26
+
+--- Small "?" shown in place of the play button when a dialog has no voiceover.
+--- Hovering explains how to help add it; clicking opens the About tab.
+function PlayButton:GenerateMissingVoiceoverMarker(parentFrame, buttonName, offsetX, offsetY, hostFrame)
+    local button = CreateFrame("Button", buttonName, hostFrame or parentFrame)
+    button:SetSize(MARKER_SIZE, MARKER_SIZE)
+    button:SetFrameStrata("TOOLTIP")
+
+    local circle = "Interface\\CHARACTERFRAME\\TempPortraitAlphaMask"
+    local ring = button:CreateTexture(nil, "BACKGROUND")
+    ring:SetAllPoints()
+    ring:SetTexture(circle)
+    ring:SetVertexColor(1, 0.82, 0, 0.7)
+
+    local fill = button:CreateTexture(nil, "BORDER")
+    fill:SetPoint("TOPLEFT", 2, -2)
+    fill:SetPoint("BOTTOMRIGHT", -2, 2)
+    fill:SetTexture(circle)
+    fill:SetVertexColor(0.08, 0.08, 0.10, 0.9)
+
+    local label = button:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    label:SetPoint("CENTER", 1, 0)
+    label:SetText("?")
+
+    local inset = (64 - MARKER_SIZE) / 2
+    button._clnInset = inset -- UpdateButtonPositions keeps it centred on the bubble spot
+    button:SetPoint("TOPRIGHT", parentFrame, "TOPRIGHT", offsetX - inset, offsetY - inset)
+
+    button:SetScript("OnEnter", function(self)
+        ring:SetVertexColor(1, 0.82, 0, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("No voiceover yet", 1, 1, 1)
+        if CLN.AddonInfo and CLN.AddonInfo:GetLoadedPackCount() == 0 then
+            GameTooltip:AddLine("No voiceover packs are installed. Click for download links.", 1, 0.45, 0.35, true)
+        else
+            GameTooltip:AddLine("Your installed voiceover packs don't voice this dialog.", 0.8, 0.8, 0.8, true)
+        end
+        GameTooltip:AddLine(" ")
+        if CLN.AddonInfo then CLN.AddonInfo:AddContributeTooltipLines(GameTooltip) end
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Click for the Discord link.", 0, 1, 0)
+        GameTooltip:Show()
+    end)
+    button:SetScript("OnLeave", function()
+        ring:SetVertexColor(1, 0.82, 0, 0.7)
+        GameTooltip:Hide()
+    end)
+    button:SetScript("OnClick", function()
+        GameTooltip:Hide()
+        if CLN.SettingsWindow then CLN.SettingsWindow:OpenTab("about") end
     end)
 
     return button
@@ -750,16 +805,7 @@ function PlayButton:UpdateQuestDetailPlayStopState()
         return
     end
 
-    local hasVoiceover = false
-    if CLN.VoiceoverPacks then
-        for _, packData in CLN:IterateVoiceoverPacks() do
-            local questFileName = questID .. "_Desc.ogg"
-            if packData._voiceoverIndex and packData._voiceoverIndex[questFileName] then
-                hasVoiceover = true
-                break
-            end
-        end
-    end
+    local hasVoiceover = CLN.VoiceoverPacks and CLN:HasQuestVoiceover(questID, CLN.Utils.QuestPhases.DESC)
 
     if not hasVoiceover then
         self:SetButtonShown(btn, false)
