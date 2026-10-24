@@ -198,16 +198,6 @@ function CLN:GetLoadedExpansionVoiceoverPacks()
             self.Logger:debug("Loaded voiceover pack: " .. tostring(pack.name), false, C.loader or 'misc')
         end
     end
-
-    if (self.db.profile.debugMode and self.Logger) then self:PrintLoadedVoiceoverPacks() end
-end
-
-function CLN:PrintLoadedVoiceoverPacks()
-    for packName, packData in pairs(self.VoiceoverPacks) do
-        if packData.Voiceovers then
-            if self.Logger then self.Logger:info("VO count for " .. tostring(packName) .. ": " .. tostring(#packData.Voiceovers), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
-        end
-    end
 end
 
 -- Diagnostic function to check voiceover pack status
