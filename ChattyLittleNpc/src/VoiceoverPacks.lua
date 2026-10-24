@@ -204,10 +204,6 @@ end
 
 function CLN:PrintLoadedVoiceoverPacks()
     for packName, packData in pairs(self.VoiceoverPacks) do
-        if packData.Metadata then
-            if self.Logger then self.Logger:info("Metadata for " .. tostring(packName), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
-            self.Utils:PrintTable(packData.Metadata)
-        end
         if packData.Voiceovers then
             if self.Logger then self.Logger:info("VO count for " .. tostring(packName) .. ": " .. tostring(#packData.Voiceovers), false, (self.Utils and self.Utils.LogCategories.loader) or 'misc') end
         end
