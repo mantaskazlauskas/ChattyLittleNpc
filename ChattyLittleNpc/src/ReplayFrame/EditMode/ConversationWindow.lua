@@ -52,8 +52,18 @@ function ConversationWindow:ReadState()
 
     if f then
         state.size = Window.SerializeSize(f)
+        -- Collapsed: keep the saved full height (SaveFramePosition never stores the collapsed one)
+        local collapsed = (ReplayFrame.CollapseButton and ReplayFrame.CollapseButton._collapsed)
+            or ReplayFrame._combatAutoCollapsed or ReplayFrame._animatingCollapse
+        local saved = CLN.db.profile.frameSize
+        if state.size and collapsed and saved and saved.height then
+            state.size.height = saved.height
+        end
         -- Docked: the anchor is tracker-relative, not a screen position to persist
-        if not (ReplayFrame.IsDockedToObjectives and ReplayFrame:IsDockedToObjectives()) then
+        if ReplayFrame.IsDockedToObjectives and ReplayFrame:IsDockedToObjectives() then
+            state.anchor = "objectives"
+        else
+            state.anchor = "free"
             state.pos = Window.SerializePosition(f)
         end
     end
@@ -98,7 +108,11 @@ function ConversationWindow:ApplyState(state)
         end
     end
 
-    if state.pos then
+    if state.anchor == "objectives" then
+        -- Re-dock directly: DockToObjectives would persist mid-apply
+        CLN.db.profile.frameAnchor = "objectives"
+        if ReplayFrame.LoadFramePosition then ReplayFrame:LoadFramePosition() end
+    elseif state.pos then
         -- An explicit saved/imported position replaces docking
         CLN.db.profile.frameAnchor = "free"
         Window.ApplyPosition(f, state.pos)

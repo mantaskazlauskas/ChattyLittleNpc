@@ -28,6 +28,13 @@ local function logWarn(msg)
     if CLN and CLN.Logger then CLN.Logger:warn(msg, false, CLN.Utils.LogCategories.ui) end
 end
 
+-- Whether a state field is opted out of per-layout storage.
+-- The dock state ("anchor") is part of the position, so it follows "pos".
+local function isExcluded(wExclude, key)
+    if key == "anchor" then key = "pos" end
+    return wExclude[key]
+end
+
 -- ============================================================================
 -- Schema Management
 -- ============================================================================
@@ -269,9 +276,13 @@ function Persistence:PersistAll()
             local wBucket = bucket[id] or {}
 
             for key, value in pairs(state) do
-                if not wExclude[key] then
+                if not isExcluded(wExclude, key) then
                     wBucket[key] = value
                 end
+            end
+            -- Docked: drop the last free position so it can't be re-applied
+            if state.anchor == "objectives" and not wExclude.pos then
+                wBucket.pos = nil
             end
 
             bucket[id] = wBucket
@@ -303,6 +314,7 @@ function Persistence:ApplyLayout(name)
 
     local exclude = self:EnsureExcludeConfig()
     local Registry = EditMode.Registry
+    local legacy = false
 
     if Registry then
         Registry:ForEach(function(id, controller)
@@ -312,13 +324,27 @@ function Persistence:ApplyLayout(name)
                 -- Build filtered state (exclude opted-out fields)
                 local filtered = {}
                 for key, value in pairs(wData) do
-                    if not wExclude[key] then
+                    if not isExcluded(wExclude, key) then
                         filtered[key] = value
                     end
+                end
+                -- Buckets saved before "anchor" existed can hold a stale position
+                -- and size (moves/resizes outside Blizzard Edit Mode weren't
+                -- persisted), which reset the window on every login: keep the
+                -- current placement and re-save the bucket below.
+                if id == "conversation" and wData.anchor == nil then
+                    filtered.pos = nil
+                    filtered.size = nil
+                    legacy = true
                 end
                 controller:ApplyState(filtered)
             end
         end)
+    end
+
+    -- Stamp a legacy bucket with the live state once (outside the apply loop)
+    if legacy and name == self:GetActiveLayoutName() then
+        self:PersistAll()
     end
 
     logInfo("Applied settings for layout '" .. name .. "'")

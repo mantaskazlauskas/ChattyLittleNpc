@@ -42,6 +42,7 @@ end
 function ReplayFrame:DockToObjectives()
     CLN.db.profile.frameAnchor = "objectives"
     if self.DisplayFrame then self:LoadFramePosition() end
+    if self.PersistToActiveLayout then self:PersistToActiveLayout() end
 end
 
 -- ============================================================================
@@ -85,6 +86,9 @@ function ReplayFrame:SaveFramePosition()
         end
         CLN.db.profile.frameSize = { width = math.floor(w + 0.5), height = math.floor(h + 0.5) }
     end
+    -- Keep the active Edit Mode layout in step: it is re-applied on every
+    -- login (Retail), so a move saved only here would be undone there.
+    if self.PersistToActiveLayout then self:PersistToActiveLayout() end
 end
 
 -- Load saved frame position and size from the database
@@ -131,6 +135,7 @@ function ReplayFrame:ResetFramePosition()
     if ReplayFrame.DisplayFrame and ReplayFrame.LayoutModelArea then
         ReplayFrame:LayoutModelArea(ReplayFrame.DisplayFrame)
     end
+    if ReplayFrame.PersistToActiveLayout then ReplayFrame:PersistToActiveLayout() end
 end
 
 -- The model portrait is always docked to the conversation window, so it has
