@@ -2794,6 +2794,50 @@ class TestPlayButtonAnchoring(unittest.TestCase):
         self.assertEqual(result, (True, False))
 
 
+class TestQuestInfoPanel(unittest.TestCase):
+    """What the quest info panel shows for the open quest dialog."""
+
+    def setUp(self):
+        self.lua = make_lua()
+        self.lua.execute("""
+            local CLN = ChattyLittleNpc
+            CLN.Widgets = { Colors = {}, rgba = function() end }
+            CLN.Utils.QuestPhases = { DESC = "Desc", PROG = "Prog", COMP = "Comp" }
+            _questId, _unitType, _unitId, _voiced = 123, "Creature", 456, {}
+            function GetQuestID() return _questId end
+            function CLN:GetUnitInfo() return "Name", "Male", "Human", "guid", _unitType, _unitId, "Humanoid" end
+            function CLN:HasQuestVoiceover(questId, phase) return _voiced[phase] end
+        """)
+        load_file(self.lua, "src/QuestInfoPanel.lua")
+
+    def collect(self, phase):
+        return lua_call(self.lua, f"""
+            local i = ChattyLittleNpc.QuestInfoPanel:Collect("{phase}")
+            if not i then return nil end
+            return i.questId, i.stage, i.npcLabel, i.npcId, i.hasVoiceover
+        """)
+
+    def test_creature_quest_page(self):
+        self.lua.execute('_voiced = { Prog = true }')
+        self.assertEqual(self.collect("Prog"), (123, "Progress", "NPC ID", 456, True))
+        self.assertEqual(self.collect("Desc"), (123, "Description", "NPC ID", 456, False))
+
+    def test_game_object_is_labelled(self):
+        self.lua.execute('_unitType, _unitId = "GameObject", 789')
+        self.assertEqual(self.collect("Comp"), (123, "Completion", "Object ID", 789, False))
+
+    def test_quest_without_npc(self):
+        """Quests from items or auto-accept popups have no npc unit."""
+        self.lua.execute('_unitType, _unitId = nil, nil')
+        result = self.collect("Desc")
+        self.assertEqual(result[:3], (123, "Description", "NPC ID"))
+        self.assertIsNone(result[3])
+
+    def test_no_quest(self):
+        self.lua.execute('_questId = 0')
+        self.assertIsNone(self.collect("Desc"))
+
+
 class TestVoiceoverPackLanguages(unittest.TestCase):
     """Pack name parsing, language resolution and lookup order in VoiceoverPacks.lua."""
 

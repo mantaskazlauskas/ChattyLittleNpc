@@ -171,6 +171,7 @@ function EventHandler:GOSSIP_SHOW()
     -- Drop the previous page's button before any early return below. DialogueUI
     -- keeps one frame open from quest back to gossip, so nothing hides it for us.
     CLN.PlayButton:ClearButtons()
+    CLN.QuestInfoPanel:Hide()
 
     local _, gender, _, _, unitType, unitId, creatureType = CLN:GetUnitInfo("npc")
     local text = C_GossipInfo.GetText()
@@ -219,6 +220,7 @@ function EventHandler:QUEST_GREETING()
 
     -- No voiceover for the greeting page itself; don't leave the last page's button up
     CLN.PlayButton:ClearButtons()
+    CLN.QuestInfoPanel:Hide()
 
     if (CLN.db.profile.logNpcTexts) then
         CLN.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
@@ -247,6 +249,7 @@ function EventHandler:QUEST_DETAIL()
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
     CreateQuestPlayButton(CLN.Utils.QuestPhases.DESC)
+    CLN.QuestInfoPanel:ShowForQuest(CLN.Utils.QuestPhases.DESC)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
@@ -264,6 +267,7 @@ function EventHandler:QUEST_PROGRESS()
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
     CreateQuestPlayButton(CLN.Utils.QuestPhases.PROG)
+    CLN.QuestInfoPanel:ShowForQuest(CLN.Utils.QuestPhases.PROG)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
@@ -281,6 +285,7 @@ function EventHandler:QUEST_COMPLETE()
     if CLN.NpcMetadataCache then CLN.NpcMetadataCache:CaptureFromUnit() end
 
     CreateQuestPlayButton(CLN.Utils.QuestPhases.COMP)
+    CLN.QuestInfoPanel:ShowForQuest(CLN.Utils.QuestPhases.COMP)
 
     if (CLN.db.profile.autoPlayVoiceovers) then
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
@@ -439,6 +444,7 @@ function EventHandler:QUEST_FINISHED()
     -- The quest page is gone (the next page, if any, makes its own button).
     -- DialogueUI may keep its frame open for gossip, so this can't wait for a hide.
     CLN.PlayButton:ClearButton(CLN.PlayButton.QuestButton)
+    CLN.QuestInfoPanel:Hide()
     local mode = CLN.db.profile.questPlaybackMode or "queue"
     if (mode == "stopOnClose" and CLN.VoiceoverPlayer.currentlyPlaying) then
         if CLN and CLN.Logger then CLN.Logger:debug("Stopping currently playing voiceover on quest finished.", false, CLN.Utils.LogCategories.loader) end

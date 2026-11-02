@@ -382,6 +382,18 @@ local options = {
                     get = function(info) return CLN.db.profile.showSpeakButton end,
                     set = function(info, value) CLN.db.profile.showSpeakButton = value end,
                 },
+                showQuestInfoPanel = {
+                    order = 6.5,
+                    type = 'toggle',
+                    width = 'full',
+                    name = 'Show Quest Info Panel',
+                    desc = 'Show a small collapsible panel beside quest dialogs with the quest ID, dialog stage, NPC ID and whether a voiceover exists. Handy when reporting missing voiceovers.',
+                    get = function(info) return CLN.db.profile.showQuestInfoPanel end,
+                    set = function(info, value)
+                        CLN.db.profile.showQuestInfoPanel = value
+                        if not value and CLN.QuestInfoPanel then CLN.QuestInfoPanel:Hide() end
+                    end,
+                },
                 gossipCooldownEnabled = {
                     order = 7,
                     type = 'toggle',
