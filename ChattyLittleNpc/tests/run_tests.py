@@ -3303,6 +3303,100 @@ class TestPlayLibraryFile(unittest.TestCase):
         self.assertEqual(result, (1, "68_Gossip_ab_Male.ogg"))
 
 
+def make_player_lua(name, cls, race):
+    """Lua runtime with Utils + MD5 loaded and the given player identity."""
+    lua = make_lua()
+    lua.execute(f'''
+        function UnitName() return "{name}" end
+        function UnitClass() return "{cls}" end
+        function UnitRace() return "{race}" end
+    ''')
+    load_file(lua, "Utils/Utils.lua")
+    load_file(lua, "Utils/Md5.lua")
+    # Lua 5.4 integers let the MD5 state words grow past 32 bits; the WoW
+    # client keeps only the low 32 bits. Mask them so hashes match real data.
+    lua.execute('''
+        local MD5 = _G.ChattyLittleNpc.MD5
+        local process = MD5.ProcessChunk
+        function MD5:ProcessChunk(...)
+            local a, b, c, d = process(self, ...)
+            return a & 0xFFFFFFFF, b & 0xFFFFFFFF, c & 0xFFFFFFFF, d & 0xFFFFFFFF
+        end
+    ''')
+    return lua
+
+
+def lua_str(s):
+    """Quote a Python string as a Lua long-bracket-free literal."""
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
+
+
+class TestPlayerTokenCleaning(unittest.TestCase):
+    """Whole-word name/class/race replacement used for hashes and tags."""
+
+    def _clean(self, lua, fn, text):
+        return lua_call(lua, f"return _G.ChattyLittleNpc.Utils:{fn}({lua_str(text)})")
+
+    def test_name_inside_class_word(self):
+        lua = make_player_lua("Pala", "Paladin", "Undead")
+        text = "Greetings, paladin. Hello Pala!"
+        self.assertEqual(self._clean(lua, "CleanText", text), "Greetings, Herodin. Hello Hero!")
+        self.assertEqual(self._clean(lua, "CleanTextForHash", text), "Greetings, Hero. Hello Hero!")
+        self.assertEqual(self._clean(lua, "CleanTextV2", text),
+                         "Greetings, {class|paladin}. Hello {name|Pala}!")
+
+    def test_class_inside_other_word_is_left_alone(self):
+        lua = make_player_lua("Thrall", "Mage", "Orc")
+        text = "Your mage spells do damage to orcs and Orcish image."
+        self.assertEqual(self._clean(lua, "CleanTextForHash", text),
+                         "Your Hero spells do damage to Heros and Orcish image.")
+
+    def test_plurals_and_possessive(self):
+        lua = make_player_lua("Pala", "Paladin", "Undead")
+        self.assertEqual(self._clean(lua, "CleanTextForHash", "paladins, PALADINS! paladin's"),
+                         "Heros, HeroS! Hero's")
+
+    def test_no_nested_tags(self):
+        lua = make_player_lua("Demon", "Demon Hunter", "Night Elf")
+        self.assertEqual(self._clean(lua, "CleanTextV2", "Demon Hunter Demon"),
+                         "{class|Demon Hunter} {name|Demon}")
+
+    def test_same_as_legacy_without_overlap(self):
+        lua = make_player_lua("Arthas", "Warrior", "Human")
+        text = "Arthas, a human warrior.\n\nHumans and WARRIORS, Arthas's."
+        self.assertEqual(self._clean(lua, "CleanTextForHash", text),
+                         self._clean(lua, "CleanText", text))
+
+    def test_get_hashes_legacy_first_then_whole_word(self):
+        lua = make_player_lua("Pala", "Paladin", "Undead")
+        hashes = lua_call(lua, '''
+            local h = _G.ChattyLittleNpc.Utils:GetHashes(2425, "equal, paladin.")
+            return h[1], h[3], #h,
+                _G.ChattyLittleNpc.MD5:GenerateHash("2425equal, Herodin."),
+                _G.ChattyLittleNpc.MD5:GenerateHash("2425equal, Hero.")
+        ''')
+        first, third, count, legacy, whole = hashes
+        self.assertEqual(count, 3)
+        self.assertEqual(first, legacy)
+        self.assertEqual(third, whole)
+
+    def test_varimathras_matches_existing_pack_hash(self):
+        """Paladin named Pala must resolve the hash the Vanilla pack ships."""
+        text = ("Do not presume to speak to me as though you are my equal, paladin. "
+                "Sylvanas is my queen, and I will do as she bids.\n\n"
+                "If you do not show the proper respect, I assure you, we can find a more "
+                "than suitable place for you in the Nether.\n\n"
+                "But there is no reason we cannot have words if you wish to aid the Dark Lady...")
+        lua = make_player_lua("Pala", "Paladin", "Undead")
+        found = lua_call(lua, f'''
+            for _, h in ipairs(_G.ChattyLittleNpc.Utils:GetHashes(2425, {lua_str(text)})) do
+                if h == "eea9e068b5669f36f971fadcd4aa25ba" then return true end
+            end
+            return false
+        ''')
+        self.assertTrue(found)
+
+
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)
     unittest.main(verbosity=2)

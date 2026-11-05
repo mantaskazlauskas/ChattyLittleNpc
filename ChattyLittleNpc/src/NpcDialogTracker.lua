@@ -130,7 +130,7 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
         NpcInfoDB[npcID][CLN.locale].gossipOptions = {}
     end
 
-    local textForHashing = CLN.Utils:CleanText(gossipText)
+    local textForHashing = CLN.Utils:CleanTextForHash(gossipText)
     local gossip_id = CLN.MD5:GenerateHash(npcID .. textForHashing)
     if (gender) then
         gossip_id = gossip_id .. "_" .. gender
@@ -188,7 +188,7 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
     UnitInfoDB[unitID][CLN.locale].unitType = unitType
     local textHash = nil
     if (unitID and unitText) then
-        local textForHashing = CLN.Utils:CleanText(unitText)
+        local textForHashing = CLN.Utils:CleanTextForHash(unitText)
         textHash = CLN.MD5:GenerateHash(unitID .. textForHashing)
 
         unitText = CLN.Utils:CleanTextV2(unitText)
@@ -203,7 +203,7 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
                 quest_complete = ""
             }
         end
-        questText = CLN.Utils:CleanText(questText)
+        questText = CLN.Utils:CleanTextForHash(questText)
 
         if (eventType == "QUEST_DETAIL") then
             UnitInfoDB[unitID][CLN.locale].quests[questId].quest_detail = questText

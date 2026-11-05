@@ -17,6 +17,68 @@ local _cleanHtmlPatterns = {  -- shared HTML cleanup patterns
     {'<p align="center">', ""},
 }
 
+-- Whole-word patterns (see buildWordPatterns). Each entry is
+-- { pattern, heroReplacement, tagReplacement } (plain strings, not gsub
+-- replacement syntax), ordered longest token first.
+local _wordPatterns = {}
+
+-- Letters for word-boundary checks. Bytes 128-255 count as letters so UTF-8
+-- names (e.g. "Ásh") are treated as whole words.
+local WORD_CHARS = "%w\128-\255"
+
+local function escapePattern(s)
+    return (s:gsub("[%^%$%(%)%%%.%[%]%*%+%-%?]", "%%%0"))
+end
+
+-- Builds whole-word patterns for the player's name, class and race.
+-- Unlike the legacy substring patterns, a token only matches as a whole word
+-- (optionally followed by a plural "s"), and longer tokens are replaced first,
+-- so a name like "Pala" no longer eats into "paladin" and a mage no longer
+-- turns "damage" into "daHero".
+local function buildWordPatterns(name, class, race)
+    local tokens, seen = {}, {}
+    local function add(token, kind)
+        if not token or token == "" or seen[token] then return end
+        seen[token] = true
+        tokens[#tokens + 1] = { token = token, kind = kind }
+    end
+    for _, src in ipairs({ { name, "name" }, { class, "class" }, { race, "race" } }) do
+        local value, kind = src[1], src[2]
+        if value and value ~= "" then
+            add(value, kind); add(value:lower(), kind); add(value:upper(), kind)
+        end
+    end
+    -- Longest first; ties keep name > class > race order for determinism
+    for i, t in ipairs(tokens) do t.order = i end
+    table.sort(tokens, function(a, b)
+        if #a.token ~= #b.token then return #a.token > #b.token end
+        return a.order < b.order
+    end)
+
+    _wordPatterns = {}
+    for _, t in ipairs(tokens) do
+        local pattern = "%f[" .. WORD_CHARS .. "]" .. escapePattern(t.token) .. "([sS]?)%f[^" .. WORD_CHARS .. "]"
+        _wordPatterns[#_wordPatterns + 1] = { pattern, "Hero", "{" .. t.kind .. "|" .. t.token .. "}" }
+    end
+end
+
+-- Applies _wordPatterns in one logical pass. Matches become "\1<n>\2"
+-- placeholders first, so a shorter token can't match inside an earlier
+-- replacement (name "Demon" inside "{class|Demon Hunter}"); then they are
+-- expanded. replacementIndex: 2 = "Hero", 3 = tag.
+local function applyWordPatterns(text, replacementIndex)
+    local slots = {}
+    for _, p in ipairs(_wordPatterns) do
+        local replacement = p[replacementIndex]
+        text = text:gsub(p[1], function(suffix)
+            slots[#slots + 1] = replacement .. suffix
+            return "\1" .. #slots .. "\2"
+        end)
+    end
+    if #slots == 0 then return text end
+    return (text:gsub("\1(%d+)\2", function(n) return slots[tonumber(n)] end))
+end
+
 local function buildCleanPatterns()
     if _cleanPatternsBuilt then return end
     local name = UnitName("player")
@@ -24,6 +86,8 @@ local function buildCleanPatterns()
     local class = select(1, UnitClass("player"))
     local race = select(1, UnitRace("player"))
 
+    -- Legacy substring patterns: kept only so lookups still find voiceover
+    -- files whose hashes were generated with them.
     _cleanPatterns = {
         {name, "Hero"}, {name:lower(), "Hero"}, {name:upper(), "Hero"},
         {class, "Hero"}, {class:lower(), "Hero"}, {class:upper(), "Hero"},
@@ -34,6 +98,7 @@ local function buildCleanPatterns()
         {class, "{class|" .. class .. "}"}, {class:lower(), "{class|" .. class:lower() .. "}"}, {class:upper(), "{class|" .. class:upper() .. "}"},
         {race, "{race|" .. race .. "}"}, {race:lower(), "{race|" .. race:lower() .. "}"}, {race:upper(), "{race|" .. race:upper() .. "}"},
     }
+    buildWordPatterns(name, class, race)
     _cleanPatternsBuilt = true
 end
 
@@ -199,8 +264,11 @@ local function normalizeCategory(cat)
     return Utils.LogCategories.misc
 end
 
---- Cleans the provided text by removing unwanted characters or formatting.
---- Replacing player name, race and class with "Hero" so that it would be consistent across all players (for hash generation).
+--- Legacy hash cleaner: replaces the player's name, race and class with "Hero"
+--- as raw substrings, name first. Breaks when one token is inside another word
+--- (name "Pala" + "paladin" -> "Herodin", mage + "damage" -> "daHero").
+--- Kept only so lookups still match voiceover files hashed this way; use
+--- CleanTextForHash for new hashes.
 -- @param text The string to be cleaned.
 function Utils:CleanText(text)
     if not text or text == "" then return text or "" end
@@ -215,14 +283,41 @@ function Utils:CleanText(text)
     return text
 end
 
---- Cleans the provided text by removing unwanted characters or formatting.
+--- Hash cleaner: replaces the player's name, race and class with "Hero",
+--- matching whole words only (plural "s" kept) and longest token first.
+--- Gives the same result as CleanText unless a token overlaps another word.
 -- @param text The string to be cleaned.
-function Utils:CleanTextV2(text)
+function Utils:CleanTextForHash(text)
+    if not text or text == "" then return text or "" end
+    buildCleanPatterns()
+    text = applyWordPatterns(text, 2)
+    text = text:gsub("\n\n", " ")
+    for _, p in ipairs(_cleanHtmlPatterns) do
+        text = text:gsub(p[1], p[2])
+    end
+    return text
+end
+
+-- Legacy tagger behind the second hash in GetHashes; same substring flaw as CleanText.
+local function legacyCleanTextV2(text)
     if not text or text == "" then return text or "" end
     buildCleanPatterns()
     for _, p in ipairs(_cleanV2Patterns) do
         text = text:gsub(p[1], p[2])
     end
+    for _, p in ipairs(_cleanHtmlPatterns) do
+        text = text:gsub(p[1], p[2])
+    end
+    return text
+end
+
+--- Tags the player's name, class and race in stored text, e.g. "{class|paladin}",
+--- matching whole words only and longest token first.
+-- @param text The string to be cleaned.
+function Utils:CleanTextV2(text)
+    if not text or text == "" then return text or "" end
+    buildCleanPatterns()
+    text = applyWordPatterns(text, 3)
     for _, p in ipairs(_cleanHtmlPatterns) do
         text = text:gsub(p[1], p[2])
     end
@@ -280,13 +375,21 @@ function Utils:GetHashes(npcId, text)
     local cached = _hashCache[cacheKey]
     if cached then return cached end
 
-    local depersonalisedText = CLN.Utils:CleanText(text)
-    local hash = CLN.MD5:GenerateHash(npcId .. depersonalisedText)
-
-    local depersonalisedText2 = CLN.Utils:CleanTextV2(text)
-    local hash2 = CLN.MD5:GenerateHash(npcId .. depersonalisedText2)
-
-    local hashes = {hash, hash2}
+    -- Legacy hashes first: existing packs were generated with them
+    local hashes = {}
+    local seen = {}
+    local function addHash(cleaned)
+        local h = CLN.MD5:GenerateHash(npcId .. cleaned)
+        if not seen[h] then
+            seen[h] = true
+            hashes[#hashes + 1] = h
+        end
+    end
+    addHash(CLN.Utils:CleanText(text))
+    addHash(legacyCleanTextV2(text))
+    -- Whole-word variant: matches what other players' legacy hashes produced
+    -- when this player's name/class/race overlaps another word.
+    addHash(CLN.Utils:CleanTextForHash(text))
 
     -- Store in cache with simple eviction
     if _hashCacheSize >= HASH_CACHE_MAX then
