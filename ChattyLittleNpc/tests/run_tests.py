@@ -181,12 +181,12 @@ class TestEstimateVODuration(unittest.TestCase):
         """)
 
     def test_nil_text_returns_default(self):
-        """nil text should return 3.6 (original 3 * 1.2)."""
-        self.assertAlmostEqual(self._estimate(None), 3.6, places=2)
+        """nil text should return the 3.0s default."""
+        self.assertAlmostEqual(self._estimate(None), 3.0, places=2)
 
     def test_empty_text_returns_default(self):
-        """Empty text should return 3.6."""
-        self.assertAlmostEqual(self._estimate(""), 3.6, places=2)
+        """Empty text should return the 3.0s default."""
+        self.assertAlmostEqual(self._estimate(""), 3.0, places=2)
 
     def test_nil_text_respects_max_clamp(self):
         """nil text with maxDuration should be capped."""
@@ -198,10 +198,10 @@ class TestEstimateVODuration(unittest.TestCase):
         result = self._estimate("Hi")
         self.assertGreaterEqual(result, 2.0)
 
-    def test_increased_by_one_fifth(self):
-        """Result should be 1.2x the old formula (#text / 11.2 + 1.5)."""
-        text = "A" * 112  # old: 112/11.2 + 1.5 = 11.5, new: 11.5 * 1.2 = 13.8
-        self.assertAlmostEqual(self._estimate(text), 13.8, places=1)
+    def test_formula_75_wpm(self):
+        """Result should follow (#text / 12.9 + 1.0) * 1.1 (~75 WPM)."""
+        text = "A" * 112  # (112 / 12.9 + 1.0) * 1.1 = 10.650...
+        self.assertAlmostEqual(self._estimate(text), (112 / 12.9 + 1.0) * 1.1, places=5)
 
     def test_custom_min_clamp(self):
         """Custom minDuration should override default floor."""
@@ -246,10 +246,11 @@ class TestBodyRegions(unittest.TestCase):
             upper_target, upper_lo, upper_hi, upper_w,
         ) = values
 
-        self.assertAlmostEqual(bust_target, 0.92, places=5)
-        self.assertAlmostEqual(bust_lo, 0.78, places=5)
+        # bust: chest-centred medium shot, upper thigh to head top
+        self.assertAlmostEqual(bust_target, 0.68, places=5)
+        self.assertAlmostEqual(bust_lo, 0.33, places=5)
         self.assertAlmostEqual(bust_hi, 1.00, places=5)
-        self.assertAlmostEqual(bust_w, 0.35, places=5)
+        self.assertAlmostEqual(bust_w, 0.70, places=5)
 
         self.assertAlmostEqual(head_target, 0.92, places=5)
         self.assertAlmostEqual(head_lo, 0.84, places=5)
@@ -280,17 +281,17 @@ class TestBodyRegions(unittest.TestCase):
         ) = result
 
         self.assertEqual(klass, "tall_humanoid")
-        self.assertAlmostEqual(target_z, 28.4, places=5)
-        self.assertAlmostEqual(visible_lo, 25.6, places=5)
+        self.assertAlmostEqual(target_z, 23.6, places=5)   # 10 + 0.68 * 20
+        self.assertAlmostEqual(visible_lo, 16.6, places=5)  # 10 + 0.33 * 20
         self.assertAlmostEqual(visible_hi, 30.0, places=5)
-        self.assertAlmostEqual(visible_h, 4.4, places=5)
-        self.assertAlmostEqual(fit_width, 2.8, places=5)
+        self.assertAlmostEqual(visible_h, 13.4, places=5)
+        self.assertAlmostEqual(fit_width, 5.6, places=5)    # 8 * 0.70
         self.assertAlmostEqual(visible_h, visible_hi - visible_lo, places=5)
         self.assertAlmostEqual(fit_width, 8.0 * shoulder_w, places=5)
         self.assertAlmostEqual(focus_z, target_z, places=5)
         self.assertAlmostEqual(bottom_z, visible_lo, places=5)
         self.assertAlmostEqual(top_z, visible_hi, places=5)
-        self.assertAlmostEqual(desired_focus_y, 0.42, places=5)
+        self.assertAlmostEqual(desired_focus_y, 0.48, places=5)
         self.assertAlmostEqual(focus_to_top, visible_hi - target_z, places=5)
         self.assertAlmostEqual(focus_to_bottom, target_z - visible_lo, places=5)
 
@@ -308,13 +309,13 @@ class TestBodyRegions(unittest.TestCase):
         klass, target_z, visible_lo, visible_hi, fit_width, region_target, region_lo, region_w = result
 
         self.assertEqual(klass, "stocky_humanoid")
-        self.assertAlmostEqual(region_target, 0.90, places=5)
-        self.assertAlmostEqual(region_lo, 0.74, places=5)
-        self.assertAlmostEqual(region_w, 0.40, places=5)
-        self.assertAlmostEqual(target_z, 28.0, places=5)
-        self.assertAlmostEqual(visible_lo, 24.8, places=5)
+        self.assertAlmostEqual(region_target, 0.63, places=5)  # stocky chest
+        self.assertAlmostEqual(region_lo, 0.33, places=5)      # upper thigh
+        self.assertAlmostEqual(region_w, 0.75, places=5)
+        self.assertAlmostEqual(target_z, 22.6, places=5)       # 10 + 0.63 * 20
+        self.assertAlmostEqual(visible_lo, 16.6, places=5)
         self.assertAlmostEqual(visible_hi, 30.0, places=5)
-        self.assertAlmostEqual(fit_width, 3.2, places=5)
+        self.assertAlmostEqual(fit_width, 6.0, places=5)       # 8 * 0.75
 
     def test_region_exposes_composition_fields(self):
         result = lua_call(self.lua, '''
@@ -331,14 +332,14 @@ class TestBodyRegions(unittest.TestCase):
             focus_screen_y, width_fit_pct
         ) = result
 
-        self.assertEqual(focus_anchor, "eyeLine")
-        self.assertEqual(bottom_anchor, "shoulders")
+        self.assertEqual(focus_anchor, "chest")
+        self.assertEqual(bottom_anchor, "upperThigh")
         self.assertEqual(top_anchor, "headTop")
-        self.assertAlmostEqual(focus_pct, 0.92, places=5)
-        self.assertAlmostEqual(bottom_pct, 0.78, places=5)
+        self.assertAlmostEqual(focus_pct, 0.68, places=5)
+        self.assertAlmostEqual(bottom_pct, 0.33, places=5)
         self.assertAlmostEqual(top_pct, 1.00, places=5)
-        self.assertAlmostEqual(focus_screen_y, 0.42, places=5)
-        self.assertAlmostEqual(width_fit_pct, 0.35, places=5)
+        self.assertAlmostEqual(focus_screen_y, 0.48, places=5)
+        self.assertAlmostEqual(width_fit_pct, 0.70, places=5)
 
     def test_solve_distance_uses_asymmetric_focus_composition(self):
         result = lua_call(self.lua, '''
@@ -730,7 +731,8 @@ class TestProjectionVerifier(unittest.TestCase):
             local host = {
                 _ApplyCameraLookAt = function() end
             }
-            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, 100, { topMarginPct = 0.08 })
+            -- Head top projects to y=20 of 100, exactly the 20% margin, so only focus acts
+            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, 100, { topMarginPct = 0.20 })
             return changed, corrected.targetZ, corrected.targetToTop, corrected.targetToBottom
         ''')
         changed, corrected_target_z, corrected_target_to_top, corrected_target_to_bottom = result
@@ -738,6 +740,36 @@ class TestProjectionVerifier(unittest.TestCase):
         self.assertGreater(corrected_target_z, 2.0)
         self.assertLess(corrected_target_to_top, 2.0)
         self.assertGreater(corrected_target_to_bottom, 1.0)
+
+    def test_adjust_headroom_head_too_low_anchors_to_top_over_focus(self):
+        """Head far below the top margin pulls content up even when focus wants it down."""
+        result = lua_call(self.lua, '''
+            local PV = _G.ChattyLittleNpc.ReplayFrame.ModelScene.ProjectionVerifier
+            local world = {
+                targetX = 0,
+                targetY = 0,
+                targetZ = 2,
+                focusZ = 3.5,
+                visibleLo = 1,
+                visibleHi = 4,
+                fitWidth = 4,
+                desiredFocusY = 0.60,
+            }
+            local scene = {
+                Project3DPointTo2D = function(_, _, _, z)
+                    return 0, 100 - z * 20
+                end
+            }
+            local host = {
+                _ApplyCameraLookAt = function() end
+            }
+            local corrected, changed = PV.AdjustHeadroom(scene, host, world, 2.5, 100, 100, { topMarginPct = 0.08 })
+            return changed, corrected.targetZ
+        ''')
+        changed, corrected_target_z = result
+        self.assertTrue(changed)
+        # top error -12px / 40px per span * span 2 = -0.6, within the 0.6 * bottom-span cap
+        self.assertAlmostEqual(corrected_target_z, 1.4, places=5)
 
     def test_refine_distance_does_not_zoom_in_when_roomy(self):
         result = lua_call(self.lua, '''
@@ -2103,6 +2135,8 @@ class TestModelAnimationBreathing(unittest.TestCase):
                 self._lastCamSnapshot.tz = z
             end
             local frame = {
+                _CameraAnimsDisabled = function() return false end,
+                Config = { Throttle = { breathingInterval = 0 } },  -- run every tick
                 NpcModelFrame = m,
                 _anims = {},
                 _currentZOffset = -0.08,
@@ -2126,6 +2160,8 @@ class TestModelAnimationBreathing(unittest.TestCase):
                 self._lastCamSnapshot.tz = z
             end
             local frame = {
+                _CameraAnimsDisabled = function() return false end,
+                Config = { Throttle = { breathingInterval = 0 } },  -- run every tick
                 NpcModelFrame = m,
                 _anims = {},
                 _currentZOffset = -0.08,
@@ -2150,7 +2186,12 @@ class TestModelAnimationBreathing(unittest.TestCase):
                 self.lastZ = z
                 self._lastCamSnapshot.tz = z
             end
-            local frame = { NpcModelFrame = m, _anims = {} }
+            local frame = {
+                _CameraAnimsDisabled = function() return false end,
+                Config = { Throttle = { breathingInterval = 0 } },  -- run every tick
+                NpcModelFrame = m,
+                _anims = {},
+            }
             RF.BreathingCameraUpdate(frame, 0.016)
             m.zoom = 1.1
             RF.BreathingCameraUpdate(frame, 0.016)
