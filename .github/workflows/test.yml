@@ -24,3 +24,18 @@ jobs:
 
       - name: Run unit tests
         run: python ChattyLittleNpc/tests/run_tests.py
+
+  luacheck:
+    runs-on: ubuntu-latest
+    # Report-only until the warnings from the first run are fixed;
+    # then remove this line so new warnings fail the build.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run luacheck
+        uses: lunarmodules/luacheck@v1
+        with:
+          args: ChattyLittleNpc
