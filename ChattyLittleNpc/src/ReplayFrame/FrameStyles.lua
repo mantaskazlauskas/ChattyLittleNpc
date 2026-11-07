@@ -102,7 +102,7 @@ local function rgba(c) return c[1], c[2], c[3], c[4] or 1 end
 
 --- The active style definition (falls back to Minimal).
 function ReplayFrame:GetFrameStyle()
-    local key = CLN.db and CLN.db.profile and CLN.db.profile.frameStyle
+    local key = CLN.db.profile.frameStyle
     return STYLES[key] or STYLES.minimal
 end
 
@@ -130,7 +130,7 @@ ReplayFrame.ShotTuningDefaults = {}
 ---@param bodyType string|nil morphology class, e.g. "tall_humanoid"
 ---@return table|nil
 function ReplayFrame:GetShotTuning(shot, bodyType)
-    local saved = CLN.db and CLN.db.profile and CLN.db.profile.portraitShotTuning
+    local saved = CLN.db.profile.portraitShotTuning
     local defaults = ReplayFrame.ShotTuningDefaults
     if shot and bodyType then
         local key = shot .. ":" .. bodyType
@@ -456,7 +456,7 @@ function ReplayFrame:UpdateFrameStyleNameplate()
     local deco = self._portraitDeco
     if not deco then return end
     local s = self:GetFrameStyle()
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local name = cur and cur.npcId and self.GetNpcNameById and self:GetNpcNameById(cur.npcId) or nil
     if (not name or name == "") and cur and cur.npcId and CLN.NpcMetadataCache then
         local cached = CLN.NpcMetadataCache:Lookup(cur.npcId)

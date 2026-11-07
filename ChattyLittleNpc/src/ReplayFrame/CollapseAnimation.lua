@@ -4,7 +4,7 @@ local DEFAULT_W, DEFAULT_H = CLN.DEFAULT_FRAME_WIDTH, CLN.DEFAULT_FRAME_HEIGHT
 
 function ReplayFrame:GetSafeExpandHeight()
     local h = self._preCollapseHeight
-        or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
+        or (CLN.db.profile.frameSize and CLN.db.profile.frameSize.height)
         or DEFAULT_H
     -- Clamp: if the stored value is itself corrupted (collapsed), use the hard default
     if h < 80 then h = DEFAULT_H end

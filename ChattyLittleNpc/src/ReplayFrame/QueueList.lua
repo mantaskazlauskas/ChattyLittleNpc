@@ -55,7 +55,7 @@ function ReplayFrame:UpdateQueueBadge()
         self.QueueBadge:SetText("[" .. tostring(q) .. "]")
         self.QueueBadge:Show()
     elseif q == 1 then
-        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local cp = CLN.VoiceoverPlayer.currentlyPlaying
         local queued = CLN.questsQueue[1]
         if queued and cp and (queued.questId ~= cp.questId or queued.phase ~= cp.phase) then
             self.QueueBadge:SetText("[1]")
@@ -231,15 +231,13 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     end
                 elseif button == "LeftButton" and e.queueIndex then
                     -- Delegate to player: drops items before target, then plays it
-                    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQueuedItemAtIndex then
-                        CLN.VoiceoverPlayer:PlayQueuedItemAtIndex(e.queueIndex)
-                    end
+                    CLN.VoiceoverPlayer:PlayQueuedItemAtIndex(e.queueIndex)
                 elseif button == "LeftButton" and e.isHistory then
                     if InCombatLockdown and InCombatLockdown() then return end
                     -- For non-quest sounds, check if a quest is blocking playback
                     -- before removing from history (PlayNonQuestSound would skip it)
                     if not (e.questId and e.phase) and e.npcId and e.title and e.entryType then
-                        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                        local cp = CLN.VoiceoverPlayer.currentlyPlaying
                         if cp and cp.cantBeInterrupted
                             and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
                             and CLN.db.profile.questPlaybackMode == 'queue' then
@@ -257,12 +255,12 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                             end
                         end
                     end
-                    if e.libraryEntry and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayLibraryFile then
+                    if e.libraryEntry then
                         -- Played from the library: replay that exact file.
                         CLN.VoiceoverPlayer:PlayLibraryFile(e.libraryEntry)
-                    elseif e.questId and e.phase and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayQuestSound then
+                    elseif e.questId and e.phase then
                         CLN.VoiceoverPlayer:PlayQuestSound(e.questId, e.phase, e.npcId, e.displayID, e.gender, e.creatureType)
-                    elseif e.npcId and e.title and e.entryType and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayNonQuestSound then
+                    elseif e.npcId and e.title and e.entryType then
                         CLN.VoiceoverPlayer:PlayNonQuestSound(e.npcId, e.entryType, e.title, e.gender, e.displayID, e.creatureType, { skipCooldown = true })
                     end
                     if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
@@ -281,7 +279,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     if GameTooltip.SetMaximumWidth then GameTooltip:SetMaximumWidth(maxW) end
                     GameTooltip:ClearLines()
                     local typeBadge = ""
-                    local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
+                    local showBadges = CLN.db.profile.showQuestTypeBadges
                     if showBadges then
                         if e.entryType == "quest" then
                             typeBadge = "|cFFFFD100[Quest]|r "
@@ -301,7 +299,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                     end
                     if e.isPlaying then
                         GameTooltip:AddLine(" ")
-                        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+                        local paused = CLN.VoiceoverPlayer:IsPaused()
                         GameTooltip:AddLine(paused and "|cFF00FF00Click|r to resume" or "|cFF00FF00Click|r to pause", 0.7, 0.7, 0.7)
                         GameTooltip:AddLine("|cFFFF8800Right-click|r to skip", 0.7, 0.7, 0.7)
                     end
@@ -312,7 +310,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 if selfBtn._hl then selfBtn._hl:Hide() end
                 if not selfBtn._isActive and selfBtn.text then
                     local e = selfBtn._element
-                    local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
+                    local showBadges = CLN.db.profile.showQuestTypeBadges
                     if e and e.isHistory then
                         selfBtn.text:SetTextColor(0.5, 0.5, 0.5)
                     elseif showBadges and e and e.entryType == "Gossip" then
@@ -341,7 +339,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
         for _, r in ipairs(self.QueueRows) do r:Hide(); r._element = nil; if r.bulletTex then r.bulletTex:Hide() end; if r.typeIcon then r.typeIcon:SetSize(0.001, 14); r.typeIcon:Hide() end; if r.durationText then r.durationText:Hide() end; r:SetScript("OnUpdate", nil) end
         -- Progress bars are re-shown by the playing row's timer below
         if self.SetFrameStyleProgress then self:SetFrameStyleProgress(nil, nil) end
-        local showBadges = CLN and CLN.db and CLN.db.profile and CLN.db.profile.showQuestTypeBadges
+        local showBadges = CLN.db.profile.showQuestTypeBadges
         for i = 1, toShow do
             local row = self.QueueRows[i]
             local element = entries[i]
@@ -376,7 +374,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 end
                 if row.typeIcon then
                     if showBadges then
-                        local iconAtlas = CLN and CLN.IconAtlas
+                        local iconAtlas = CLN.IconAtlas
                         if iconAtlas and element.entryType then
                             if element.entryType == "quest" then
                                 row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
@@ -431,7 +429,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 end
                 if row.typeIcon then
                     if showBadges then
-                        local iconAtlas = CLN and CLN.IconAtlas
+                        local iconAtlas = CLN.IconAtlas
                         if iconAtlas and element.entryType then
                             if element.entryType == "quest" then
                                 row.typeIcon:SetTexture(iconAtlas:Get(iconAtlas.keys.questBang))
@@ -457,7 +455,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                 end
                 if row.bulletTex then
                     if element.isPlaying then
-                        local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+                        local paused = CLN.VoiceoverPlayer:IsPaused()
                         row.bulletTex:SetColorTexture(0, 0, 0, 0) -- hide color bullet
                         row.bulletTex:SetSize(14, 14)
                         if paused then
@@ -497,7 +495,7 @@ function ReplayFrame:CreateScrollBox(contentFrame)
                         if element.isPlaying then
                             -- Live timer: show "elapsed / total" updated per-frame
                             local function updateTimer()
-                                local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                                local cp = CLN.VoiceoverPlayer.currentlyPlaying
                                 if not (cp and cp.startTime and GetTime) then return end
                                 local elapsed = math.min(GetTime() - cp.startTime, totalDur)
                                 row.durationText:SetText(formatTime(elapsed) .. " / " .. formatTime(totalDur))

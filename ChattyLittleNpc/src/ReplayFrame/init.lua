@@ -54,14 +54,14 @@ end
 
 -- Lightweight debug logger (disabled unless profile.debugMode is true)
 function ReplayFrame:Debug(...)
-    local ok = CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode
+    local ok = CLN.db.profile.debugMode
     if not ok then return end
     local args = {...}
     local strs = {}
     for i, arg in ipairs(args) do
         strs[i] = tostring(arg)
     end
-    if CLN and CLN.Logger then CLN.Logger:debug(table.concat(strs, " "), false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug(table.concat(strs, " "), false, CLN.Utils.LogCategories.ui)
 end
 
 -- ============================================================================
@@ -182,7 +182,7 @@ end
 function ReplayFrame:WorldZFromPercent(p)
     local pn = math.max(0, math.min(1, tonumber(p) or 0.5))
     local displayID = self:_GetCurrentDisplayID()
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local npcId = cur and cur.npcId or nil
     local meta = self:GetModelMeta(displayID, npcId, false)
     local b = _getBoundsFromMeta(meta)
@@ -211,7 +211,7 @@ end
 function ReplayFrame:ZoomForRangePercent(p0, p1, opts)
     opts = opts or {}
     local displayID = self:_GetCurrentDisplayID()
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local npcId = cur and cur.npcId or nil
     local meta = self:GetModelMeta(displayID, npcId, false)
     if not meta then return nil end
@@ -435,7 +435,7 @@ ReplayFrame._replayHistoryMax = 20
 
 function ReplayFrame:PushHistory(entry)
     if not entry then return end
-    local max = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueHistoryMaxEntries) or self._replayHistoryMax
+    local max = CLN.db.profile.queueHistoryMaxEntries or self._replayHistoryMax
     if max <= 0 then return end
     -- Ensure timestamp exists
     if not entry.completedAt then entry.completedAt = GetTime and GetTime() or 0 end
@@ -459,7 +459,7 @@ end
 local HISTORY_TTL_DEFAULT = 300 -- 5 minutes in seconds (fallback)
 
 function ReplayFrame:GetHistoryTTL()
-    local minutes = CLN and CLN.db and CLN.db.profile and CLN.db.profile.historyTTLMinutes
+    local minutes = CLN.db.profile.historyTTLMinutes
     if type(minutes) == "number" and minutes > 0 then
         return minutes * 60
     end
@@ -711,7 +711,7 @@ end
 -- Combat auto-collapse: hide frame during combat (FSM skips all frame
 -- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
 function ReplayFrame:OnCombatStart()
-    if CLN and CLN.db and CLN.db.profile and CLN.db.profile.combatAutoCollapse == false then return end
+    if CLN.db.profile.combatAutoCollapse == false then return end
     if self.DisplayFrame and self.DisplayFrame:IsShown() then
         -- Save idle state so OnCombatEnd can decide whether to restore
         self._combatPreCombatIdleState = self._idleFadeState
@@ -773,7 +773,7 @@ end
 
 -- Visible + playing animation update helper
 function ReplayFrame:UpdateAnimationsIfNeeded()
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local playing = self:IsVoiceoverCurrenltyPlaying()
     -- Consider both the model frame and its container, and prefer IsVisible
     local shown = false
@@ -787,12 +787,12 @@ function ReplayFrame:UpdateAnimationsIfNeeded()
         inGrace = dt >= 0 and dt < 0.6
     end
     if (playing or inGrace) and shown and self.UpdateConversationAnimation then
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - calling UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
     end
         self:UpdateConversationAnimation()
     else
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateDisplayFrame - skipping UpdateConversationAnimation (shown=%s, playing=%s, grace=%s)", tostring(shown), tostring(playing), tostring(inGrace)))
     end
         -- If we are playing but not yet visible, schedule a short deferred retry
@@ -808,7 +808,7 @@ end
 
 -- Main update function for the display frame
 function ReplayFrame:UpdateDisplayFrame()
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
     local collapsed = self.CollapseButton and self.CollapseButton._collapsed or false
     local w = self.DisplayFrame and self.DisplayFrame.GetWidth and math.floor((self.DisplayFrame:GetWidth() or 0) + 0.5) or 0
@@ -837,7 +837,7 @@ function ReplayFrame:UpdateDisplayFrame()
 
     if (self.HeaderText) then
         local qcount = (CLN.questsQueue and #CLN.questsQueue or 0)
-        local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local cur2 = CLN.VoiceoverPlayer.currentlyPlaying
         local playingTitle = cur2 and cur2.title or nil
         local npcName = cur2 and self:GetNpcNameById(cur2.npcId) or nil
         local isQuest = cur2 and cur2.questId or nil
@@ -866,7 +866,6 @@ end
 -- This mirrors the individual `set` callbacks in Options.lua so that switching
 -- profiles is immediately reflected on the live UI, not just in the dropdowns.
 function ReplayFrame:ApplyProfileSettings()
-    if not (CLN and CLN.db and CLN.db.profile) then return end
     local p = CLN.db.profile
 
     -- Frame position and size
@@ -893,9 +892,7 @@ function ReplayFrame:ApplyProfileSettings()
     if self.UpdateDisplayFrameState then self:UpdateDisplayFrameState() end
 
     -- Play button position
-    if CLN.PlayButton and CLN.PlayButton.UpdateButtonPositions then
-        CLN.PlayButton:UpdateButtonPositions()
-    end
+    CLN.PlayButton:UpdateButtonPositions()
 
     -- Queue dirty (badges, history)
     if self.MarkQueueDirty then self:MarkQueueDirty() end
@@ -924,7 +921,7 @@ end
 
 -- Apply text scaling to queue and header text
 function ReplayFrame:ApplyQueueTextScale()
-    local userScale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueTextScale) or 1.0
+    local userScale = CLN.db.profile.queueTextScale or 1.0
     local a11y = self:GetAccessibilityTextScale() or 1
     local finalScale = math.max(0.5, math.min(2.0, userScale * a11y))
 

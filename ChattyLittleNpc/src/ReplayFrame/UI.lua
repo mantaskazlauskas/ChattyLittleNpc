@@ -25,9 +25,9 @@ function ReplayFrame:GetDisplayFrame()
 
     -- Defaults; will be overridden by saved size/position if present
     self.normalWidth = self.normalWidth or 310
-    self.expandedWidth = self.expandedWidth or (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
-    local defaultW = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or DEFAULT_W)
-    local defaultH = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or DEFAULT_H
+    self.expandedWidth = self.expandedWidth or (CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.normalWidth)
+    local defaultW = (CLN.db.profile.frameSize and CLN.db.profile.frameSize.width) or (self.expandedWidth or DEFAULT_W)
+    local defaultH = (CLN.db.profile.frameSize and CLN.db.profile.frameSize.height) or DEFAULT_H
     if defaultH < 80 then defaultH = DEFAULT_H end
     frame:SetSize(defaultW, defaultH)
     if frame.SetResizeBounds then frame:SetResizeBounds(260, 120) end
@@ -37,7 +37,7 @@ function ReplayFrame:GetDisplayFrame()
     -- Dragging the window (manual edit or Edit Mode overlay) ends docking; the
     -- client re-anchors it to the screen, which SaveFramePosition then stores.
     hooksecurefunc(frame, "StartMoving", function()
-        if CLN.db and CLN.db.profile then CLN.db.profile.frameAnchor = "free" end
+        CLN.db.profile.frameAnchor = "free"
     end)
 
     -- Tooltip on hover: addon name + click to edit hint
@@ -66,7 +66,7 @@ function ReplayFrame:GetDisplayFrame()
     if self.LoadFramePosition then self:LoadFramePosition() end
 
     -- Apply frame scale if set
-    if CLN.db and CLN.db.profile and CLN.db.profile.frameScale then
+    if CLN.db.profile.frameScale then
         frame:SetScale(CLN.db.profile.frameScale)
     end
 
@@ -104,11 +104,11 @@ end
 
 function ReplayFrame:StartEditGlowPulse()
     if not self.EditGlow then return end
-    local enabled = CLN and CLN.db and CLN.db.profile and CLN.db.profile.editModeGlowHints
+    local enabled = CLN.db.profile.editModeGlowHints
     if not enabled then return end
     -- Check if already shown enough times
-    local profile = CLN and CLN.db and CLN.db.profile
-    if profile and profile._glowHintShown then return end
+    local profile = CLN.db.profile
+    if profile._glowHintShown then return end
 
     self.EditGlow:Show()
     self._glowPulseCount = 0
@@ -133,9 +133,7 @@ function ReplayFrame:StartEditGlowPulse()
                 ag:Stop()
                 self.EditGlow:Hide()
                 -- Mark as shown in profile
-                if CLN and CLN.db and CLN.db.profile then
-                    CLN.db.profile._glowHintShown = true
-                end
+                CLN.db.profile._glowHintShown = true
             end
         end)
         self._glowAnimGroup = ag
@@ -328,8 +326,8 @@ function ReplayFrame:_RestoreAsIdle()
     local frame = self.DisplayFrame
     if not frame then return end
     local F = self.Config and self.Config.Fade
-    local p = CLN and CLN.db and CLN.db.profile
-    local idleAlpha = (p and p.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    local p = CLN.db.profile
+    local idleAlpha = p.idleFadeOpacity or (F and F.idleAlpha) or 0.1
     -- Cancel any lingering animations
     if self._frameFadeInAG and self._frameFadeInAG:IsPlaying() then self._frameFadeInAG:Stop() end
     if self._frameFadeOutAG and self._frameFadeOutAG:IsPlaying() then self._frameFadeOutAG:Stop() end
@@ -454,8 +452,8 @@ function ReplayFrame:_IdleFadeToIdle()
     if self._idleFadeState == "idle" or self._idleFadeState == "fading_out" then return end
 
     local F = self.Config and self.Config.Fade
-    local p = CLN and CLN.db and CLN.db.profile
-    local targetAlpha = (p and p.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    local p = CLN.db.profile
+    local targetAlpha = p.idleFadeOpacity or (F and F.idleAlpha) or 0.1
     local dur = F and F.idleFadeOut or 0.8
 
     -- Cancel any in-progress idle-fade-in, keeping the alpha it reached
@@ -519,8 +517,8 @@ function ReplayFrame:_IdleFadeRestore()
     end
 
     local curAlpha = frame:GetAlpha()
-    local p2 = CLN and CLN.db and CLN.db.profile
-    local targetAlpha = (p2 and p2.idleFadeOpacity) or (F and F.idleAlpha) or 0.1
+    local p2 = CLN.db.profile
+    local targetAlpha = p2.idleFadeOpacity or (F and F.idleAlpha) or 0.1
     self._idleFadingInAG._anim:SetFromAlpha(curAlpha)
     self._idleFadingInAG._anim:SetToAlpha(1)
     local restoreDur = math.max(0, dur * (1 - curAlpha) / (1 - targetAlpha + 0.01))
@@ -556,8 +554,7 @@ function ReplayFrame:_IdleFadeTick()
     self._idleHovered = hovered
 
     -- Don't fade while something is playing, or during edit mode
-    local isPlaying = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-        and CLN.VoiceoverPlayer.IsEffectivelyPlaying
+    local isPlaying = CLN.VoiceoverPlayer.currentlyPlaying
         and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
     if isPlaying or self._editMode or self._blizzardEditMode then
         -- Always keep the idle timer fresh while playing so that the idle
@@ -581,8 +578,8 @@ function ReplayFrame:_IdleFadeTick()
     local remaining
     if self._idleFadeState == "active" then
         local F = self.Config and self.Config.Fade
-        local p = CLN and CLN.db and CLN.db.profile
-        local delay = (p and p.idleFadeDelay) or (F and F.idleDelay) or 10
+        local p = CLN.db.profile
+        local delay = p.idleFadeDelay or (F and F.idleDelay) or 10
         local elapsed = GetTime() - (self._idleLastActivity or 0)
         if elapsed >= delay then
             self:_IdleFadeToIdle()
@@ -599,8 +596,8 @@ end
 function ReplayFrame:_UpdateIdleCountdown(remaining)
     local fs = self.IdleCountdownText
     if not fs then return end
-    local p = CLN and CLN.db and CLN.db.profile
-    local enabled = p and p.showIdleFadeCountdown ~= false and (p.idleFadeOpacity or 0.1) < 1
+    local p = CLN.db.profile
+    local enabled = p.showIdleFadeCountdown ~= false and (p.idleFadeOpacity or 0.1) < 1
     local text = (enabled and remaining) and (math.ceil(remaining) .. "s") or ""
     if fs._text == text then return end
     fs._text = text
@@ -655,7 +652,7 @@ end
 -- Initialize the model container (delegate to ModelFrame if available)
 function ReplayFrame:InitializeModelContainer()
     self.npcModelFrameWidth = 220
-    self.npcModelFrameHeight = (CLN.db and CLN.db.profile and CLN.db.profile.npcModelFrameHeight) or 140
+    self.npcModelFrameHeight = CLN.db.profile.npcModelFrameHeight or 140
 
     -- Initialize the model container and model frame via extracted module (idempotent)
     if self.CreateModelUI and not (self.ModelContainer or self.NpcModelFrame) then
@@ -976,7 +973,7 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
             -- Cancel auto-advance timer and complete after a brief pause
             self._subtitleTimer = nil
             -- Adaptive pace: user clicked "Show All" → they read faster, nudge coefficient down
-            if CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient then
+            if CLN.db.profile.readingPaceCoefficient then
                 local coeff = CLN.db.profile.readingPaceCoefficient
                 CLN.db.profile.readingPaceCoefficient = math.max(0.5, coeff - 0.05)
             end
@@ -1030,11 +1027,9 @@ function ReplayFrame:ShowRemainingSubtitles(sentences, startIndex, onComplete)
     -- Calculate reading duration with combat multiplier and adaptive pace
     local S = self.Config and self.Config.Subtitle
     local function getReadDuration(sentence)
-        local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
-            and CLN.Utils.EstimateReadDuration(sentence)
-            or math.max(S and S.sentenceDurMin or 1.5, #sentence / 20)
+        local dur = CLN.Utils.EstimateReadDuration(sentence)
         -- Adaptive pace coefficient from SavedVariables
-        local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+        local coeff = CLN.db.profile.readingPaceCoefficient or 1.0
         dur = dur * coeff
         -- Combat multiplier: show text faster during combat (less distraction)
         if UnitAffectingCombat and UnitAffectingCombat("player") then
@@ -1157,10 +1152,8 @@ function ReplayFrame:ScrubSentence(delta)
     -- Restart auto-advance timer from this sentence
     local token = self._subtitleToken
     local S = self.Config and self.Config.Subtitle
-    local dur = CLN.Utils and CLN.Utils.EstimateReadDuration
-        and CLN.Utils.EstimateReadDuration(sentences[newIdx])
-        or math.max(S and S.sentenceDurMin or 1.5, #sentences[newIdx] / 20)
-    local coeff = (CLN.db and CLN.db.profile and CLN.db.profile.readingPaceCoefficient) or 1.0
+    local dur = CLN.Utils.EstimateReadDuration(sentences[newIdx])
+    local coeff = CLN.db.profile.readingPaceCoefficient or 1.0
     dur = dur * coeff
     if UnitAffectingCombat and UnitAffectingCombat("player") then
         dur = dur * (S and S.combatSpeedMult or 0.7)
@@ -1375,9 +1368,7 @@ function ReplayFrame:CreateHeaderButtons(contentFrame)
         IconAtlas and IconAtlas:Get(IconAtlas.keys.options) or "Interface/Buttons/UI-OptionsButton",
         "Open Chatty Little NPC options",
         function()
-            if CLN.Options and CLN.Options.OpenSettings then
-                CLN.Options:OpenSettings()
-            end
+            CLN.Options:OpenSettings()
         end)
     optionsBtn:SetPoint("RIGHT", clearBtn, "LEFT", -6, 0)
     self.OptionsButton = optionsBtn
@@ -1478,11 +1469,10 @@ end
 
 -- Lock state helpers and visuals
 function ReplayFrame:IsFrameLocked()
-    return (CLN and CLN.db and CLN.db.profile and CLN.db.profile.frameLocked) and true or false
+    return CLN.db.profile.frameLocked and true or false
 end
 
 function ReplayFrame:SetFrameLocked(locked)
-    if not (CLN and CLN.db and CLN.db.profile) then return end
     CLN.db.profile.frameLocked = not not locked
 end
 
@@ -1533,7 +1523,7 @@ function ReplayFrame:SetupFrameResize()
     -- Dynamic scaling on resize (layout only; bounds handled by SetResizeBounds)
     self.DisplayFrame:SetScript("OnSizeChanged", function(frame, newWidth, newHeight)
         local width, height = newWidth, newHeight
-        local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
+        local compact = CLN.db.profile.compactMode
         local hasModel = this._hasValidModel and not compact
 
         -- If collapsed, keep header-only layout and skip further content layout
@@ -1552,7 +1542,7 @@ function ReplayFrame:SetupFrameResize()
             -- Only scale header font and exit
             if this.HeaderText then
                 local headerFontSize = math.max(10, math.min(20, math.floor((height) / 8)))
-                local scale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueTextScale) or 1.0
+                local scale = CLN.db.profile.queueTextScale or 1.0
                 this.HeaderText:SetFont("Fonts\\FRIZQT__.TTF", headerFontSize * scale, "")
             end
             if this.SaveSizeForActiveLayout then this:SaveSizeForActiveLayout() end
@@ -1575,7 +1565,7 @@ function ReplayFrame:SetupFrameResize()
         -- Scale header font size based on height
         if this.HeaderText then
             local headerFontSize = math.max(10, math.min(20, math.floor((height) / 8)))
-            local scale = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.queueTextScale) or 1.0
+            local scale = CLN.db.profile.queueTextScale or 1.0
             this.HeaderText:SetFont("Fonts\\FRIZQT__.TTF", headerFontSize * scale, "")
             -- Measure actual header width (anchored between left edge and buttons)
             if this.TruncateToWidth and this.HeaderText.GetWidth then

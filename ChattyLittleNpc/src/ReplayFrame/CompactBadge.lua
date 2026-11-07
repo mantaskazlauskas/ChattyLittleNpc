@@ -77,7 +77,7 @@ function ReplayFrame:EnsureCompactBadge()
 
     -- Stop button (clean X mark matching header clear icon)
     local stopBtn = makeBtn(badge, 22, "Interface/RAIDFRAME/ReadyCheck-NotReady", "Stop playback", function()
-        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true) end
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
         if self.UpdateCompactBadge then self:UpdateCompactBadge(true) end
     end)
     stopBtn:SetPoint("RIGHT", badge, "RIGHT", -38, 0)
@@ -85,14 +85,14 @@ function ReplayFrame:EnsureCompactBadge()
 
     -- Pause/Resume button
     local pauseBtn = makeBtn(badge, 22, "Interface/TimeManager/PauseButton", "Pause playback", function()
-        if CLN and CLN.VoiceoverPlayer then CLN.VoiceoverPlayer:TogglePause() end
+        CLN.VoiceoverPlayer:TogglePause()
     end)
     pauseBtn:SetPoint("RIGHT", stopBtn, "LEFT", -4, 0)
     -- Override tooltip to be dynamic (pause/resume)
     pauseBtn:SetScript("OnEnter", function(btn)
         if hoverFn then hoverFn(btn.tex) end
         if GameTooltip and GameTooltip.SetOwner then
-            local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+            local paused = CLN.VoiceoverPlayer:IsPaused()
             GameTooltip:SetOwner(btn, "ANCHOR_TOP")
             GameTooltip:ClearLines()
             GameTooltip:AddLine(paused and "Resume playback" or "Pause playback", 1, 1, 1)
@@ -107,18 +107,14 @@ function ReplayFrame:EnsureCompactBadge()
 
     -- Micro-scrub buttons: ◀ ▶ for sentence navigation during text continuation
     local scrubBack = makeBtn(badge, 18, "Interface/Buttons/UI-SpellbookIcon-PrevPage-Up", "Previous sentence", function()
-        if CLN.ReplayFrame and CLN.ReplayFrame.ScrubSentence then
-            CLN.ReplayFrame:ScrubSentence(-1)
-        end
+        CLN.ReplayFrame:ScrubSentence(-1)
     end)
     scrubBack:SetPoint("RIGHT", pauseBtn, "LEFT", -2, 0)
     scrubBack:Hide()
     badge.ScrubBackBtn = scrubBack
 
     local scrubFwd = makeBtn(badge, 18, "Interface/Buttons/UI-SpellbookIcon-NextPage-Up", "Next sentence", function()
-        if CLN.ReplayFrame and CLN.ReplayFrame.ScrubSentence then
-            CLN.ReplayFrame:ScrubSentence(1)
-        end
+        CLN.ReplayFrame:ScrubSentence(1)
     end)
     scrubFwd:SetPoint("RIGHT", scrubBack, "LEFT", -2, 0)
     scrubFwd:Hide()
@@ -165,7 +161,7 @@ function ReplayFrame:EnsureCompactBadge()
 
     -- Progress updater: animate ProgressLine width per-frame while playing
     badge._progressOnUpdate = function(_, _)
-        local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        local cp = CLN.VoiceoverPlayer.currentlyPlaying
         if not (cp and GetTime) then return end
 
         -- Throttle to ~20 Hz — progress bar doesn't need 60fps
@@ -178,7 +174,7 @@ function ReplayFrame:EnsureCompactBadge()
         -- Text continuation mode: progress based on reading time
         if cp._textContinuation and cp._textContinuationStartTime and cp._textContinuationDuration then
             -- Freeze progress bar while paused
-            local paused = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsPaused()
+            local paused = CLN.VoiceoverPlayer:IsPaused()
             if paused then return end
             local elapsed = GetTime() - cp._textContinuationStartTime
             local duration = cp._textContinuationDuration
@@ -251,10 +247,10 @@ function ReplayFrame:UpdatePauseButton()
                 local showReadIcon = false
                 if cp and cp._elapsedAtPause and cp.title then
                     local estimated = cp._estimatedDuration
-                        or (CLN.Utils and CLN.Utils.EstimateVODuration and CLN.Utils.EstimateVODuration(cp.title))
+                        or CLN.Utils.EstimateVODuration(cp.title)
                         or 0
-                    local threshold = (CLN.db and CLN.db.profile and CLN.db.profile.textContinuationThreshold) or 0.75
-                    local enabled = not CLN.db or not CLN.db.profile or CLN.db.profile.textContinuationEnabled ~= false
+                    local threshold = CLN.db.profile.textContinuationThreshold or 0.75
+                    local enabled = CLN.db.profile.textContinuationEnabled ~= false
                     if enabled and estimated > 0 and (cp._elapsedAtPause / estimated) >= threshold then
                         showReadIcon = true
                     end

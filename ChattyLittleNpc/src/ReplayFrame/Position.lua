@@ -152,7 +152,7 @@ end
 -- Which side of the conversation window the portrait docks to.
 ---@return "above"|"below"|"left"|"right"
 function ReplayFrame:GetPortraitPosition()
-    local pos = CLN.db and CLN.db.profile and CLN.db.profile.portraitPosition
+    local pos = CLN.db.profile.portraitPosition
     if pos == "below" or pos == "left" or pos == "right" then return pos end
     return "above"
 end
@@ -202,7 +202,7 @@ function ReplayFrame:AnchorModelContainer(container, frame)
     frame = frame or self.DisplayFrame
     if not (container and frame) then return end
     -- The profile value is authoritative (Edit Mode resize saves only that); keep the cache in step
-    local h = (CLN.db and CLN.db.profile and CLN.db.profile.npcModelFrameHeight) or self.npcModelFrameHeight or 140
+    local h = CLN.db.profile.npcModelFrameHeight or self.npcModelFrameHeight or 140
     self.npcModelFrameHeight = h
     local pos = self:GetPortraitPosition()
     -- Above/below: the style may need a taller box than the saved height
@@ -288,7 +288,7 @@ end
 
 -- Check if compact mode is enabled
 function ReplayFrame:IsCompactModeEnabled()
-    return CLN and CLN.db and CLN.db.profile and CLN.db.profile.compactMode
+    return CLN.db.profile.compactMode
 end
 
 -- Apply compact mode layout changes
@@ -299,7 +299,7 @@ function ReplayFrame:ApplyCompactMode()
     if ReplayFrame:IsCompactModeEnabled() then
         -- Shrink to normal width and hide model
         -- If we have a remembered compact width, use it; else default normalWidth
-        local w = (CLN.db and CLN.db.profile and CLN.db.profile.compactWidth) or self.normalWidth
+        local w = CLN.db.profile.compactWidth or self.normalWidth
         frame:SetWidth(w)
         if self.NpcModelFrame then
             self.NpcModelFrame:Hide()
@@ -309,7 +309,7 @@ function ReplayFrame:ApplyCompactMode()
         self.ContentFrame:SetSize(frame:GetWidth() - 10, height - 5)
     else
         -- Allow model to expand the width as needed later
-        local w = (CLN.db and CLN.db.profile and CLN.db.profile.expandedWidth) or self.expandedWidth
+        local w = CLN.db.profile.expandedWidth or self.expandedWidth
         frame:SetWidth(w)
         if self.NpcModelFrame then
             -- visibility controlled by current NPC state
@@ -342,10 +342,7 @@ end
 -- ============================================================================
 
 function ReplayFrame:IsVoiceoverCurrenltyPlaying()
-    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.IsEffectivelyPlaying then
-        return CLN.VoiceoverPlayer:IsEffectivelyPlaying()
-    end
-    return CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying:isPlaying()
+    return CLN.VoiceoverPlayer:IsEffectivelyPlaying()
 end
 
 function ReplayFrame:IsShowReplayFrameToggleIsEnabled()
