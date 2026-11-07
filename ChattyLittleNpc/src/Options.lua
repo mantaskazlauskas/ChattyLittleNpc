@@ -261,7 +261,7 @@ local options = {
                     get = function() return CLN.db.profile.voiceoverLanguage or 'auto' end,
                     set = function(_, value)
                         CLN.db.profile.voiceoverLanguage = value
-                        if CLN.PlayButton and CLN.PlayButton.UpdatePlayButton then CLN.PlayButton:UpdatePlayButton() end
+                        CLN.PlayButton:UpdatePlayButton()
                     end,
                 },
                 voiceoverLanguageFallback = {
@@ -457,10 +457,10 @@ local options = {
                     name = 'Play / Stop Voiceover',
                     desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key (modifiers like Ctrl/Alt/Shift are supported). Right-click or press Escape to clear.\n\nController buttons can be bound in the game\'s Key Bindings menu under AddOns > Chatty Little NPC.',
                     get = function()
-                        return CLN.Keybinds and CLN.Keybinds:GetKeyText()
+                        return CLN.Keybinds:GetKeyText()
                     end,
                     set = function(_, key)
-                        if CLN.Keybinds then CLN.Keybinds:SetKeyboardKey(key) end
+                        CLN.Keybinds:SetKeyboardKey(key)
                     end,
                 },
             },
@@ -485,7 +485,7 @@ local options = {
                     get = function(info) return CLN.db.profile.showReplayFrame end,
                     set = function(info, value)
                         CLN.db.profile.showReplayFrame = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                        CLN.ReplayFrame:UpdateDisplayFrameState()
                     end,
                 },
                 frameStyle = {
@@ -496,7 +496,7 @@ local options = {
                     desc = 'Look of the conversation frame and the NPC portrait.\n\n• Minimal — frameless, like the objectives tracker\n• Panel — dark panel with a framed portrait and nameplate\n• Cinematic — head-and-shoulders portrait with a large name',
                     values = function()
                         local values = {}
-                        for key, style in pairs(CLN.ReplayFrame and CLN.ReplayFrame.FrameStyles or {}) do
+                        for key, style in pairs(CLN.ReplayFrame.FrameStyles or {}) do
                             values[key] = style.label
                         end
                         return values
@@ -505,7 +505,7 @@ local options = {
                     get = function() return CLN.db.profile.frameStyle or 'minimal' end,
                     set = function(_, value)
                         CLN.db.profile.frameStyle = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyFrameStyle then CLN.ReplayFrame:ApplyFrameStyle() end
+                        CLN.ReplayFrame:ApplyFrameStyle()
                     end,
                 },
                 compactMode = {
@@ -517,9 +517,9 @@ local options = {
                     get = function(info) return CLN.db.profile.compactMode end,
                     set = function(info, value)
                         CLN.db.profile.compactMode = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then CLN.ReplayFrame:UpdateDisplayFrameState() end
+                        CLN.ReplayFrame:UpdateDisplayFrameState()
                         -- Show/hide the portrait now rather than at the next voiceover
-                        if CLN.ReplayFrame and CLN.ReplayFrame.CheckAndShowModel then CLN.ReplayFrame:CheckAndShowModel() end
+                        CLN.ReplayFrame:CheckAndShowModel()
                     end,
                 },
                 combatAutoCollapse = {
@@ -579,7 +579,7 @@ local options = {
                     get = function(info) return CLN.db.profile.showQuestTypeBadges end,
                     set = function(info, value)
                         CLN.db.profile.showQuestTypeBadges = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                        CLN.ReplayFrame:MarkQueueDirty()
                     end,
                 },
                 queueHistoryMaxEntries = {
@@ -594,7 +594,7 @@ local options = {
                     get = function(info) return CLN.db.profile.queueHistoryMaxEntries or 20 end,
                     set = function(info, value)
                         CLN.db.profile.queueHistoryMaxEntries = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                        CLN.ReplayFrame:MarkQueueDirty()
                     end,
                 },
                 historyTTLMinutes = {
@@ -609,8 +609,8 @@ local options = {
                     get = function(info) return CLN.db.profile.historyTTLMinutes or 5 end,
                     set = function(info, value)
                         CLN.db.profile.historyTTLMinutes = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.PruneOldHistory then CLN.ReplayFrame:PruneOldHistory() end
-                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                        CLN.ReplayFrame:PruneOldHistory()
+                        CLN.ReplayFrame:MarkQueueDirty()
                     end,
                 },
             },
@@ -633,18 +633,15 @@ local options = {
                     name = 'Edit Mode',
                     desc = 'Enable edit mode to move and resize the voiceover frame. Disable when done.',
                     get = function(info)
-                        return CLN.ReplayFrame and CLN.ReplayFrame._editMode or false
+                        return CLN.ReplayFrame._editMode or false
                     end,
                     set = function(info, value)
-                        if not CLN.ReplayFrame then return end
                         if value then
                             CLN.ReplayFrame:ShowForEdit()
                         else
                             CLN.ReplayFrame:SetEditMode(false)
                             CLN.ReplayFrame._forceShow = false
-                            if CLN.ReplayFrame.UpdateDisplayFrameState then
-                                CLN.ReplayFrame:UpdateDisplayFrameState()
-                            end
+                            CLN.ReplayFrame:UpdateDisplayFrameState()
                         end
                     end,
                 },
@@ -671,7 +668,7 @@ local options = {
                     end,
                     set = function(info, value)
                         CLN.db.profile.queueTextScale = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyQueueTextScale then CLN.ReplayFrame:ApplyQueueTextScale() end
+                        CLN.ReplayFrame:ApplyQueueTextScale()
                     end,
                 },
                 frameScale = {
@@ -689,7 +686,7 @@ local options = {
                     set = function(info, value)
                         value = math.max(0.5, math.min(2.0, value))
                         CLN.db.profile.frameScale = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.DisplayFrame then
+                        if CLN.ReplayFrame.DisplayFrame then
                             CLN.ReplayFrame.DisplayFrame:SetScale(value)
                         end
                     end,
@@ -858,7 +855,7 @@ local options = {
                     get = function(info) return CLN.db.profile.highContrastMode end,
                     set = function(info, value)
                         CLN.db.profile.highContrastMode = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then CLN.ReplayFrame:MarkQueueDirty() end
+                        CLN.ReplayFrame:MarkQueueDirty()
                     end,
                 },
                 keyboardNavHint = {
@@ -893,19 +890,15 @@ local options = {
                         }
                     end,
                     hidden = function()
-                        return not (CLN and CLN.ReplayFrame and CLN.ReplayFrame.IsModelSceneAvailable and CLN.ReplayFrame:IsModelSceneAvailable())
+                        return not CLN.ReplayFrame:IsModelSceneAvailable()
                     end,
                     get = function(info)
                         return CLN.db.profile.renderBackend or 'auto'
                     end,
                     set = function(info, value)
                         CLN.db.profile.renderBackend = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.RebuildModelHost then
-                            CLN.ReplayFrame:RebuildModelHost()
-                        end
-                        if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-                            CLN.ReplayFrame:UpdateDisplayFrameState()
-                        end
+                        CLN.ReplayFrame:RebuildModelHost()
+                        CLN.ReplayFrame:UpdateDisplayFrameState()
                     end,
                 },
                 advancedCameraFitting = {
@@ -919,14 +912,10 @@ local options = {
                     end,
                     set = function(info, value)
                         CLN.db.profile.advancedCameraFitting = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.RebuildModelHost then
-                            CLN.ReplayFrame:RebuildModelHost()
-                        end
-                        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyDefaultFit then
-                            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
-                            if cur and (CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame.IsShown and CLN.ReplayFrame.NpcModelFrame:IsShown()) then
-                                CLN.ReplayFrame:ApplyDefaultFit(cur.displayID)
-                            end
+                        CLN.ReplayFrame:RebuildModelHost()
+                        local cur = CLN.VoiceoverPlayer.currentlyPlaying
+                        if cur and (CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame.IsShown and CLN.ReplayFrame.NpcModelFrame:IsShown()) then
+                            CLN.ReplayFrame:ApplyDefaultFit(cur.displayID)
                         end
                     end,
                 },
@@ -1074,9 +1063,7 @@ local options = {
                     desc = 'Re-enable popups for all dismissed NPCs.',
                     func = function()
                         CLN.db.profile.nativeVODismissed = {}
-                        if CLN.Logger then
-                            CLN.Logger:info("Cleared Never Ask list.", false, (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.loader) or "misc")
-                        end
+                        CLN.Logger:info("Cleared Never Ask list.", false, CLN.Utils.LogCategories.loader)
                     end,
                     hidden = function()
                         if (CLN.db.profile.nativeVOMode or "off") == "off" then return true end
@@ -1153,7 +1140,7 @@ local options = {
                     name = 'Open Logs Window',
                     desc = 'Open the debug logs viewer. Also accessible via /clnlogs.',
                     func = function()
-                        local LW = CLN.ReplayFrame and CLN.ReplayFrame.LogsWindow
+                        local LW = CLN.ReplayFrame.LogsWindow
                         if LW then
                             if not LW._frame or not LW._frame:IsShown() then LW:Show() else LW:Hide() end
                         end
@@ -1165,7 +1152,7 @@ local options = {
                     name = 'Open Debug Window',
                     desc = 'Open the model debug/inspection window. Also accessible via /clndebug.',
                     func = function()
-                        local DW = CLN.ReplayFrame and CLN.ReplayFrame.DebugWindow
+                        local DW = CLN.ReplayFrame.DebugWindow
                         if DW then
                             if not DW.frame or not DW.frame:IsShown() then DW:Show() else DW:Hide() end
                         end
@@ -1213,11 +1200,9 @@ local options = {
                     get = function(info) return CLN.db.profile.debugNoAnim end,
                     set = function(info, value)
                         CLN.db.profile.debugNoAnim = value
-                        if CLN.ReplayFrame and CLN.ReplayFrame.SetNoAnimDebug then
-                            CLN.ReplayFrame:SetNoAnimDebug(value)
-                            if CLN.ReplayFrame._UpdateModelOnUpdateHook then
-                                CLN.ReplayFrame:_UpdateModelOnUpdateHook()
-                            end
+                        CLN.ReplayFrame:SetNoAnimDebug(value)
+                        if CLN.ReplayFrame._UpdateModelOnUpdateHook then
+                            CLN.ReplayFrame:_UpdateModelOnUpdateHook()
                         end
                     end,
                 },
@@ -1238,20 +1223,18 @@ local options = {
                     name = 'Animation Log Filter',
                     desc = 'Filter animation debug logs by category.',
                     values = function()
-                        local C = CLN and CLN.Utils and CLN.Utils.LogCategories
+                        local C = CLN.Utils.LogCategories
                         local values = {
                             all = 'All Categories',
                             none = 'None (Disable All)',
                         }
-                        if C then
-                            values[C.camera] = 'Camera Only'
-                            values[C.framing] = 'Framing Only'
-                            values[C.projection] = 'Projection Only'
-                            values[C.host] = 'Host/Backend Only'
-                            values[C.loader] = 'Loader Only'
-                            values[C.animation] = 'Animation Only'
-                            values[C.emotes] = 'Emotes Only'
-                        end
+                        values[C.camera] = 'Camera Only'
+                        values[C.framing] = 'Framing Only'
+                        values[C.projection] = 'Projection Only'
+                        values[C.host] = 'Host/Backend Only'
+                        values[C.loader] = 'Loader Only'
+                        values[C.animation] = 'Animation Only'
+                        values[C.emotes] = 'Emotes Only'
                         return values
                     end,
                     disabled = function()
@@ -1329,9 +1312,7 @@ function Options:SetupOptions()
 
     -- After any profile switch, re-apply frame-driven settings and refresh the window.
     local function onProfileChange()
-        if CLN.ReplayFrame and CLN.ReplayFrame.ApplyProfileSettings then
-            CLN.ReplayFrame:ApplyProfileSettings()
-        end
+        CLN.ReplayFrame:ApplyProfileSettings()
         if CLN.SettingsWindow then
             CLN.SettingsWindow:Refresh()
         end

@@ -35,18 +35,14 @@ function ReplayFrame:CreateEditPanel()
     panel:SetScript("OnDragStop", function(f)
         f:StopMovingOrSizing()
         f._userMoved = true
-        if CLN and CLN.db and CLN.db.profile then
-            local point, _, relativePoint, xOfs, yOfs = f:GetPoint(1)
-            CLN.db.profile.editPanelPos = {
-                point = point,
-                relativePoint = relativePoint,
-                x = xOfs,
-                y = yOfs,
-            }
-            if CLN.Logger then
-                CLN.Logger:debug("EditPanel position saved ("..tostring(point).." x="..tostring(xOfs).." y="..tostring(yOfs)..")", false, CLN.Utils.LogCategories.ui)
-            end
-        end
+        local point, _, relativePoint, xOfs, yOfs = f:GetPoint(1)
+        CLN.db.profile.editPanelPos = {
+            point = point,
+            relativePoint = relativePoint,
+            x = xOfs,
+            y = yOfs,
+        }
+        CLN.Logger:debug("EditPanel position saved ("..tostring(point).." x="..tostring(xOfs).." y="..tostring(yOfs)..")", false, CLN.Utils.LogCategories.ui)
     end)
     panel:SetFrameStrata("DIALOG")
     panel:Hide()
@@ -186,7 +182,7 @@ function ReplayFrame:CreateEditPanel()
                     framePos = conv.pos,
                 }
             else
-                exclude = CLN.db and CLN.db.profile and CLN.db.profile.editModeExclude
+                exclude = CLN.db.profile.editModeExclude
             end
             if not exclude then return end
             local cb = CreateFrame("CheckButton", nil, panelRef, "ChatConfigCheckButtonTemplate")
@@ -202,7 +198,7 @@ function ReplayFrame:CreateEditPanel()
             cb:SetHitRectInsets(0,0,0,0)
             cb:SetScript("OnClick", function(b)
                 exclude[key] = b:GetChecked() and true or false
-                if CLN.Logger then CLN.Logger:debug("FormBuilder exclude '"..key.."'="..tostring(exclude[key]), false, CLN.Utils.LogCategories.ui) end
+                CLN.Logger:debug("FormBuilder exclude '"..key.."'="..tostring(exclude[key]), false, CLN.Utils.LogCategories.ui)
                 local EditMode = ReplayFrame and ReplayFrame.EditMode
                 if EditMode and EditMode.Persistence then
                     -- Write through to v2 exclude config
@@ -232,7 +228,7 @@ function ReplayFrame:CreateEditPanel()
             btn:SetPoint("TOPRIGHT", panelRef, "TOPRIGHT", -self.layout.resetRightPad, self.y)
             local tex = btn:CreateTexture(nil, "ARTWORK")
             tex:SetAllPoints();
-            local IconAtlas = CLN and CLN.IconAtlas
+            local IconAtlas = CLN.IconAtlas
             if IconAtlas then
                 tex:SetTexture(IconAtlas:Get(IconAtlas.keys.refresh))
             else
@@ -404,14 +400,14 @@ function ReplayFrame:CreateEditPanel()
     panel.resetPosButton:SetPoint("BOTTOMRIGHT", panel.resetButton, "TOPRIGHT", 0, 6)
     panel.resetPosButton:SetScript("OnClick", function()
         -- Reset conversation window: default size, docked next to the objectives tracker
-        if CLN.db and CLN.db.profile then CLN.db.profile.frameAnchor = "objectives" end
+        CLN.db.profile.frameAnchor = "objectives"
         if ReplayFrame.DisplayFrame then
             ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H)
             ReplayFrame.DisplayFrame:SetScale(1.0)
         end
         -- Re-dock model to the conversation window at the default height.
         -- Docking sizes the portrait from the saved height, so store it first.
-        if CLN.db and CLN.db.profile then CLN.db.profile.npcModelFrameHeight = 140 end
+        CLN.db.profile.npcModelFrameHeight = 140
         ReplayFrame.npcModelFrameHeight = 140
         local ModelWin = ReplayFrame.EditMode and ReplayFrame.EditMode.ModelWindow
         if ModelWin then
@@ -434,13 +430,11 @@ function ReplayFrame:CreateEditPanel()
             ReplayFrame.NpcModelFrame:SetHeight(140)
         end
         -- Update profile
-        if CLN.db and CLN.db.profile then
-            CLN.db.profile.framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 200, yOfs = 0 }
-            CLN.db.profile.frameSize = { width = DEFAULT_W, height = DEFAULT_H }
-            CLN.db.profile.frameScale = 1.0
-            CLN.db.profile.npcModelFrameHeight = 140
-            CLN.db.profile.modelFramePos = nil
-        end
+        CLN.db.profile.framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 200, yOfs = 0 }
+        CLN.db.profile.frameSize = { width = DEFAULT_W, height = DEFAULT_H }
+        CLN.db.profile.frameScale = 1.0
+        CLN.db.profile.npcModelFrameHeight = 140
+        CLN.db.profile.modelFramePos = nil
         if ReplayFrame.DisplayFrame and ReplayFrame.LoadFramePosition then
             ReplayFrame:LoadFramePosition()
         end
@@ -449,7 +443,7 @@ function ReplayFrame:CreateEditPanel()
             ReplayFrame:PersistToActiveLayout()
         end
         if ReplayFrame.Relayout then ReplayFrame:Relayout() end
-        if CLN.Logger then CLN.Logger:info("All positions reset and model re-docked", false, CLN.Utils.LogCategories.ui) end
+        CLN.Logger:info("All positions reset and model re-docked", false, CLN.Utils.LogCategories.ui)
     end)
     if attachTooltip then attachTooltip(panel.resetPosButton, "Reset Positions", "Reset both the Conversation and Model windows to default positions and re-dock the model above the conversation.") end
     
@@ -465,7 +459,7 @@ function ReplayFrame:CreateEditPanel()
             local fmt = row.format or "%d"; if row.value then row.value:SetText(string.format(fmt, v)) end
             if row.key == "scale" and ReplayFrame and ReplayFrame.DisplayFrame then
                 ReplayFrame.DisplayFrame:SetScale(v)
-            elseif row.key == "textScale" and CLN and CLN.db and CLN.db.profile then
+            elseif row.key == "textScale" then
                 panel._preview.oldTextScale = panel._preview.oldTextScale or CLN.db.profile.queueTextScale
                 local old = CLN.db.profile.queueTextScale
                 CLN.db.profile.queueTextScale = v
@@ -545,7 +539,7 @@ function ReplayFrame:CreateEditPanel()
             end
             local s = self._orig.scale or 1.0
             if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetScale(s) end
-            if CLN and CLN.db and CLN.db.profile and self._orig.textScale then
+            if self._orig.textScale then
                 local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = self._orig.textScale
                 if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
                 CLN.db.profile.queueTextScale = old
@@ -582,7 +576,7 @@ function ReplayFrame:CreateEditPanel()
         end
         panel._suppressDirty = nil
         if ReplayFrame and ReplayFrame.DisplayFrame and panel._orig.scale then ReplayFrame.DisplayFrame:SetScale(panel._orig.scale) end
-        if CLN and CLN.db and CLN.db.profile and panel._orig.textScale then
+        if panel._orig.textScale then
             local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = panel._orig.textScale
             if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
             CLN.db.profile.queueTextScale = old
@@ -609,11 +603,9 @@ function ReplayFrame:CreateEditPanel()
         end
         panel._suppressDirty = nil
         if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetScale(1.0) end
-        if CLN and CLN.db and CLN.db.profile then
-            local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = 1.0
-            if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
-            CLN.db.profile.queueTextScale = old
-        end
+        local old = CLN.db.profile.queueTextScale; CLN.db.profile.queueTextScale = 1.0
+        if ReplayFrame and ReplayFrame.ApplyQueueTextScale then ReplayFrame:ApplyQueueTextScale() end
+        CLN.db.profile.queueTextScale = old
         if ReplayFrame and ReplayFrame.DisplayFrame then ReplayFrame.DisplayFrame:SetSize(DEFAULT_W, DEFAULT_H) end
         if ReplayFrame and ReplayFrame.NpcModelFrame then ReplayFrame.NpcModelFrame:SetHeight(140) end
         if ReplayFrame then ReplayFrame:SetPortraitStripHeight(140) end
@@ -691,9 +683,7 @@ function ReplayFrame:CreateEditPanel()
         local desired = math.max(minHeight, contentFromTop + interSectionGap + buttonStackFromBottom)
         if math.abs(desired - self:GetHeight()) > 1 then
             self:SetHeight(desired)
-            if CLN and CLN.Logger then
-                CLN.Logger:debug("EditPanel autosized height="..tostring(desired), false, CLN.Utils.LogCategories.ui)
-            end
+            CLN.Logger:debug("EditPanel autosized height="..tostring(desired), false, CLN.Utils.LogCategories.ui)
         end
     end
     -- Defer to next frame to ensure all anchors resolved
@@ -738,7 +728,7 @@ function ReplayFrame:ShowEditPanel()
     -- Position near the frame if possible
     -- Detached positioning: use saved placement if any, else dock near current display frame once (not tracking afterward)
     local positioned = false
-    if CLN and CLN.db and CLN.db.profile and CLN.db.profile.editPanelPos then
+    if CLN.db.profile.editPanelPos then
         local pos = CLN.db.profile.editPanelPos
         if pos.point and pos.relativePoint then
             panel:ClearAllPoints(); panel:SetPoint(pos.point, UIParent, pos.relativePoint, pos.x or 0, pos.y or 0)
@@ -790,7 +780,7 @@ function ReplayFrame:ShowEditPanel()
     -- -----------------------------------------------------------------
     if self and self.SetQueueData and not self._dummyPreviewActive then
         local realCount = (CLN.questsQueue and #CLN.questsQueue or 0)
-        local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+        local now = CLN.VoiceoverPlayer.currentlyPlaying
         if realCount < 2 and not now then
             self._dummyPreviewActive = true
             self._dummyPrevEntries = self:BuildQueueEntries() -- capture any existing
@@ -804,7 +794,7 @@ function ReplayFrame:ShowEditPanel()
             -- Feed dummy entries directly
             self:SetQueueData(sample)
             if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
-            if CLN.Logger then CLN.Logger:debug("Dummy preview queue populated for Edit Panel", false, CLN.Utils.LogCategories.ui) end
+            CLN.Logger:debug("Dummy preview queue populated for Edit Panel", false, CLN.Utils.LogCategories.ui)
         end
     end
 
@@ -827,9 +817,7 @@ function ReplayFrame:ShowEditPanel()
             local ok = pcall(function()
                 if mf.SetUnit then mf:SetUnit("player") end
             end)
-            if CLN and CLN.Logger then
-                CLN.Logger:debug("EditPanel preview model activated (player) ok="..tostring(ok), false, CLN.Utils.LogCategories.ui)
-            end
+            CLN.Logger:debug("EditPanel preview model activated (player) ok="..tostring(ok), false, CLN.Utils.LogCategories.ui)
         end
         -- Apply current slider-driven height immediately to preview
         if panel.modelHeightSlider then
@@ -878,9 +866,7 @@ function ReplayFrame:ApplyEditPanelSettings(panel)
         if self.DisplayFrame and self.LayoutModelArea then self:LayoutModelArea(self.DisplayFrame) end
     end
     
-    if CLN.Logger then
-        CLN.Logger:info("Frame settings applied", false, CLN.Utils.LogCategories.ui)
-    end
+    CLN.Logger:info("Frame settings applied", false, CLN.Utils.LogCategories.ui)
     -- Persist to active Edit Mode layout (optional)
     if self.PersistToActiveLayout then
         self:PersistToActiveLayout()
@@ -893,9 +879,7 @@ function ReplayFrame:HideEditPanel()
         self._editPanel:Hide()
         -- Remove temporary preview model if we created one
         if panel._previewModel and self.NpcModelFrame then
-            if CLN and CLN.Logger then
-                CLN.Logger:debug("EditPanel preview model cleared", false, CLN.Utils.LogCategories.ui)
-            end
+            CLN.Logger:debug("EditPanel preview model cleared", false, CLN.Utils.LogCategories.ui)
             self.NpcModelFrame:Hide()
             panel._previewModel = nil
         end
@@ -912,7 +896,7 @@ function ReplayFrame:HideEditPanel()
                 self:SetQueueData(self:BuildQueueEntries())
                 if self.ApplyQueueTextScale then self:ApplyQueueTextScale() end
             end
-            if CLN.Logger then CLN.Logger:debug("Dummy preview queue cleared", false, CLN.Utils.LogCategories.ui) end
+            CLN.Logger:debug("Dummy preview queue cleared", false, CLN.Utils.LogCategories.ui)
         end
     end
 end

@@ -126,7 +126,7 @@ function PlayButton:CreatePlayVoiceoverButton(parentFrame, buttonName, onMouseUp
     local button
     if not onMouseUpFunction then
         button = PlayButton:GenerateMissingVoiceoverMarker(parentFrame, buttonName, offsetX, offsetY, UIParent)
-    elseif (CLN.isElvuiAddonLoaded) then
+    elseif CLN.isElvuiAddonLoaded then
         button = PlayButton:GenerateElvUiStyleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
     else
         button = PlayButton:GenerateSpeakChatBubbleButton(parentFrame, buttonName, offsetX, offsetY, onMouseUpFunction, UIParent)
@@ -574,7 +574,7 @@ function PlayButton:GenerateMissingVoiceoverMarker(parentFrame, buttonName, offs
         ring:SetVertexColor(1, 0.82, 0, 1)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("No voiceover yet", 1, 1, 1)
-        if CLN.AddonInfo and CLN.AddonInfo:GetLoadedPackCount() == 0 then
+        if CLN.AddonInfo:GetLoadedPackCount() == 0 then
             GameTooltip:AddLine("No voiceover packs are installed. Click for download links.", 1, 0.45, 0.35, true)
         else
             GameTooltip:AddLine("Your installed voiceover packs don't voice this dialog.", 0.8, 0.8, 0.8, true)
@@ -771,7 +771,7 @@ function PlayButton:OnQuestDetailPlayStopClick()
     local questID = self:GetSelectedQuest()
     if not questID then return end
 
-    local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
     if cp and cp.questId == questID and CLN.VoiceoverPlayer:IsPlaybackActive(cp) then
         CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
     else
@@ -807,7 +807,7 @@ function PlayButton:UpdateQuestDetailPlayStopState()
 
     self:SetButtonShown(btn, true)
 
-    local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
     local isPlaying = cp and cp.questId == questID and CLN.VoiceoverPlayer:IsPlaybackActive(cp)
 
     btn._isPlaying = isPlaying

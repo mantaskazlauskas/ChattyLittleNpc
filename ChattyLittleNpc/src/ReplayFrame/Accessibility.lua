@@ -18,8 +18,7 @@ local ReplayFrame = CLN.ReplayFrame
 function ReplayFrame:IsHighContrastMode()
     if GetCVarBool and GetCVarBool("colorblindMode") then return true end
     -- Also respect addon-level override
-    local db = CLN and CLN.db and CLN.db.profile
-    return db and db.highContrastMode
+    return CLN.db.profile.highContrastMode
 end
 
 -- Type badge text prefixes for colorblind users (shown before label when icons are off or unavailable)

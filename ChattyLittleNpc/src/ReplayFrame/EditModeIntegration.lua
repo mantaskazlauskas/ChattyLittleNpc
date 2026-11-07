@@ -16,10 +16,10 @@ local function clearBlizzardSelection()
     end
 end
 local function logDebug(msg)
-    if CLN and CLN.Logger then CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui)
 end
 local function logInfo(msg, chat)
-    if CLN and CLN.Logger then CLN.Logger:info(msg, chat or false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:info(msg, chat or false, CLN.Utils.LogCategories.ui)
 end
 local function resolve()
     if not EditMode then EditMode = ReplayFrame.EditMode end
@@ -63,7 +63,7 @@ end
 function Integration:ShowBundleDialog()
     local _, _, ImportExport = getModules()
     if not hasAPI or not ImportExport then
-        if CLN and CLN.Print then CLN:Print("Edit Mode API unavailable") end
+        CLN:Print("Edit Mode API unavailable")
         return
     end
     if not self._bundleDialog then
@@ -96,13 +96,13 @@ function Integration:ShowBundleDialog()
         exportBtn:SetScript("OnClick", function()
             local bundle, err = ImportExport:ExportBundle()
             if not bundle then
-                if CLN and CLN.Print then CLN:Print("Export failed: " .. tostring(err)) end
+                CLN:Print("Export failed: " .. tostring(err))
                 return
             end
             editBox:SetText(bundle)
             if editBox.HighlightText then editBox:HighlightText() end
             if editBox.SetFocus then editBox:SetFocus() end
-            if CLN and CLN.Print then CLN:Print("Bundle exported to dialog") end
+            CLN:Print("Bundle exported to dialog")
         end)
         local importBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
         importBtn:SetSize(110, 24)
@@ -110,7 +110,7 @@ function Integration:ShowBundleDialog()
         importBtn:SetText("Import")
         importBtn:SetScript("OnClick", function()
             local ok, msg = ImportExport:ImportBundle(editBox:GetText() or "")
-            if CLN and CLN.Print then CLN:Print((ok and "Import success: " or "Import failed: ") .. tostring(msg)) end
+            CLN:Print((ok and "Import success: " or "Import failed: ") .. tostring(msg))
             if ok then Integration:UpdateLayoutBadge() end
         end)
         local closeBtn = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
@@ -125,7 +125,7 @@ function Integration:ShowBundleDialog()
     self._bundleDialog:Raise()
 end
 function Integration:ShowLayoutManager()
-    if CLN and CLN.Print then CLN:Print("Layout Manager: coming soon") end
+    CLN:Print("Layout Manager: coming soon")
 end
 function Integration:UpdateLayoutBadge()
     local Registry, _, _, OverlayFactory = getModules()
@@ -135,7 +135,7 @@ end
 function Integration:InjectSampleDataIfNeeded()
     if not ReplayFrame or not ReplayFrame.SetQueueData then return end
     local realCount = (CLN.questsQueue and #CLN.questsQueue or 0)
-    local playing = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying or nil
+    local playing = CLN.VoiceoverPlayer.currentlyPlaying
     if realCount > 0 or playing or ReplayFrame._editModeSamples then return end
     local samples = {
         { isPlaying = true, label = "[Now Playing] Sample: The Fallen Watcher", tooltip = "Sample active narration" },

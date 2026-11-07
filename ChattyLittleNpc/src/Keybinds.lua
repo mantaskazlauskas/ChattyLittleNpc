@@ -22,9 +22,9 @@ _G.BINDING_HEADER_CHATTYLITTLENPC = "Chatty Little NPC"
 _G["BINDING_NAME_" .. ACTION] = "Play / Stop Voiceover"
 
 function Keybinds:OnBindingPressed()
-    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer:IsEffectivelyPlaying() then
+    if CLN.VoiceoverPlayer:IsEffectivelyPlaying() then
         CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
-    elseif CLN.PlayButton and CLN.PlayButton._currentPlayCallback then
+    elseif CLN.PlayButton._currentPlayCallback then
         CLN.PlayButton._currentPlayCallback()
     end
 end
@@ -85,8 +85,8 @@ end
 -- One-time migration of the old self-managed hotkey (db.profile.playVoiceoverKey)
 -- into a real binding. Never steals a key that's already bound to something else.
 local function MigrateLegacyKey()
-    local profile = CLN.db and CLN.db.profile
-    local key = profile and profile.playVoiceoverKey
+    local profile = CLN.db.profile
+    local key = profile.playVoiceoverKey
     if not key or key == "" then return end
     profile.playVoiceoverKey = nil
 

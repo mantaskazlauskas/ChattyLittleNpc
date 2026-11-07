@@ -68,9 +68,7 @@ local overlays = {}
 -- ============================================================================
 
 local function logDebug(msg)
-    if CLN and CLN.Logger then
-        CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui)
-    end
+    CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui)
 end
 
 --- Determine the correct idle visual state for a controller.

@@ -18,13 +18,13 @@ local HIDDEN_BASE_LAYOUTS = 2
 local hasAPI = (C_EditMode and type(C_EditMode.GetLayouts) == "function")
 
 local function logDebug(msg)
-    if CLN and CLN.Logger then CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug(msg, false, CLN.Utils.LogCategories.ui)
 end
 local function logInfo(msg, chat)
-    if CLN and CLN.Logger then CLN.Logger:info(msg, chat or false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:info(msg, chat or false, CLN.Utils.LogCategories.ui)
 end
 local function logWarn(msg)
-    if CLN and CLN.Logger then CLN.Logger:warn(msg, false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:warn(msg, false, CLN.Utils.LogCategories.ui)
 end
 
 -- Whether a state field is opted out of per-layout storage.
