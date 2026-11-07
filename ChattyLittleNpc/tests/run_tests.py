@@ -78,6 +78,20 @@ def make_lua():
         -- C_Timer for ReplayFrame
         C_Timer = C_Timer or { After = function() end }
     """)
+    # Real message bus, wired the way Main.lua does it, so modules that talk
+    # through CLN:SendMessage / CLN:RegisterMessage work under test.
+    load_file(lua, "Core/Events.lua")
+    load_file(lua, "Core/Messages.lua")
+    lua.execute("""
+        local CLN = _G.ChattyLittleNpc
+        CLN._sharedEvents = CLN.EventSystem:New()
+        function CLN:SendMessage(message, ...) self._sharedEvents:SendMessage(message, ...) end
+        function CLN:RegisterMessage(message, cb) self._sharedEvents:RegisterMessage(message, cb) end
+        function CLN:UnregisterMessage(message, cb) self._sharedEvents:UnregisterMessage(message, cb) end
+        -- Errors raised inside message handlers are caught by the bus and logged
+        _G._loggedErrors = {}
+        CLN.Logger.error = function(_, msg) table.insert(_G._loggedErrors, tostring(msg)) end
+    """)
     return lua
 
 
@@ -1438,6 +1452,7 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
             local VP = CLN.VoiceoverPlayer
             VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
             VP._suspendedPlayback = nil
+            VP._lastForceStopTime = nil
 
             local RF = CLN.ReplayFrame
             RF._replayHistory = {}
@@ -1748,6 +1763,93 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
         self.assertEqual(current_id, 100)
         self.assertEqual(qlen, 1)  # Q300 remains
         self.assertEqual(push_calls, 1)  # Q200 was dropped to history
+
+
+    # --- Playback messages (Core/Messages.lua) -------------------------------
+
+    def _record_messages(self):
+        """Record every playback message sent, in order, into _msgs."""
+        lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            _msgs = {}
+            if not _recorderInstalled then
+                _recorderInstalled = true
+                for _, name in pairs(CLN.Messages) do
+                    CLN:RegisterMessage(name, function(msg, a)
+                        table.insert(_msgs, msg .. "|" .. tostring(a))
+                    end)
+                end
+            end
+        """)
+
+    def test_display_dirty_sends_state_changed_with_current_state(self):
+        self._record_messages()
+        msgs = lua_call(self.lua, """
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP.currentlyPlaying.title = "Hi"
+            VP:SetPlaybackState(VP.currentlyPlaying, VP.State.PAUSED_USER)
+            VP:NotifyDisplayDirty()
+            return table.concat(_msgs, ";")
+        """)
+        self.assertEqual(msgs, "CLN_PLAYBACK_STATE_CHANGED|paused_user")
+        self.assertEqual(lua_call(self.lua, "return #_G._loggedErrors"), 0)
+
+    def test_force_stop_with_clear_sends_messages_in_order_and_resets_scroll(self):
+        self._record_messages()
+        msgs, scroll, hist_calls = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            RF._scrollOffset = 7
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP.currentlyPlaying.title = "Line A"
+            VP.currentlyPlaying.soundHandle = 11
+            CLN.questsQueue = { { questId = 2, phase = "Desc", title = "Q2", entryType = "quest" } }
+            VP:ForceStopCurrentSound(true, true)
+            return table.concat(_msgs, ";"), RF._scrollOffset, RF._historyPushCalls
+        """)
+        # current line and queued item go to history, then the queue clears,
+        # then the conversation ends, then the display refreshes
+        self.assertEqual([m.split("|")[0] for m in msgs.split(";")], [
+            "CLN_HISTORY_ADDED", "CLN_HISTORY_ADDED", "CLN_QUEUE_CHANGED",
+            "CLN_CONVERSATION_ENDED", "CLN_PLAYBACK_STATE_CHANGED",
+        ])
+        self.assertIn("CLN_QUEUE_CHANGED|cleared", msgs)
+        self.assertIn("CLN_CONVERSATION_ENDED|Line A", msgs)
+        self.assertEqual(scroll, 0)       # replay frame reset its scroll on "cleared"
+        self.assertEqual(hist_calls, 2)   # replay frame received both history entries
+
+    def test_queue_change_without_clear_keeps_scroll(self):
+        scroll, dirty = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+            RF._scrollOffset = 3
+            CLN.VoiceoverPlayer:NotifyQueueDirty()
+            return RF._scrollOffset, RF._queueDirtyCalls
+        """)
+        self.assertEqual(scroll, 3)
+        self.assertEqual(dirty, 1)
+
+    def test_queued_entry_duration_is_resolved_once(self):
+        calls, dur1, dur2 = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local orig = CLN.Utils.GetPathToNonQuestFile
+            local n = 0
+            CLN.Utils.GetPathToNonQuestFile = function(...) n = n + 1 return orig(...) end
+            local origEstimate = CLN.Utils.EstimateVODuration
+            CLN.Utils.EstimateVODuration = function(text) return #text end
+            CLN.questsQueue = { { npcId = 5, title = "Hello there friend", entryType = "Gossip" } }
+            local e1 = VP:GetDisplayEntries()
+            local e2 = VP:GetDisplayEntries()
+            CLN.Utils.GetPathToNonQuestFile = orig
+            CLN.Utils.EstimateVODuration = origEstimate
+            return n, e1[1].duration, e2[1].duration
+        """)
+        self.assertEqual(calls, 1)
+        self.assertEqual(dur1, len("Hello there friend"))
+        self.assertEqual(dur1, dur2)
 
 
 @unittest.skip("Md5.lua uses WoW bit library that hangs in Lua 5.4")
@@ -3005,7 +3107,6 @@ class TestGossipCooldown(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.lua = make_lua()
-        cls.lua.execute("ChattyLittleNpc.EventSystem = { New = function() return {} end }")
         load_file(cls.lua, "Main.lua")
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
@@ -3256,10 +3357,14 @@ class TestPlayLibraryFile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.lua = make_lua()
-        cls.lua.execute("ChattyLittleNpc.EventSystem = { New = function() return {} end }")
         load_file(cls.lua, "Main.lua")
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        # History goes out on the message bus; collect it like the replay frame would
+        cls.lua.execute("""
+            local CLN = ChattyLittleNpc
+            CLN:RegisterMessage(CLN.Messages.HISTORY_ADDED, function(_, e) table.insert(_hist, e) end)
+        """)
 
     def setUp(self):
         lua_call(self.lua, """
@@ -3274,7 +3379,6 @@ class TestPlayLibraryFile(unittest.TestCase):
             function StopSound() _stopped = _stopped + 1 end
             C_Sound = { IsPlaying = function() return true end }
             CLN.EventHandler = { ResumeTimers = function() _resumed = _resumed + 1 end }
-            CLN.ReplayFrame = { PushHistory = function(_, e) table.insert(_hist, e) end }
             local VP = CLN.VoiceoverPlayer
             VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
             VP._suspendedPlayback = nil

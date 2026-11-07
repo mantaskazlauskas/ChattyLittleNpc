@@ -760,15 +760,8 @@ function PlayButton:CreateQuestDetailPlayStopButton()
         if GameTooltip_Hide then GameTooltip_Hide() end
     end)
 
-    -- Periodic state refresh while visible
-    local refreshElapsed = 0
-    btn:SetScript("OnUpdate", function(_, dt)
-        refreshElapsed = refreshElapsed + dt
-        if refreshElapsed < 0.5 then return end
-        refreshElapsed = 0
-        PlayButton:UpdateQuestDetailPlayStopState()
-    end)
-
+    -- Play/stop icon follows playback through CLN_PLAYBACK_STATE_CHANGED (see
+    -- end of file); quest log selection changes come in through UpdatePlayButton.
     self._questDetailPlayStopBtn = btn
     self:UpdateQuestDetailPlayStopState()
     return btn
@@ -831,4 +824,16 @@ function PlayButton:HideQuestDetailPlayStopButton()
     if self._questDetailPlayStopBtn then
         self:SetButtonShown(self._questDetailPlayStopBtn, false)
     end
+end
+
+-- Keep the quest-detail play/stop icon in step with playback. Only while the
+-- button is shown, as the old OnUpdate poll was: marking it wanted while the
+-- map is closed would keep the anchor watcher running every frame.
+if CLN.RegisterMessage and CLN.Messages then
+    CLN:RegisterMessage(CLN.Messages.PLAYBACK_STATE_CHANGED, function()
+        local btn = PlayButton._questDetailPlayStopBtn
+        if btn and btn:IsShown() then
+            PlayButton:UpdateQuestDetailPlayStopState()
+        end
+    end)
 end

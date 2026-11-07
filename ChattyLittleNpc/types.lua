@@ -76,3 +76,5 @@
 ---@field IterateVoiceoverPacks fun(self: ChattyLittleNpc): fun(): string, table
 ---@field GetVoiceoverLanguage fun(self: ChattyLittleNpc): string
 ---@field SendMessage fun(self: ChattyLittleNpc, message: string, ...)
+---@field RegisterMessage fun(self: ChattyLittleNpc, message: string, callback: function)
+---@field Messages table<string, string> Message names for the shared bus (Core/Messages.lua)

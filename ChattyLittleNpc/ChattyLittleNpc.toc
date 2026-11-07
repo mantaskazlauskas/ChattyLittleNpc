@@ -9,6 +9,7 @@
 
 Core/Print.lua
 Core/Events.lua
+Core/Messages.lua
 Core/Timer.lua
 Core/Database.lua
 Core/Widgets.lua

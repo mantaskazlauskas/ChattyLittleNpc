@@ -432,9 +432,7 @@ function EventHandler:OnVoiceoverStop(event, stoppedVoiceover)
             end
             -- Conversation stopped; refresh UI and let FSM drive farewell/hide
             CLN.VoiceoverPlayer:NotifyDisplayDirty()
-            if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
-                CLN.ReplayFrame:OnConversationStop()
-            end
+            CLN:SendMessage(CLN.Messages.CONVERSATION_ENDED)
         end
     end
 end

@@ -515,27 +515,15 @@ function ReplayFrame:BuildQueueEntries()
                 hasPackDuration = cp and cp._hasPackDuration or false,
             })
         else
-            -- Look up duration for queued items
-            local qDur, qIsPack
-            if item.questId and item.phase then
-                local fn = item.questId .. "_" .. item.phase .. ".ogg"
-                qDur, qIsPack = player:GetBestDuration(fn, item.title)
-            elseif item.npcId and item.title and item.entryType then
-                -- Resolve the file the way playback will (any hash variant, gender suffix)
-                local qHashes = CLN.Utils and CLN.Utils.GetHashes and CLN.Utils:GetHashes(item.npcId, item.title)
-                local qPath = qHashes and CLN.Utils.GetPathToNonQuestFile
-                    and CLN.Utils:GetPathToNonQuestFile(item.npcId, item.entryType, qHashes, item.gender) or nil
-                local qFn = qPath and qPath:match("([^\\/]+)$") or nil
-                qDur, qIsPack = player:GetBestDuration(qFn, item.title)
-            end
+            -- Queued items: duration is resolved once by the player and cached
             table.insert(entries, {
                 queueIndex = item.queueIndex,
                 state = item.state,
                 label = label,
                 tooltip = tooltip,
                 entryType = item.entryType or (isQuest and "quest" or "unknown"),
-                duration = qDur,
-                hasPackDuration = qIsPack or false,
+                duration = item.duration,
+                hasPackDuration = item.hasPackDuration or false,
             })
         end
     end
@@ -975,3 +963,33 @@ function ReplayFrame:ApplyQueueTextScale()
 end
 
 -- Modules are loaded via .toc; dev-time loadfile fallbacks removed for clarity.
+
+-- =============================================================
+-- Playback messages (Core/Messages.lua)
+-- =============================================================
+-- The player announces changes; the replay frame reacts. Methods are looked up
+-- when a message arrives because several are defined in later files (UI.lua,
+-- CompactBadge.lua, ModelFrame.lua).
+if CLN.RegisterMessage and CLN.Messages then
+    local M = CLN.Messages
+
+    CLN:RegisterMessage(M.QUEUE_CHANGED, function(_, reason)
+        -- Show the top of the list again once the whole queue was dropped
+        if reason == "cleared" then ReplayFrame._scrollOffset = 0 end
+        if ReplayFrame.MarkQueueDirty then ReplayFrame:MarkQueueDirty() end
+    end)
+
+    CLN:RegisterMessage(M.PLAYBACK_STATE_CHANGED, function()
+        if ReplayFrame.UpdateDisplayFrameState then ReplayFrame:UpdateDisplayFrameState() end
+        ---@diagnostic disable-next-line: undefined-field
+        if ReplayFrame.UpdatePauseButton then ReplayFrame:UpdatePauseButton() end -- CompactBadge.lua
+    end)
+
+    CLN:RegisterMessage(M.HISTORY_ADDED, function(_, entry)
+        if ReplayFrame.PushHistory then ReplayFrame:PushHistory(entry) end
+    end)
+
+    CLN:RegisterMessage(M.CONVERSATION_ENDED, function(_, lastText)
+        if ReplayFrame.OnConversationStop then ReplayFrame:OnConversationStop(lastText) end
+    end)
+end

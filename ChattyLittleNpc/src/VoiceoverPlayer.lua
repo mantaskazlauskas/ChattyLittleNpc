@@ -5,6 +5,15 @@ local CLN = _G.ChattyLittleNpc
 local VoiceoverPlayer = {}
 CLN.VoiceoverPlayer = VoiceoverPlayer
 
+-- The player announces changes on the shared message bus (names in
+-- Core/Messages.lua); UI modules subscribe instead of being called directly.
+local function send(messageKey, ...)
+    local name = CLN.Messages and CLN.Messages[messageKey]
+    if name and CLN.SendMessage then
+        CLN:SendMessage(name, ...)
+    end
+end
+
 -- ============================================================================
 -- Gossip Cooldown
 -- ============================================================================
@@ -215,8 +224,8 @@ function VoiceoverPlayer:DeduplicateQueue()
             seen[key] = true
         end
     end
-    if removedAny and CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then
-        CLN.ReplayFrame:MarkQueueDirty()
+    if removedAny then
+        self:NotifyQueueDirty()
     end
 end
 
@@ -265,7 +274,10 @@ function VoiceoverPlayer:GetDisplayEntries()
                 if state == self.State.IDLE then
                     state = self.State.QUEUED
                 end
+                local duration, hasPackDuration = self:GetQueuedEntryDuration(q)
                 table.insert(entries, {
+                    duration = duration,
+                    hasPackDuration = hasPackDuration,
                     kind = "queue",
                     state = state,
                     queueIndex = i,
@@ -397,26 +409,24 @@ function VoiceoverPlayer:PushToHistory(record)
     -- Must have *something* identifiable
     if not title and not record.questId then return end
 
-    if CLN.ReplayFrame and CLN.ReplayFrame.PushHistory then
-        record._historyPushed = true
-        local historyEntry = {
-            title = title,
-            npcId = record.npcId,
-            questId = record.questId,
-            phase = record.phase,
-            entryType = record.entryType or (record.questId and "quest" or "unknown"),
-            state = record.state or self:GetPlaybackState(record),
-            gender = record.gender,
-            displayID = record.displayID,
-            libraryEntry = record._libraryEntry,
-            completedAt = GetTime and GetTime() or 0,
-        }
-        -- Enrich with cached metadata so replays have full model info
-        if CLN.NpcMetadataCache and CLN.NpcMetadataCache.Enrich then
-            CLN.NpcMetadataCache:Enrich(historyEntry)
-        end
-        CLN.ReplayFrame:PushHistory(historyEntry)
+    record._historyPushed = true
+    local historyEntry = {
+        title = title,
+        npcId = record.npcId,
+        questId = record.questId,
+        phase = record.phase,
+        entryType = record.entryType or (record.questId and "quest" or "unknown"),
+        state = record.state or self:GetPlaybackState(record),
+        gender = record.gender,
+        displayID = record.displayID,
+        libraryEntry = record._libraryEntry,
+        completedAt = GetTime and GetTime() or 0,
+    }
+    -- Enrich with cached metadata so replays have full model info
+    if CLN.NpcMetadataCache and CLN.NpcMetadataCache.Enrich then
+        CLN.NpcMetadataCache:Enrich(historyEntry)
     end
+    send("HISTORY_ADDED", historyEntry)
 end
 
 -- Grace period: consider a sound "still playing" if it started recently,
@@ -494,8 +504,7 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
             self:PushToHistory(q)
         end
         CLN.questsQueue = {}
-        if CLN.ReplayFrame then CLN.ReplayFrame._scrollOffset = 0 end
-        self:NotifyQueueDirty()
+        self:NotifyQueueDirty("cleared")
     end
 
     if (cp and cp.soundHandle) then
@@ -510,11 +519,9 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
     end
 
     -- Deterministic animation cleanup: the polling watcher won't fire
-    -- VOICEOVER_STOP because we clear currentlyPlaying below, so call
-    -- OnConversationStop explicitly while cp is still available for lastMsg.
-    if CLN.ReplayFrame and CLN.ReplayFrame.OnConversationStop then
-        CLN.ReplayFrame:OnConversationStop(cp and cp.title)
-    end
+    -- VOICEOVER_STOP because we clear currentlyPlaying below, so announce the
+    -- end explicitly while cp is still available for the last line's text.
+    send("CONVERSATION_ENDED", cp and cp.title)
 
     -- Clear the currentlyPlaying object
     VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
@@ -1028,21 +1035,45 @@ end
 -- ============================================================================
 -- Centralized UI Notification Helpers (Phase 1)
 -- ============================================================================
---- Notify the UI that the queue contents have changed.
-function VoiceoverPlayer:NotifyQueueDirty()
-    if CLN.ReplayFrame and CLN.ReplayFrame.MarkQueueDirty then
-        CLN.ReplayFrame:MarkQueueDirty()
-    end
+--- Announce that the queue contents have changed.
+---@param reason string|nil "cleared" when the whole queue was dropped
+function VoiceoverPlayer:NotifyQueueDirty(reason)
+    send("QUEUE_CHANGED", reason)
 end
 
---- Notify the UI that the display state (playing/paused/idle) has changed.
+--- Announce that the display state (playing/paused/idle) may have changed.
 function VoiceoverPlayer:NotifyDisplayDirty()
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdateDisplayFrameState then
-        CLN.ReplayFrame:UpdateDisplayFrameState()
+    local cp = self.currentlyPlaying
+    send("PLAYBACK_STATE_CHANGED", self:GetPlaybackState(cp), cp)
+end
+
+--- Resolve and cache how long a queued entry will play, the same way playback
+--- will find its file. Cached on the queue record so the queue view doesn't
+--- re-resolve files on every redraw.
+---@param q table queue record
+---@return number|nil duration, boolean isPackDuration
+function VoiceoverPlayer:GetQueuedEntryDuration(q)
+    if not q then return nil, false end
+    if q._durationResolved then
+        return q._duration, q._hasPackDuration or false
     end
-    if CLN.ReplayFrame and CLN.ReplayFrame.UpdatePauseButton then
-        CLN.ReplayFrame:UpdatePauseButton()
+    local fileName
+    if q.questId and q.phase then
+        fileName = q.questId .. "_" .. q.phase .. ".ogg"
+    elseif q.npcId and q.title and q.entryType and CLN.Utils and CLN.Utils.GetHashes then
+        -- Any hash variant, gender suffix: same lookup playback uses
+        local hashes = CLN.Utils:GetHashes(q.npcId, q.title)
+        local path = hashes and CLN.Utils.GetPathToNonQuestFile
+            and CLN.Utils:GetPathToNonQuestFile(q.npcId, q.entryType, hashes, q.gender) or nil
+        fileName = path and path:match("([^\\/]+)$") or nil
+    else
+        return nil, false
     end
+    local duration, isPack = self:GetBestDuration(fileName, q.title)
+    q._durationResolved = true
+    q._duration = duration
+    q._hasPackDuration = isPack or false
+    return duration, isPack or false
 end
 
 --- Toggle pause/resume.
