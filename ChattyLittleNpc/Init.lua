@@ -17,50 +17,36 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
         self:UnregisterEvent("ADDON_LOADED")
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Give the loading screen time to clear before the first-run welcome.
-        if CLN.WelcomeWindow then
-            C_Timer.After(3, function() CLN.WelcomeWindow:ShowIfFirstRun() end)
-        end
+        C_Timer.After(3, function() CLN.WelcomeWindow:ShowIfFirstRun() end)
         return
     end
 
     if addonName == "ChattyLittleNpc" then
         -- Initialize the addon
-        if CLN.OnInitialize then
-            CLN:OnInitialize()
-        end
+        CLN:OnInitialize()
 
         -- Initialize dialog tracker tables and NPC metadata cache
-        if CLN.NpcDialogTracker and CLN.NpcDialogTracker.InitializeTables then
-            CLN.NpcDialogTracker:InitializeTables()
-        end
-        if CLN.NpcMetadataCache then
-            CLN.NpcMetadataCache:Initialize()
-            CLN.NpcMetadataCache:Prune(30)
-        end
+        CLN.NpcDialogTracker:InitializeTables()
+        CLN.NpcMetadataCache:Initialize()
+        CLN.NpcMetadataCache:Prune(30)
 
         -- Enable the addon (register events, etc.)
-        if CLN.OnEnable then
-            CLN:OnEnable()
-        end
+        CLN:OnEnable()
 
         -- Start the voiceover playback watcher
-        if CLN.EventHandler and CLN.EventHandler.StartWatcher then
-            CLN.EventHandler:StartWatcher()
-        end
+        CLN.EventHandler:StartWatcher()
 
         -- Initialize Options panel after everything is loaded
-        if CLN.Options and CLN.Options.SetupOptions then
-            CLN.Options:SetupOptions()
-        end
+        CLN.Options:SetupOptions()
 
     elseif addonName and addonName:match("^ChattyLittleNpc_.+_voiceovers$") then
         -- A voiceover pack was loaded, add it to our collection
         local addon = _G[addonName]
-        if CLN.RegisterVoiceoverPack and CLN:RegisterVoiceoverPack(addonName) then
-            if CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.Logger then
-                CLN.Logger:info("Detected voiceover pack: " .. tostring(addonName), false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+        if CLN:RegisterVoiceoverPack(addonName) then
+            if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
+                CLN.Logger:info("Detected voiceover pack: " .. tostring(addonName), false, CLN.Utils.LogCategories.loader)
                 if addon.Voiceovers then
-                    CLN.Logger:info("  Voiceover count: " .. tostring(#addon.Voiceovers), false, (CLN.Utils and CLN.Utils.LogCategories.loader) or 'misc')
+                    CLN.Logger:info("  Voiceover count: " .. tostring(#addon.Voiceovers), false, CLN.Utils.LogCategories.loader)
                 end
             end
         end

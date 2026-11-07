@@ -83,12 +83,12 @@ function CLN:RunBase64TestCases()
     }
 
     for _, text in ipairs(testCases) do
-    if CLN and CLN.Logger then CLN.Logger:info("Original Text: " .. tostring(text), true, CLN.Utils.LogCategories.misc) end
+    CLN.Logger:info("Original Text: " .. tostring(text), true, CLN.Utils.LogCategories.misc)
         local encoded = self.Base64:Encode(text)
-    if CLN and CLN.Logger then CLN.Logger:info("Encoded: " .. tostring(encoded), true, CLN.Utils.LogCategories.misc) end
+    CLN.Logger:info("Encoded: " .. tostring(encoded), true, CLN.Utils.LogCategories.misc)
         local decoded = self.Base64:Decode(encoded)
-    if CLN and CLN.Logger then CLN.Logger:info("Decoded: " .. tostring(decoded), true, CLN.Utils.LogCategories.misc) end
-    if CLN and CLN.Logger then CLN.Logger:info("Match: " .. tostring(text == decoded), true, CLN.Utils.LogCategories.misc) end
+    CLN.Logger:info("Decoded: " .. tostring(decoded), true, CLN.Utils.LogCategories.misc)
+    CLN.Logger:info("Match: " .. tostring(text == decoded), true, CLN.Utils.LogCategories.misc)
     end
 end
 

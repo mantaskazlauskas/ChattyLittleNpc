@@ -54,10 +54,7 @@ end
 function NpcMetadataCache:CaptureFromUnit()
     if not (UnitExists and UnitExists("npc")) then return nil end
 
-    local unitName, gender, race, unitGuid, unitType, npcId, creatureType
-    if CLN.GetUnitInfo then
-        unitName, gender, race, unitGuid, unitType, npcId, creatureType = CLN:GetUnitInfo("npc")
-    end
+    local unitName, gender, race, unitGuid, unitType, npcId, creatureType = CLN:GetUnitInfo("npc")
     if not npcId then return nil end
 
     -- Same model probe the Race Model Manager relies on: display ID via
@@ -66,7 +63,7 @@ function NpcMetadataCache:CaptureFromUnit()
     -- Creatures only: GameObject IDs share this table but have no creature model.
     local modelFileId, displayID
     local isCreature = unitType == "Creature" or unitType == "Vehicle"
-    if isCreature and CLN.NpcRaceLookup and CLN.NpcRaceLookup.GetUnitModelFileID then
+    if isCreature then
         modelFileId, displayID = CLN.NpcRaceLookup:GetUnitModelFileID("npc")
     end
 
@@ -141,9 +138,8 @@ function NpcMetadataCache:Prune(maxAgeDays)
         end
     end
 
-    if pruned > 0 and CLN and CLN.Logger then
-        CLN.Logger:debug("NpcMetadataCache: pruned " .. pruned .. " stale entries", false,
-            (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.misc) or "misc")
+    if pruned > 0 then
+        CLN.Logger:debug("NpcMetadataCache: pruned " .. pruned .. " stale entries", false, CLN.Utils.LogCategories.misc)
     end
 end
 

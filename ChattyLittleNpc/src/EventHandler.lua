@@ -641,9 +641,7 @@ function EventHandler:_OnNpcChatMessageInner(event, text, npcName, guid, isSubti
     if npcId and not wl[npcId] and npcName and wl[npcName] then
         wl[npcId] = true
         -- Also contribute the new ID for community collection
-        if CLN.ContributeVoicedNpc then
-            CLN:ContributeVoicedNpc(npcName, { npcId })
-        end
+        CLN:ContributeVoicedNpc(npcName, { npcId })
     end
 
     -- Already paused? Extend the timer instead of double-pausing

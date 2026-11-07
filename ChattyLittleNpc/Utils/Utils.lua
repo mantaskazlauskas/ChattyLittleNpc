@@ -235,10 +235,8 @@ end
 ---@param original string|nil Original before normalization (for context)
 function Utils:ValidateQuestPhase(phase, original)
     if _phaseSet[phase] then return true end
-    if CLN and CLN.Logger then
-        local msg = "Unexpected quest phase '" .. tostring(original or phase) .. "' (normalized='" .. tostring(phase) .. "')."
-        CLN.Logger:warn(msg, false, self.LogCategories.loader)
-    end
+    local msg = "Unexpected quest phase '" .. tostring(original or phase) .. "' (normalized='" .. tostring(phase) .. "')."
+    CLN.Logger:warn(msg, false, self.LogCategories.loader)
     return false
 end
 
@@ -258,7 +256,7 @@ local function normalizeCategory(cat)
     if not Utils._warnedMissingCategory then
         Utils._warnedMissingCategory = true
     -- Route through centralized logger; captured by LogsWindow; no chat mirroring
-    if CLN and CLN.Logger then CLN.Logger:warn("Log category missing/unknown; please use Utils.LogCategories.*. Defaulting to 'misc'.", false, Utils.LogCategories.misc) end
+    CLN.Logger:warn("Log category missing/unknown; please use Utils.LogCategories.*. Defaulting to 'misc'.", false, Utils.LogCategories.misc)
     end
     return Utils.LogCategories.misc
 end
@@ -331,7 +329,7 @@ end
 ]]
 function Utils:PrintTable(t, indent)
     if (not t) then
-    if CLN and CLN.Logger then CLN.Logger:info("Table is nil.", false, self.LogCategories.misc) end
+    CLN.Logger:info("Table is nil.", false, self.LogCategories.misc)
         return
     end
 
@@ -342,10 +340,10 @@ function Utils:PrintTable(t, indent)
     for k, v in pairs(t) do
         local formatting = string.rep("  ", indent) .. k .. ": "
         if (type(v) == "table") then
-            if CLN and CLN.Logger then CLN.Logger:info(formatting, false, self.LogCategories.misc) end
+            CLN.Logger:info(formatting, false, self.LogCategories.misc)
             self:PrintTable(v, indent + 1)
         else
-            if CLN and CLN.Logger then CLN.Logger:info(formatting .. tostring(v), false, self.LogCategories.misc) end
+            CLN.Logger:info(formatting .. tostring(v), false, self.LogCategories.misc)
         end
     end
 end
@@ -404,7 +402,6 @@ end
 --- Log debug messages to console
 -- @param text The debug message to log.
 function Utils:LogDebug(text)
-    if not (CLN and CLN.Logger) then return end
     if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
         CLN.Logger:debug(text, false, self.LogCategories.debug)
     end
@@ -423,10 +420,8 @@ function Utils:LogAnimDebug(a, b)
     -- Enforce category usage
     category = normalizeCategory(category)
     if not self:ShouldLogAnimDebug(category) then return end
-    if CLN and CLN.Logger then
-        local catTag = category and ("[" .. category .. "] ") or ""
-        CLN.Logger:debug(catTag .. text, false, category)
-    end
+    local catTag = category and ("[" .. category .. "] ") or ""
+    CLN.Logger:debug(catTag .. text, false, category)
 end
 
 -- Extended: Log animation debug with an optional session tag for per-model filtering
@@ -448,16 +443,14 @@ function Utils:LogAnimDebugEx(a, b, session)
     if not self:ShouldLogAnimDebug(category) then return end
     local sessTag = session and ("[sess:" .. tostring(session) .. "] ") or ""
     local catTag = category and ("[" .. category .. "] ") or ""
-    if CLN and CLN.Logger then
-        CLN.Logger:debug(catTag .. sessTag .. text, false, category)
-    end
+    CLN.Logger:debug(catTag .. sessTag .. text, false, category)
 end
 
 --- Helper function to check if animation debug logging is enabled
 -- @return boolean true if animation debug logging is enabled
 -- Check if animation debug logging is enabled for an optional category
 function Utils:ShouldLogAnimDebug(category)
-    if not (CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.db.profile.debugAnimations) then
+    if not (CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.db.profile.debugAnimations) then
         return false
     end
     -- Normalize/validate category; uncategorized maps to 'misc'

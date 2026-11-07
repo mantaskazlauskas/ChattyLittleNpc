@@ -18,7 +18,7 @@ Logger.minConsoleLevel = Logger.Level.INFO
 
 -- Category set comes from Utils if present; fallback basic categories
 local function getCategories()
-	local U = CLN and CLN.Utils
+	local U = CLN.Utils
 	if U and U.LogCategories then return U.LogCategories end
 	return {
 		app = "app",
@@ -48,7 +48,7 @@ end
 -- (e.g. "Log Collected Data to Chat"), so they print even with logToChat off.
 local function shouldPrint(level, category, includeInChat)
 	-- Always record in LogsWindow buffer via CLN.Print hook; decide chat mirroring here
-	local prof = CLN and CLN.db and CLN.db.profile or {}
+	local prof = CLN.db and CLN.db.profile or {}
 	if includeInChat == true and level ~= Logger.Level.DEBUG then return true end
 	local chatOn = prof.logToChat == true
 	if not chatOn then return false end
@@ -92,7 +92,7 @@ function Logger:log(message, includeInChat, category, level)
 	-- Always push to the LogsWindow buffer so logs are captured regardless of chat setting.
 	if CLN._pushLogLine then
 		CLN._pushLogLine(cat, text, nil, "addon", lvl)
-	elseif CLN and CLN.Print then
+	else
 		-- Fallback if LogsWindow buffer not yet available
 		CLN:Print(line)
 	end
@@ -119,7 +119,7 @@ end
 
 function Logger:debug(msg, includeInChat, category)
 	-- Respect debugMode for debug level
-	if CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
+	if CLN.db and CLN.db.profile and CLN.db.profile.debugMode then
 		self:log(msg, includeInChat, category or (getCategories().debug or "debug"), Logger.Level.DEBUG)
 	end
 end

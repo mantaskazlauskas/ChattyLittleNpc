@@ -213,25 +213,19 @@ function CLN:RunSimHash64TestCases()
     local hashTable = {}
     for i, t in ipairs(texts) do
         hashTable[i] = self.SimHash64:GenerateHash(t, 3, false)
-        if CLN and CLN.Logger then
-            CLN.Logger:debug(("Text #%d Hash = %s"):format(i, hashTable[i]), false, CLN.Utils.LogCategories.misc)
-        end
+        CLN.Logger:debug(("Text #%d Hash = %s"):format(i, hashTable[i]), false, CLN.Utils.LogCategories.misc)
     end
 
     -- Compare #1 to #2, #4, etc.
     local refHash = hashTable[1]
     for i = 2, #hashTable do
         local isSimilar, distance = self.SimHash64:AreSimilar(refHash, hashTable[i], 5)
-        if CLN and CLN.Logger then
-            CLN.Logger:debug(("Compare #1 vs #%d => Distance=%d, Similar? %s"):format(i, distance, isSimilar and "YES" or "NO"), false, CLN.Utils.LogCategories.misc)
-        end
+        CLN.Logger:debug(("Compare #1 vs #%d => Distance=%d, Similar? %s"):format(i, distance, isSimilar and "YES" or "NO"), false, CLN.Utils.LogCategories.misc)
     end
 
     -- Example: find closest among #2..#4 for text #1
     local bestHash, bestDist = self.SimHash64:FindClosestHash(hashTable, texts[1], 3, false, nil)
-    if CLN and CLN.Logger then
-        CLN.Logger:debug(("Closest match for #1's text = %s (distance=%d)"):format(bestHash or "N/A", bestDist), false, CLN.Utils.LogCategories.misc)
-    end
+    CLN.Logger:debug(("Closest match for #1's text = %s (distance=%d)"):format(bestHash or "N/A", bestDist), false, CLN.Utils.LogCategories.misc)
 end
 
 SLASH_SIMHASH64TEST1 = "/simhash64test"

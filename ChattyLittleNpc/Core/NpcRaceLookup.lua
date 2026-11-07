@@ -176,9 +176,7 @@ function NpcRaceLookup:RecordUnknown(fileId, info)
     if not entry then
         entry = { count = 0, race = "" }
         db[fileId] = entry
-        if CLN.Logger then
-            CLN.Logger:debug("Unknown race model file ID " .. fileId .. " (" .. tostring(info and info.name) .. ")", false, CLN.Utils.LogCategories.misc)
-        end
+        CLN.Logger:debug("Unknown race model file ID " .. fileId .. " (" .. tostring(info and info.name) .. ")", false, CLN.Utils.LogCategories.misc)
     end
     entry.count = (entry.count or 0) + 1
     if info then
