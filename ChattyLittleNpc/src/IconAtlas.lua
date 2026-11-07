@@ -72,9 +72,7 @@ Atlas.textures = {
 function Atlas:Get(key)
     local path = self.textures[key]
     if not path then
-        if CLN and CLN.Logger and CLN.Utils and CLN.Utils.LogCategories then
-            CLN.Logger:warn("Unknown icon key: " .. tostring(key), false, CLN.Utils.LogCategories.ui)
-        end
+        CLN.Logger:warn("Unknown icon key: " .. tostring(key), false, CLN.Utils.LogCategories.ui)
         return "Interface/Icons/INV_Misc_QuestionMark"
     end
     return path

@@ -110,15 +110,11 @@ function MinimapButton:Create()
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
-            if CLN.SettingsWindow then
-                CLN.SettingsWindow:Toggle()
-            elseif CLN.Options and CLN.Options.OpenSettings then
-                CLN.Options:OpenSettings()
-            end
+            CLN.SettingsWindow:Toggle()
         elseif button == "RightButton" then
-            if CLN.ReplayFrame and CLN.ReplayFrame.ToggleUserHidden then
+            if CLN.ReplayFrame.ToggleUserHidden then
                 CLN.ReplayFrame:ToggleUserHidden()
-            elseif CLN.ReplayFrame and CLN.ReplayFrame.DisplayFrame then
+            elseif CLN.ReplayFrame.DisplayFrame then
                 local df = CLN.ReplayFrame.DisplayFrame
                 if df:IsShown() then
                     df:Hide()
@@ -144,13 +140,11 @@ function MinimapButton:Create()
         self._dragging = false
         self:SetScript("OnUpdate", nil)
         -- Persist the new angle.
-        if CLN.db and CLN.db.profile then
-            CLN.db.profile.minimapButtonAngle = self._angle or DEFAULT_ANGLE
-        end
+        CLN.db.profile.minimapButtonAngle = self._angle or DEFAULT_ANGLE
     end)
 
     -- ── Initial position ──────────────────────────────────────────────────────
-    local angle = (CLN.db and CLN.db.profile and CLN.db.profile.minimapButtonAngle) or DEFAULT_ANGLE
+    local angle = CLN.db.profile.minimapButtonAngle or DEFAULT_ANGLE
     btn._angle = angle
     applyAngle(btn, angle)
 

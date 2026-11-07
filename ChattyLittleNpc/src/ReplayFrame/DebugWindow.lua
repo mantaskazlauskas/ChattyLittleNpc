@@ -49,31 +49,31 @@ function DW:PreviewTarget()
     local applied = false
     
     -- Debug logging for model loading issues
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] PreviewTarget hasTarget=" .. tostring(hasTarget) .. " isPlayer=" .. tostring(isPlayer), false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] PreviewTarget hasTarget=" .. tostring(hasTarget) .. " isPlayer=" .. tostring(isPlayer), false, CLN.Utils.LogCategories.ui)
     
     -- Players: SetUnit is appropriate
     if isPlayer and h.SetUnit then
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] Attempting SetUnit for player", false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] Attempting SetUnit for player", false, CLN.Utils.LogCategories.ui)
         applied = pcall(h.SetUnit, h, "target") and true or false
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] SetUnit applied=" .. tostring(applied), false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] SetUnit applied=" .. tostring(applied), false, CLN.Utils.LogCategories.ui)
     end
     -- NPCs: prefer displayID path to avoid composite/texture issues in ModelScene
     if (not isPlayer) and hasTarget and UnitCreatureDisplayID and h.SetDisplayInfo then
         local ok, id = pcall(UnitCreatureDisplayID, "target")
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] UnitCreatureDisplayID ok=" .. tostring(ok) .. " id=" .. tostring(id), false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] UnitCreatureDisplayID ok=" .. tostring(ok) .. " id=" .. tostring(id), false, CLN.Utils.LogCategories.ui)
         if ok and type(id) == "number" then
             if h.ClearModel then pcall(h.ClearModel, h) end
-            if CLN and CLN.Logger then CLN.Logger:debug("[DW] Calling SetDisplayInfo id=" .. tostring(id), false, CLN.Utils.LogCategories.ui) end
+            CLN.Logger:debug("[DW] Calling SetDisplayInfo id=" .. tostring(id), false, CLN.Utils.LogCategories.ui)
             local setOk = pcall(h.SetDisplayInfo, h, id)
-            if CLN and CLN.Logger then CLN.Logger:debug("[DW] SetDisplayInfo success=" .. tostring(setOk), false, CLN.Utils.LogCategories.ui) end
+            CLN.Logger:debug("[DW] SetDisplayInfo success=" .. tostring(setOk), false, CLN.Utils.LogCategories.ui)
             applied = true
         end
     end
     -- Last resort: try SetUnit even for NPCs if displayID failed
     if (not applied) and hasTarget and h.SetUnit then
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] Fallback to SetUnit for NPC", false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] Fallback to SetUnit for NPC", false, CLN.Utils.LogCategories.ui)
         applied = pcall(h.SetUnit, h, "target") and true or false
-    if CLN and CLN.Logger then CLN.Logger:debug("[DW] Fallback SetUnit applied=" .. tostring(applied), false, CLN.Utils.LogCategories.ui) end
+    CLN.Logger:debug("[DW] Fallback SetUnit applied=" .. tostring(applied), false, CLN.Utils.LogCategories.ui)
     end
     if DW._autoRefit ~= false then
         local function refit()
@@ -110,8 +110,7 @@ end
 
 -- Lightweight per-window logger with category filter passthru
 local function shouldLog(category)
-    local U = CLN and CLN.Utils
-    return U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug(category)
+    return CLN.Utils:ShouldLogAnimDebug(category)
 end
 
 local function fmtNum(x)
@@ -133,8 +132,7 @@ function DW:Create()
     local f = CreateFrame("Frame", "CLN_DebugModelWindow", UIParent, "BackdropTemplate")
     f:SetClampedToScreen(true)
     -- Load persisted placement and settings
-    local prof = CLN and CLN.db and CLN.db.profile or nil
-    local cfg = prof and (prof.debugWindow or {}) or {}
+    local cfg = CLN.db.profile.debugWindow or {}
     local ww, hh = tonumber(cfg.width) or 960, tonumber(cfg.height) or 480
     f:SetSize(ww, hh)
     if cfg.point and cfg.relPoint and cfg.x and cfg.y then
@@ -153,13 +151,11 @@ function DW:Create()
         f:StopMovingOrSizing()
         -- Persist position and size
         local p, rel, rp, x, y = f:GetPoint(1)
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-            local dw = CLN.db.profile.debugWindow
-            dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
-            local w2, h2 = f:GetSize()
-            dw.width, dw.height = w2, h2
-        end
+        CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+        local dw = CLN.db.profile.debugWindow
+        dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
+        local w2, h2 = f:GetSize()
+        dw.width, dw.height = w2, h2
     end)
     f:SetFrameStrata("DIALOG")
     Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
@@ -173,13 +169,11 @@ function DW:Create()
         onDragStop = function()
             -- Persist position/size after title-drag
             local p, rel, rp, x, y = f:GetPoint(1)
-            if CLN and CLN.db and CLN.db.profile then
-                CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-                local dw = CLN.db.profile.debugWindow
-                dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
-                local w2, h2 = f:GetSize()
-                dw.width, dw.height = w2, h2
-            end
+            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+            local dw = CLN.db.profile.debugWindow
+            dw.point, dw.relPoint, dw.x, dw.y = p, rp, x, y
+            local w2, h2 = f:GetSize()
+            dw.width, dw.height = w2, h2
         end,
     })
 
@@ -957,10 +951,8 @@ function DW:Create()
     DW._autoRefit = (cfg.autoRefit ~= false)
     addCheck("Auto-refit on load", function() return DW._autoRefit end, function(v)
         DW._autoRefit = v and true or false
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-            CLN.db.profile.debugWindow.autoRefit = DW._autoRefit
-        end
+        CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+        CLN.db.profile.debugWindow.autoRefit = DW._autoRefit
     end, "Automatically frame model and face camera once it loads")
 
     -- Manual DisplayID loader
@@ -983,9 +975,9 @@ function DW:Create()
         if id then
             local h = getTargetHost()
             if h and h.SetDisplayInfo then
-                if CLN and CLN.Logger then CLN.Logger:debug("[DW] Manual load SetDisplayInfo id=" .. tostring(id), false, CLN.Utils.LogCategories.ui) end
+                CLN.Logger:debug("[DW] Manual load SetDisplayInfo id=" .. tostring(id), false, CLN.Utils.LogCategories.ui)
                 local ok = pcall(h.SetDisplayInfo, h, id)
-                if CLN and CLN.Logger then CLN.Logger:debug("[DW] Manual load SetDisplayInfo success=" .. tostring(ok), false, CLN.Utils.LogCategories.ui) end
+                CLN.Logger:debug("[DW] Manual load SetDisplayInfo success=" .. tostring(ok), false, CLN.Utils.LogCategories.ui)
                 if ok and DW._autoRefit ~= false then
                     -- Refit after loading
                     local function refit()
@@ -995,7 +987,7 @@ function DW:Create()
                     if C_Timer and C_Timer.After then C_Timer.After(0.10, refit) else refit() end
                 end
             else
-                if CLN and CLN.Logger then CLN.Logger:warn("[DW] Manual load: Host missing SetDisplayInfo method", false, CLN.Utils.LogCategories.ui) end
+                CLN.Logger:warn("[DW] Manual load: Host missing SetDisplayInfo method", false, CLN.Utils.LogCategories.ui)
             end
         end
     end)
@@ -1314,20 +1306,16 @@ function DW:Create()
     local expandChk = addCheck("Expanded preview", function() return DW._previewExpanded end, function(v)
         DW._previewExpanded = v and true or false
         if DW._UpdatePreviewSize then DW._UpdatePreviewSize() end
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-            CLN.db.profile.debugWindow.expanded = DW._previewExpanded
-        end
+        CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+        CLN.db.profile.debugWindow.expanded = DW._previewExpanded
     end, "Fill the preview column (on); otherwise match ReplayFrame size")
     -- Lock window toggle (persisted)
     DW._lockWindow = (cfg.lockWindow == true)
     addCheck("Lock window", function() return DW._lockWindow end, function(v)
         DW._lockWindow = v and true or false
         f:SetMovable(not DW._lockWindow)
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
-            CLN.db.profile.debugWindow.lockWindow = DW._lockWindow
-        end
+        CLN.db.profile.debugWindow = CLN.db.profile.debugWindow or {}
+        CLN.db.profile.debugWindow.lockWindow = DW._lockWindow
     end, "Prevent dragging this window")
     -- Force animations toggle for preview host (bypass ReplayFrame no-anim debug)
     local forceAnimChk = addCheck("Force animations (preview)", function() return DW._forceAnim end, function(v)

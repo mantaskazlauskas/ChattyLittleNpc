@@ -40,7 +40,6 @@ end
 
 --- Remove npcName (and its known IDs) from the whitelist.
 local function removeNpcFromWhitelist(npcName)
-    if not (CLN.db and CLN.db.profile) then return end
     local wl = CLN.db.profile.nativeVOWhitelist
     if not wl then return end
     wl[npcName] = nil
@@ -49,7 +48,6 @@ end
 
 --- Add npcName (and its known IDs) to the whitelist.
 local function addNpcToWhitelist(npcName)
-    if not (CLN.db and CLN.db.profile) then return end
     if not CLN.db.profile.nativeVOWhitelist then CLN.db.profile.nativeVOWhitelist = {} end
     local wl = CLN.db.profile.nativeVOWhitelist
     wl[npcName] = true
@@ -58,7 +56,7 @@ end
 
 --- Return a sorted list of NPC names (string keys only) currently whitelisted.
 local function getWhitelistNames()
-    local wl = CLN.db and CLN.db.profile and CLN.db.profile.nativeVOWhitelist or {}
+    local wl = CLN.db.profile.nativeVOWhitelist or {}
     local names = {}
     for k, v in pairs(wl) do
         if v and type(k) == "string" then names[#names + 1] = k end

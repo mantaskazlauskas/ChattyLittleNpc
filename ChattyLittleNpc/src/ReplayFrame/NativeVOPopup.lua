@@ -204,13 +204,9 @@ function ReplayFrame:OnWhitelistPopupAccept(checks)
                 local ids = npc.npcIds or {}
                 for _, id in ipairs(ids) do wl[id] = true end
                 -- Contribute to global collection for community baking
-                if CLN.ContributeVoicedNpc then
-                    CLN:ContributeVoicedNpc(npc.npcName, ids)
-                end
-                if CLN.Logger then
-                    local idStr = #ids > 0 and table.concat(ids, ",") or "nil"
-                    CLN.Logger:info("Whitelisted NPC: " .. tostring(npc.npcName) .. " (ids=" .. idStr .. ")", false, CLN.Utils.LogCategories.loader)
-                end
+                CLN:ContributeVoicedNpc(npc.npcName, ids)
+                local idStr = #ids > 0 and table.concat(ids, ",") or "nil"
+                CLN.Logger:info("Whitelisted NPC: " .. tostring(npc.npcName) .. " (ids=" .. idStr .. ")", false, CLN.Utils.LogCategories.loader)
             else
                 -- Unchecked = dismiss (don't ask again)
                 if npc.npcName then dismissed[npc.npcName] = true end
@@ -224,12 +220,8 @@ end
 --- Handle "Dismiss" — mark all listed NPCs as dismissed.
 --- Reset dismissed NPCs so the popup will ask about them again.
 function ReplayFrame:ResetDismissedNpcs()
-    if CLN.db.profile then
-        CLN.db.profile.nativeVODismissed = {}
-    end
-    if CLN.Logger then
-        CLN.Logger:info("Cleared dismissed NPC list — popup will ask about all NPCs again.", false, CLN.Utils.LogCategories.loader)
-    end
+    CLN.db.profile.nativeVODismissed = {}
+    CLN.Logger:info("Cleared dismissed NPC list — popup will ask about all NPCs again.", false, CLN.Utils.LogCategories.loader)
 end
 
 --- Remove a specific NPC from the whitelist (by name or ID).
@@ -245,11 +237,10 @@ end
 --- Auto-resume playback after whitelist popup if no NPC is still talking.
 --- Waits a short moment to let any ongoing speech settle.
 function ReplayFrame:TryAutoResumeAfterWhitelist()
-    local vp = CLN and CLN.VoiceoverPlayer
-    if not (vp and vp:IsPaused()) then return end
+    local vp = CLN.VoiceoverPlayer
+    if not vp:IsPaused() then return end
     -- Check if any NPC is still talking (recent speech within last 3 seconds)
-    local eh = CLN and CLN.EventHandler
-    local buf = eh and eh._recentNpcSpeeches
+    local buf = CLN.EventHandler._recentNpcSpeeches
     local now = GetTime and GetTime() or 0
     local stillTalking = false
     if buf then
@@ -274,8 +265,6 @@ function ReplayFrame:TryAutoResumeAfterWhitelist()
     else
         -- No one is talking — resume
         vp:ResumePlayback()
-        if CLN.Logger then
-            CLN.Logger:debug("Auto-resumed after whitelist popup (no active NPC speech)", false, CLN.Utils.LogCategories.loader)
-        end
+        CLN.Logger:debug("Auto-resumed after whitelist popup (no active NPC speech)", false, CLN.Utils.LogCategories.loader)
     end
 end

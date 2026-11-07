@@ -110,7 +110,7 @@ local function createTilePicker(layout, items, get, set, tileH, decorate)
 end
 
 local function createStyleTiles(layout)
-    local styles = CLN.ReplayFrame and CLN.ReplayFrame.FrameStyles or {}
+    local styles = CLN.ReplayFrame.FrameStyles or {}
     local items = {}
     for _, key in ipairs(STYLE_ORDER) do
         items[#items + 1] = { value = key, label = styles[key] and styles[key].label or key, desc = STYLE_DESC[key] }
@@ -119,7 +119,7 @@ local function createStyleTiles(layout)
         function() return CLN.db.profile.frameStyle or "minimal" end,
         function(value)
             CLN.db.profile.frameStyle = value
-            if CLN.ReplayFrame and CLN.ReplayFrame.ApplyFrameStyle then CLN.ReplayFrame:ApplyFrameStyle() end
+            CLN.ReplayFrame:ApplyFrameStyle()
         end,
         64)
 end
@@ -325,7 +325,7 @@ end
 
 --- Open the window if this account has never seen it.
 function WelcomeWindow:ShowIfFirstRun()
-    if not (CLN.db and CLN.db.sv) or CLN.db.sv.welcomeShown then return end
+    if CLN.db.sv.welcomeShown then return end
     -- Wait for combat to end rather than popping up mid-fight.
     if InCombatLockdown and InCombatLockdown() then
         C_Timer.After(5, function() WelcomeWindow:ShowIfFirstRun() end)

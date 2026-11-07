@@ -74,7 +74,7 @@ function AddonInfo:AddContributeTooltipLines(tooltip)
         .. " and new voiceovers are made from it.", 0.9, 0.9, 0.9, true)
     tooltip:AddLine(" ")
     tooltip:AddLine(self.SAVED_VARIABLES_PATH, 0.6, 0.6, 0.65, true)
-    if not (CLN.db and CLN.db.profile and CLN.db.profile.logNpcTexts) then
+    if not CLN.db.profile.logNpcTexts then
         tooltip:AddLine(" ")
         tooltip:AddLine("Dialog recording is off. Turn on 'Track NPC Dialog Data' in Settings > Developer.", 1, 0.45, 0.35, true)
     end
@@ -164,7 +164,7 @@ function AddonInfo:AddContributeCard(layout)
     layout:Text("Click the link, then press Ctrl+C to copy it.", "GameFontHighlightSmall", C.textMuted)
     -- Re-read by _RefreshVisibleControls, so it follows the Quick Setup switch.
     local function recordingNote()
-        if CLN.db and CLN.db.profile and CLN.db.profile.logNpcTexts then return "" end
+        if CLN.db.profile.logNpcTexts then return "" end
         return "|cffff7359Dialog recording is off.|r Turn on 'Track NPC Dialog Data' in the Developer tab so the addon has something to share."
     end
     local note = layout:Text(recordingNote(), "GameFontHighlightSmall")

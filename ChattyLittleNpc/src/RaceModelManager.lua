@@ -387,18 +387,14 @@ function RaceModelManager:Refresh()
                 model:SetModel(item.fileId)
                 model:SetPortraitZoom(model.zoom)
                 model:SetFacing(model.facing)
-                if CLN.Logger then
-                    CLN.Logger:debug("RaceModelManager render: SetCreature(" .. e.npcId .. ") loaded nothing, SetModel(" .. item.fileId .. ") - untextured", false, CLN.Utils.LogCategories.ui)
-                end
+                CLN.Logger:debug("RaceModelManager render: SetCreature(" .. e.npcId .. ") loaded nothing, SetModel(" .. item.fileId .. ") - untextured", false, CLN.Utils.LogCategories.ui)
             end
         end)
     else
         model:SetModel(item.fileId) -- last resort: bare model file, untextured
         renderPath = "SetModel(" .. item.fileId .. ") - untextured"
     end
-    if CLN.Logger then
-        CLN.Logger:debug("RaceModelManager render: " .. renderPath, false, CLN.Utils.LogCategories.ui)
-    end
+    CLN.Logger:debug("RaceModelManager render: " .. renderPath, false, CLN.Utils.LogCategories.ui)
     model:SetPortraitZoom(0)
     model:SetFacing(0)
     f.noModel:Hide()
@@ -419,9 +415,7 @@ function RaceModelManager:SaveCurrent(advance)
     item.entry.race = race
     if race ~= "" then item.entry.ignored = nil end
     self.frame.raceInput:ClearFocus()
-    if CLN.Logger then
-        CLN.Logger:info("Race model " .. item.fileId .. " = " .. (race ~= "" and race or "(cleared)"), true, CLN.Utils.LogCategories.ui)
-    end
+    CLN.Logger:info("Race model " .. item.fileId .. " = " .. (race ~= "" and race or "(cleared)"), true, CLN.Utils.LogCategories.ui)
     if advance and self.index < #self.list then
         self:Step(1)
     else

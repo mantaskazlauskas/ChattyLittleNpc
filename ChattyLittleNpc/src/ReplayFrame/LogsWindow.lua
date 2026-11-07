@@ -111,7 +111,7 @@ end
 
 -- Install a single global hook on Utils to capture all anim logs
 local function ensureHook()
-    local U = CLN and CLN.Utils
+    local U = CLN.Utils
     if not U or U._animLogHooked then return end
     U._animLogHooked = true
     U._origLogAnimDebug = U._origLogAnimDebug or U.LogAnimDebug
@@ -281,10 +281,7 @@ function LW:_RebuildCategoryList()
     -- Gather all categories from buffer + known LogCategories
     local set = {}
     for k, _ in pairs(CLN._AnimLogBuffer.cats or {}) do set[k] = true end
-    local U = CLN and CLN.Utils
-    if U and U.LogCategories then
-        for _, v in pairs(U.LogCategories) do set[v] = true end
-    end
+    for _, v in pairs(CLN.Utils.LogCategories) do set[v] = true end
     if not self._catContainer then return end
     for i = 1, #(self._catButtons or {}) do if self._catButtons[i] then self._catButtons[i]:Hide() end end
     self._catButtons = {}
@@ -475,7 +472,6 @@ end
 
 -- Persist window position and size
 local function saveFrameLayout(f)
-    if not (CLN and CLN.db and CLN.db.profile) then return end
     local p, _, rp, x, y = f:GetPoint(1)
     CLN.db.profile.logsWindow = CLN.db.profile.logsWindow or {}
     local lw = CLN.db.profile.logsWindow
@@ -490,8 +486,7 @@ function LW:Create()
 
     local f = CreateFrame("Frame", "CLN_AnimLogsWindow", UIParent, "BackdropTemplate")
     f:SetClampedToScreen(true)
-    local prof = CLN and CLN.db and CLN.db.profile or nil
-    local cfg = prof and (prof.logsWindow or {}) or {}
+    local cfg = CLN.db.profile.logsWindow or {}
     local ww, hh = tonumber(cfg.width) or 900, tonumber(cfg.height) or 600
     f:SetSize(ww, hh)
     if cfg.point and cfg.relPoint and cfg.x and cfg.y then
@@ -569,14 +564,12 @@ function LW:Create()
     end)
     enableDbg:SetScript("OnLeave", function() GameTooltip:Hide() end)
     enableDbg:SetScript("OnShow", function(self)
-        local on = CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode and CLN.db.profile.debugAnimations
+        local on = CLN.db.profile.debugMode and CLN.db.profile.debugAnimations
         self:SetChecked(on and true or false)
     end)
     enableDbg:SetScript("OnClick", function(self)
-        if CLN and CLN.db and CLN.db.profile then
-            CLN.db.profile.debugMode = self:GetChecked() and true or false
-            CLN.db.profile.debugAnimations = self:GetChecked() and true or false
-        end
+        CLN.db.profile.debugMode = self:GetChecked() and true or false
+        CLN.db.profile.debugAnimations = self:GetChecked() and true or false
     end)
 
     -- ── Severity section ──

@@ -7,7 +7,7 @@ CLN.NpcDialogTracker = NpcDialogTracker
 
 function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
     if (not NpcInfoDB) then
-    if CLN and CLN.Logger then CLN.Logger:info("Initializing NpcInfoDB", false, CLN.Utils.LogCategories.misc) end
+    CLN.Logger:info("Initializing NpcInfoDB", false, CLN.Utils.LogCategories.misc)
         NpcInfoDB = {}
     end
 
@@ -39,7 +39,7 @@ function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
 end
 
 function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureType)
-    if CLN and CLN.Logger then CLN.Logger:debug("Storing npc info NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader) end
+    CLN.Logger:debug("Storing npc info NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader)
     self:EnsureNpcInfoInitialized(npcID)
     NpcInfoDB[npcID][CLN.locale].name = unitName
 
@@ -83,7 +83,7 @@ function NpcDialogTracker:StoreNpcInfo(unitName, gender, race, npcID, creatureTy
         NpcInfoDB[npcID][CLN.locale].creatureType = creatureType
     end
 
-    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+    if CLN.db.profile.printNpcTexts then
         local info = NpcInfoDB[npcID][CLN.locale]
         local highlight = function(value)
             return "|cffc080ff" .. ((value and value ~= "") and tostring(value) or "?") .. "|r" -- light purple
@@ -115,7 +115,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
         NpcInfoDB[npcID][CLN.locale].quest_greeting = text
     end
 
-    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+    if CLN.db.profile.printNpcTexts then
         local s = NpcInfoDB[npcID][CLN.locale].quests[questID]
         CLN.Logger:info("Npc quest collected: NpcID=" .. npcID .. ", QuestID=" .. questID ..
             ", Detail=" .. s.quest_detail .. ", Progress=" .. s.quest_progress .. ", Complete=" .. s.quest_complete .. ", Greeting=" .. (NpcInfoDB[npcID][CLN.locale].quest_greeting or ""), true, CLN.Utils.LogCategories.ui)
@@ -123,7 +123,7 @@ function NpcDialogTracker:StoreQuestInfo(npcID, questID, eventType, text)
 end
 
 function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, oldHash, gender)
-    if CLN and CLN.Logger then CLN.Logger:debug("Storing gossip options NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader) end
+    CLN.Logger:debug("Storing gossip options NPC ID=" .. tostring(npcID), false, CLN.Utils.LogCategories.loader)
     self:EnsureNpcInfoInitialized(npcID)
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions) then
@@ -139,19 +139,19 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
 
     if (not NpcInfoDB[npcID][CLN.locale].gossipOptions[gossip_id] or overwrite) then
         if (overwrite) then
-            if CLN and CLN.Logger then CLN.Logger:debug("Overwriting gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader) end
+            CLN.Logger:debug("Overwriting gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader)
         else
-            if CLN and CLN.Logger then CLN.Logger:debug("Storing new gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader) end
+            CLN.Logger:debug("Storing new gossip option NPC ID=" .. tostring(npcID) .. " hash=" .. tostring(gossip_id), false, CLN.Utils.LogCategories.loader)
         end
 
         local text = CLN.Utils:CleanTextV2(gossipText)
         NpcInfoDB[npcID][CLN.locale].gossipOptions[gossip_id] = text
         if (oldHash and not hashRemainedTheSame and NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash]) then
-            if CLN and CLN.Logger then CLN.Logger:debug("Removing old gossip option NPC ID=" .. tostring(npcID) .. " oldHash=" .. tostring(oldHash), false, CLN.Utils.LogCategories.loader) end
+            CLN.Logger:debug("Removing old gossip option NPC ID=" .. tostring(npcID) .. " oldHash=" .. tostring(oldHash), false, CLN.Utils.LogCategories.loader)
             NpcInfoDB[npcID][CLN.locale].gossipOptions[oldHash] = nil
         end
 
-        if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+        if CLN.db.profile.printNpcTexts then
             CLN.Logger:info("Npc gossip option collected: NpcID=" .. npcID .. ", Hash=" .. gossip_id .. ", Text=" .. text, true, CLN.Utils.LogCategories.ui)
         end
     end
@@ -159,7 +159,7 @@ end
 
 function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
     if (not UnitInfoDB) then
-    if CLN and CLN.Logger then CLN.Logger:info("Initializing UnitInfoDB", false, CLN.Utils.LogCategories.misc) end
+    CLN.Logger:info("Initializing UnitInfoDB", false, CLN.Utils.LogCategories.misc)
         UnitInfoDB = {}
     end
     if (not UnitInfoDB[unitID]) then
@@ -177,7 +177,7 @@ function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
 end
 
 function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, params)
-    if CLN and CLN.Logger then CLN.Logger:debug("Storing unit info UnitID=" .. tostring(unitID), false, CLN.Utils.LogCategories.loader) end
+    CLN.Logger:debug("Storing unit info UnitID=" .. tostring(unitID), false, CLN.Utils.LogCategories.loader)
     params = params or {}
     local questId = params.questId
     local questText = params.questText or ""
@@ -214,7 +214,7 @@ function NpcDialogTracker:StoreUnitInfo(unitID, unitName, unitText, unitType, pa
         end
     end
 
-    if (CLN.db.profile.printNpcTexts) and CLN.Logger then
+    if CLN.db.profile.printNpcTexts then
         CLN.Logger:info("Unit info collected: UnitID=" .. unitID .. ", Name=" .. UnitInfoDB[unitID][CLN.locale].unitName .. ", Type=" .. UnitInfoDB[unitID][CLN.locale].unitType, true, CLN.Utils.LogCategories.ui)
         if (textHash) then
             CLN.Logger:info("Unit text collected: Text=" .. UnitInfoDB[unitID][CLN.locale].unitTexts[textHash] .. ", Hash=" .. textHash, true, CLN.Utils.LogCategories.ui)
@@ -264,7 +264,7 @@ function NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
         if type(raw) == "string" then
             local blocked
             unitGuid, blocked = CLN.Utils.Desecret(raw)
-            if blocked and CLN.Logger then
+            if blocked then
                 CLN.Logger:warn("Secret value blocked: UnitGUID in HandleItemTextReady",
                     false, CLN.Utils.LogCategories.secrets)
             end
@@ -360,7 +360,7 @@ function NpcDialogTracker:GatherTooltipInfo()
                 lineIndex = lineIndex + 1
             end
 
-            if (CLN.db.profile.logNpcTexts) then
+            if CLN.db.profile.logNpcTexts then
                 NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
             end
         end)

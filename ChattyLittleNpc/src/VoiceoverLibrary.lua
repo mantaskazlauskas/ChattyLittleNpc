@@ -159,7 +159,7 @@ function Library:GetNpcName(npcId)
             if type(byLocale) == "table" and byLocale.name and byLocale.name ~= "" then return byLocale.name end
         end
     end
-    local cached = CLN.NpcMetadataCache and CLN.NpcMetadataCache.Lookup and CLN.NpcMetadataCache:Lookup(npcId)
+    local cached = CLN.NpcMetadataCache:Lookup(npcId)
     if cached and cached.name and cached.name ~= "" then return cached.name end
     return nil
 end
@@ -208,7 +208,7 @@ local function idsMatchingName(self, query)
             end
         end
     end
-    local meta = CLN.NpcMetadataCache and CLN.NpcMetadataCache.db
+    local meta = CLN.NpcMetadataCache.db
     if type(meta) == "table" then
         for npcId, entry in pairs(meta) do
             if type(entry) == "table" and type(entry.name) == "string" and entry.name:lower():find(query, 1, true) then
@@ -342,7 +342,7 @@ function Library:UpdateRows()
     local total = self._packIdx and #self._packIdx or 0
     FauxScrollFrame_Update(ui.scroll, total, #ui.rows, ROW_H)
     local offset = FauxScrollFrame_GetOffset(ui.scroll)
-    local cp = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cp = CLN.VoiceoverPlayer.currentlyPlaying
     local playingPath = cp and cp._libraryPath
     local missingTitles = {}
     for r, row in ipairs(ui.rows) do
@@ -453,7 +453,7 @@ local function createRow(parent, i)
     row.dur  = col(548, 40, "RIGHT", "GameFontDisableSmall")
 
     row:SetScript("OnClick", function(self)
-        if self.entry and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.PlayLibraryFile then
+        if self.entry then
             CLN.VoiceoverPlayer:PlayLibraryFile(self.entry)
             Library:UpdateRows()
         end
@@ -533,9 +533,7 @@ function Library:Build(parent)
     local stop = CLN.Widgets.CreateButton(parent, "Stop", 80, 22)
     stop:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -SCROLLBAR_W, -56)
     stop:SetScript("OnClick", function()
-        if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.ForceStopCurrentSound then
-            CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
-        end
+        CLN.VoiceoverPlayer:ForceStopCurrentSound(false, true)
         Library:UpdateRows()
     end)
 
@@ -583,11 +581,9 @@ function Library:Build(parent)
     end
 
     -- Keep the "playing" highlight in step with playback started or ended elsewhere.
-    if CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.NotifyDisplayDirty and hooksecurefunc then
-        hooksecurefunc(CLN.VoiceoverPlayer, "NotifyDisplayDirty", function()
-            if parent:IsVisible() then Library:QueueRowUpdate() end
-        end)
-    end
+    hooksecurefunc(CLN.VoiceoverPlayer, "NotifyDisplayDirty", function()
+        if parent:IsVisible() then Library:QueueRowUpdate() end
+    end)
 
     -- Redraw (not re-filter) on show so switching tabs keeps the scroll position.
     parent:HookScript("OnShow", function() Library:UpdateRows() end)
@@ -596,5 +592,5 @@ end
 
 SLASH_CLNLIBRARY1 = "/clnlibrary"
 SlashCmdList["CLNLIBRARY"] = function()
-    if CLN.SettingsWindow and CLN.SettingsWindow.OpenTab then CLN.SettingsWindow:OpenTab("library") end
+    CLN.SettingsWindow:OpenTab("library")
 end
