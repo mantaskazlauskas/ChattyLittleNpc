@@ -53,12 +53,12 @@ function ReplayFrame:_NoAnimDebugEnabled()
     -- Props (books, scrolls) have no animations; keep them still
     if self._propModelShown and self.NpcModelFrame and self.NpcModelFrame._propFileId then return true end
     if self._debugNoAnim ~= nil then return self._debugNoAnim end
-    local prof = CLN and CLN.db and CLN.db.profile
-    return (prof and prof.debugNoAnim) and true or false
+    local prof = CLN.db.profile
+    return prof.debugNoAnim and true or false
 end
 
 function ReplayFrame:_CameraAnimsDisabled()
-    return (CLN and CLN.db and CLN.db.profile and CLN.db.profile.disableCameraAnimations)
+    return CLN.db.profile.disableCameraAnimations
         or self:_NoAnimDebugEnabled()
         -- Styles with a fixed shot (e.g. Cinematic's face close-up) keep the camera still
         or (self.GetFrameStyle and self:GetFrameStyle().noCameraAnims)
@@ -66,7 +66,7 @@ end
 
 -- Position the standalone model container above DisplayFrame; show/hide based on state
 function ReplayFrame:LayoutModelArea(frame)
-    local compact = CLN.db and CLN.db.profile and CLN.db.profile.compactMode
+    local compact = CLN.db.profile.compactMode
     local hasModel = self._hasValidModel and not compact
 
     -- Sync visibility with DisplayFrame
@@ -160,7 +160,7 @@ function ReplayFrame:RebuildModelHost()
     self._lastDisplayID = nil
     self._naturalAnimId = nil
     self._npcIsDead = false
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId then
         self:UpdateNpcModelDisplay(cur.npcId)
     end
@@ -172,15 +172,13 @@ end
 
 -- Build/update the model with npcId and handle container visibility
 function ReplayFrame:ResolveNpcDisplayID(npcId)
-    local currentlyPlaying = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local currentlyPlaying = CLN.VoiceoverPlayer.currentlyPlaying
     if currentlyPlaying and currentlyPlaying.npcId == npcId and currentlyPlaying.displayID then
         return currentlyPlaying.displayID
     end
     -- Persistent metadata cache fallback
-    if CLN.NpcMetadataCache then
-        local cached = CLN.NpcMetadataCache:Lookup(npcId)
-        if cached and cached.displayID then return cached.displayID end
-    end
+    local cached = CLN.NpcMetadataCache:Lookup(npcId)
+    if cached and cached.displayID then return cached.displayID end
     return nil
 end
 
@@ -213,7 +211,7 @@ end
 -- Start the talk animation if this NPC's audio is playing, otherwise its idle,
 -- and make sure the animation hooks are attached before the model is shown.
 function ReplayFrame:_ApplyInitialModelAnim(npcId)
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local isPlaying = cur and cur.isPlaying and cur:isPlaying() and cur.npcId == npcId
     if isPlaying then
         local talkId = 60
@@ -318,7 +316,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         displayID = nil
     end
     if (displayID) then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
                 CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: npcId=%s displayID=%s - applying to model", tostring(npcId), tostring(displayID)))
         end
         -- If model changed, reset animation state to avoid stale loops from previous model
@@ -369,7 +367,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
         end
     self.NpcModelFrame:ClearModel()
     self._unitModelLoaded = false
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: calling NpcModelFrame:SetDisplayInfo")
         end
     -- Show container before SetDisplayInfo so the ModelScene frame is visible during init
@@ -412,7 +410,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
     -- Do not call old auto-fit here; default fit applied above
     else
         -- Fallback: when we don't have a mapping, try using the live unit to display the model
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID for npcId=%s; attempting SetUnit('npc') fallback", tostring(npcId)))
         end
         -- Same creature ID can be another spawn with another look (male/female
@@ -554,7 +552,7 @@ function ReplayFrame:UpdateNpcModelDisplay(npcId)
                 -- Rendered by creature ID / cached model file, like the Race Model Manager
                 self._hasValidModel = true
             else
-                if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
                     CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateNpcModelDisplay: SetUnit fallback unavailable; hiding model")
                 end
                 self.NpcModelFrame:ClearModel()
@@ -577,10 +575,10 @@ end
 -- do gossip / quest-greeting lines (spoken by NPCs). Quests can start from
 -- objects, and GameObject/Item entries reuse npcId for object/item IDs.
 function ReplayFrame:_ShowModelByCreature(npcId)
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local entryType = cur and cur.entryType
     if entryType == "GameObject" or entryType == "Item" then return false end
-    local cached = CLN.NpcMetadataCache and CLN.NpcMetadataCache:Lookup(npcId)
+    local cached = CLN.NpcMetadataCache:Lookup(npcId)
     local knownCreature = (cached and cached.modelFileId)
         or entryType == "Gossip" or entryType == "QuestGreeting"
     if not knownCreature then return false end
@@ -591,7 +589,7 @@ function ReplayFrame:_ShowModelByCreature(npcId)
     if not self.NpcModelFrame:SetCreatureByNpcId(npcId, cached and cached.modelFileId) then
         return false
     end
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: no displayID/unit for npcId=%s; rendering by creature (fileId=%s)", tostring(npcId), tostring(cached and cached.modelFileId)))
     end
     self._unitModelLoaded = true -- prevent same-frame re-clear
@@ -633,7 +631,7 @@ end
 
 --- The prop for a key ("book", "scroll", ...): the picker's override, else the default.
 function ReplayFrame:GetItemProp(key)
-    local overrides = CLN.db and CLN.db.profile and CLN.db.profile.itemPropOverrides
+    local overrides = CLN.db.profile.itemPropOverrides
     local o = overrides and overrides[key]
     if o and tonumber(o.fileId) then return o end
     return ITEM_PROPS[key]
@@ -642,7 +640,7 @@ end
 --- Redraw the portrait if it is showing a prop, e.g. after the picker changed one.
 function ReplayFrame:RefreshItemProp()
     if not self._propModelShown then return end
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId and self.UpdateNpcModelDisplay then self:UpdateNpcModelDisplay(cur.npcId) end
 end
 
@@ -650,7 +648,7 @@ end
 -- page style recorded when its text was read this session picks the prop;
 -- without one it is a book. Returns true when shown.
 function ReplayFrame:_ShowItemProp(npcId, entryType)
-    local style = CLN.itemTextStyles and CLN.itemTextStyles[entryType .. ":" .. tostring(npcId)]
+    local style = CLN.itemTextStyles[entryType .. ":" .. tostring(npcId)]
     local host = self.NpcModelFrame
     if not (host and host._SwitchToPlayerBackend and host:_SwitchToPlayerBackend() and host.SetPropModel) then
         return false
@@ -661,7 +659,7 @@ function ReplayFrame:_ShowItemProp(npcId, entryType)
         if self.ResetAnimationState then self:ResetAnimationState() end
         host:ClearModel()
         host:SetPropModel(prop)
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format("UpdateNpcModelDisplay: %s %s shown as prop fileId=%s (material=%s)",
                 entryType, tostring(npcId), tostring(prop.fileId), tostring(style and style.material)))
         end
@@ -701,7 +699,7 @@ function ReplayFrame:CheckAndShowModel()
     end
     -- Don't call UpdateConversationAnimation here - let the OnShow hook handle it
     -- to avoid duplicate calls when the model becomes visible
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
             local c = self.ModelContainer
             local m = self.NpcModelFrame
             local cShown = c and c.IsShown and c:IsShown() or false
@@ -717,7 +715,7 @@ function ReplayFrame:CheckAndShowModel()
         self:ContractForNpcModel()
         -- Relayout so ContentFrame collapses into the model's former space
         if self.Relayout then self:Relayout() end
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
             local c = self.ModelContainer
             local m = self.NpcModelFrame
             local cShown = c and c.IsShown and c:IsShown() or false
@@ -747,7 +745,7 @@ end
 -- Build metadata once for the current model/displayID; safe to call multiple times
 function ReplayFrame:BuildModelMetadataOnce(displayID)
     self._modelMeta = self._modelMeta or {}
-    local key = self:ResolveModelMetaKey(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil)
+    local key = self:ResolveModelMetaKey(displayID, (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil)
     if not key then return end
     if self._modelMeta[key] and self._modelMeta[key]._built then return end
     local host = self.NpcModelFrame
@@ -760,7 +758,7 @@ function ReplayFrame:BuildModelMetadataOnce(displayID)
     local sizeH = math.abs(maxZ - minZ)
     local sizeD = math.abs(maxY - minY)
     local center = { x = (minX + maxX) * 0.5, y = (minY + maxY) * 0.5, z = (minZ + maxZ) * 0.5 }
-    local meta = self:GetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, true) or {}
+    local meta = self:GetModelMeta(displayID, (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, true) or {}
     meta.bounds = b
     meta.size = { w = sizeW, h = sizeH, d = sizeD }
     meta.center = center
@@ -772,17 +770,17 @@ function ReplayFrame:BuildModelMetadataOnce(displayID)
     meta.aspect = host.GetAspect and host:GetAspect() or (meta.aspect or 1.0)
     meta.scaleD10 = ReplayFrame.Framer.FitScale(meta, 10, 0.05)
     -- Store canonical bbox and morphology class in meta if available
-    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local MS = CLN.ReplayFrame.ModelScene
     local canonEntry = MS and MS.CanonicalBbox and MS.CanonicalBbox.GetCached and tonumber(displayID) and MS.CanonicalBbox.GetCached(displayID)
     if canonEntry then
         meta.canonicalBbox = canonEntry.bbox
         meta.morphologyClass = canonEntry.class
     end
     meta._built = true
-    self:SetModelMeta(displayID, (CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, meta)
+    self:SetModelMeta(displayID, (CLN.VoiceoverPlayer.currentlyPlaying and CLN.VoiceoverPlayer.currentlyPlaying.npcId) or nil, meta)
     -- Log once
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing") then
-        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing", string.format("Meta built dID=%s H=%.2f W=%.2f fovV=%.3f aspect=%.2f scaleD10=%.3f",
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.framing) then
+        CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.framing, string.format("Meta built dID=%s H=%.2f W=%.2f fovV=%.3f aspect=%.2f scaleD10=%.3f",
             tostring(displayID or "unit"), meta.size.h or -1, meta.size.w or -1, meta.fovV or -1, meta.aspect or -1, meta.scaleD10 or -1))
     end
 end
@@ -813,7 +811,7 @@ function ReplayFrame:SetupModelAnimations()
             frame._t = (frame._t or 0) + (elapsed or 0)
 
             local r = ReplayFrame -- captured upvalue
-            local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur = CLN.VoiceoverPlayer.currentlyPlaying
             local isPlaying = cur and cur.isPlaying and cur:isPlaying()
             local sameHandle = isPlaying and (r._lastSoundHandle == cur.soundHandle)
 
@@ -901,7 +899,7 @@ function ReplayFrame:SetupModelAnimations()
 
             -- Do not force idle; choose animation based on current playback immediately
             local r = ReplayFrame
-            local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur = CLN.VoiceoverPlayer.currentlyPlaying
             local isPlaying = cur and cur.isPlaying and cur:isPlaying()
             if not (r and r:_NoAnimDebugEnabled()) then
                 if isPlaying then
@@ -917,8 +915,8 @@ function ReplayFrame:SetupModelAnimations()
             end
 
             -- Let the Director refine (wave vs talk) as needed
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
-                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame OnShow hook - calling UpdateConversationAnimation")
+            if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "ModelFrame OnShow hook - calling UpdateConversationAnimation")
             end
             if r and r.UpdateConversationAnimation and not (r:_NoAnimDebugEnabled()) then
                 r:UpdateConversationAnimation()
@@ -938,8 +936,8 @@ function ReplayFrame:SetupModelAnimations()
     if m:IsShown() then
         if self._UpdateModelOnUpdateHook then self:_UpdateModelOnUpdateHook() end
     if self.UpdateConversationAnimation and not self:_NoAnimDebugEnabled() then
-            if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then
-                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "ModelFrame already shown - calling UpdateConversationAnimation immediately")
+            if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "ModelFrame already shown - calling UpdateConversationAnimation immediately")
             end
             self:UpdateConversationAnimation()
         end
@@ -1006,7 +1004,7 @@ end
 function ReplayFrame:UpdateTalkAnimation()
     local m = self.NpcModelFrame
     if not (m and m.SetAnimation) then return end
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local playing = cur and cur.isPlaying and cur:isPlaying()
     local inGrace = false
     if cur and cur.startTime and GetTime then
@@ -1033,7 +1031,7 @@ function ReplayFrame:UpdateConversationAnimation()
     end
 
     -- Debounce per handle/title to avoid re-triggering every frame
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local handle = cur and cur.soundHandle or nil
     local title = cur and cur.title or nil
     local nowT = GetTime and GetTime() or 0
@@ -1050,8 +1048,8 @@ function ReplayFrame:UpdateConversationAnimation()
     if cur and cur.startTime and GetTime then
         local dt = nowT - (cur.startTime or 0)
         recentlyStarted = dt >= 0 and dt < (self.Config and self.Config.Timings and self.Config.Timings.recentlyStartedWindow or 0.6)
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame") then 
-            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame or "modelFrame", "UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then 
+            CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, "UpdateConversationAnimation - title: " .. tostring(title or "nil") .. ", dt: " .. tostring(dt) .. ", recent: " .. tostring(recentlyStarted))
         end
     end
     
@@ -1085,7 +1083,7 @@ function ReplayFrame:OnConversationStop(explicitLastMsg)
     -- to be cleared) over reading currentlyPlaying which may already be nil.
     local lastMsg = explicitLastMsg
     if not lastMsg then
-        local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+        local cur = CLN.VoiceoverPlayer.currentlyPlaying
         lastMsg = cur and cur.title or (self.Director and self.Director._lastMsg) or nil
     end
     if self.FSM_OnPlaybackStop then self:FSM_OnPlaybackStop(lastMsg) end
@@ -1151,11 +1149,11 @@ function ReplayFrame:SetModelAnim(animId)
         local requested = animId
         animId = self:ResolveTalkAnim(animId)
         if animId ~= requested then
-            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur = CLN.VoiceoverPlayer.currentlyPlaying
             local key = tostring(cur and cur.npcId) .. ":" .. requested .. ">" .. animId
             if key ~= self._lastTalkRemapKey then
                 self._lastTalkRemapKey = key
-                if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
+                if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.modelFrame) then
                     CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.modelFrame, string.format(
                         "Talk anim for npcId=%s: model lacks %d, using %d%s", tostring(cur and cur.npcId), requested, animId,
                         (animId == 185 and " (nod)") or ((animId ~= 64 and animId ~= 65) and " (no talk animation, idle)") or ""))
