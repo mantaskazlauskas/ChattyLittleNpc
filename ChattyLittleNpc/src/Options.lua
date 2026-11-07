@@ -1329,7 +1329,6 @@ function Options:SetupOptions()
 
     -- After any profile switch, re-apply frame-driven settings and refresh the window.
     local function onProfileChange()
-        if CLN._MigrateGossipCooldown then CLN:_MigrateGossipCooldown() end
         if CLN.ReplayFrame and CLN.ReplayFrame.ApplyProfileSettings then
             CLN.ReplayFrame:ApplyProfileSettings()
         end

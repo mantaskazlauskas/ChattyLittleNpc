@@ -3108,6 +3108,7 @@ class TestGossipCooldown(unittest.TestCase):
     def setUpClass(cls):
         cls.lua = make_lua()
         load_file(cls.lua, "Main.lua")
+        load_file(cls.lua, "Core/Migrations.lua")
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
 
@@ -3211,7 +3212,7 @@ class TestGossipCooldown(unittest.TestCase):
         return lua_call(self.lua, f"""
             local p = ChattyLittleNpc.db.profile
             p.gossipCooldownMinutes = {minutes}
-            ChattyLittleNpc:_MigrateGossipCooldown()
+            ChattyLittleNpc.Migrations.GossipCooldownToSeconds(p)
             return p.gossipCooldownSeconds, p.gossipCooldownMinutes
         """)
 
@@ -3540,6 +3541,150 @@ class TestPlayerTokenCleaning(unittest.TestCase):
             return false
         ''')
         self.assertTrue(found)
+
+
+class TestMigrations(unittest.TestCase):
+    """Core/Migrations.lua: ordered, idempotent saved-settings migrations."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "Core/Database.lua")
+        load_file(cls.lua, "Core/Migrations.lua")
+
+    def run_lua(self, code):
+        return lua_call(self.lua, "local M = ChattyLittleNpc.Migrations\n" + code)
+
+    # A profile from before schemaVersion existed, carrying every legacy key.
+    V0_PROFILE = """
+        local p = {
+            framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 500, yOfs = 0 },
+            gossipCooldownEnabled = true, gossipCooldownMinutes = 1,
+            pauseOnNativeVO = true, nativeVOMode = "off",
+            enableQuestPlaybackQueueing = false,
+            alwaysShowReplayFrame = true,
+            layoutPositions = { Main = { point = "TOP", relativePoint = "TOP", xOfs = 5, yOfs = -7 } },
+            layoutSizes = { Main = { width = 400, height = 150 } },
+            editModeExclude = { frameScale = true },
+        }
+    """
+
+    def test_latest_is_last_step(self):
+        self.assertEqual(self.run_lua("return M.LATEST"), 5)
+
+    def test_v0_profile_fully_migrated(self):
+        r = self.run_lua(self.V0_PROFILE + """
+            local changed = M:Run(p)
+            local conv = p.editMode.layouts.Main.conversation
+            return changed, p.schemaVersion, p.frameAnchor, p.gossipCooldownSeconds,
+                p.gossipCooldownMinutes, p.nativeVOMode, p.pauseOnNativeVO, p.questPlaybackMode,
+                p.enableQuestPlaybackQueueing, p.alwaysShowReplayFrame,
+                p.layoutPositions, p.layoutSizes, p.editModeLayouts, p.editModeExclude,
+                conv.pos.point, conv.pos.x, conv.pos.y, conv.size.width,
+                p.editMode.exclude.conversation.scale, p.editMode.layouts.Main.model.docked
+        """)
+        self.assertEqual(r, (True, 5, "objectives", 60, None, "whitelist", None, "manual",
+                             None, None, None, None, None, None,
+                             "TOP", 5, -7, 400, True, True))
+
+    def test_running_twice_changes_nothing(self):
+        r = self.run_lua(self.V0_PROFILE + """
+            M:Run(p)
+            local before = p.editMode.layouts.Main.conversation.pos.x
+            p.frameAnchor = "free"   -- user moved the window afterwards
+            local changed = M:Run(p)
+            return changed, p.frameAnchor, p.editMode.layouts.Main.conversation.pos.x == before
+        """)
+        self.assertEqual(r, (False, "free", True))
+
+    def test_each_step_is_idempotent(self):
+        r = self.run_lua(self.V0_PROFILE + """
+            for _, step in ipairs(M.steps) do step.run(p); step.run(p) end
+            return p.gossipCooldownSeconds, p.nativeVOMode, p.questPlaybackMode,
+                p.editMode.layouts.Main.conversation.size.height
+        """)
+        self.assertEqual(r, (60, "whitelist", "manual", 150))
+
+    def test_fresh_profile(self):
+        # Fresh profile: defaults merged, no legacy keys, no schemaVersion.
+        r = self.run_lua("""
+            local p = { framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 500, yOfs = 0 },
+                        nativeVOMode = "off", questPlaybackMode = "queue", gossipCooldownSeconds = 10 }
+            M:Run(p)
+            return p.schemaVersion, p.frameAnchor, p.editMode, p.nativeVOMode,
+                p.questPlaybackMode, p.gossipCooldownSeconds
+        """)
+        self.assertEqual(r, (5, "objectives", None, "off", "queue", 10))
+
+    def test_v2_profile_keeps_frame_anchor_and_drops_leftovers(self):
+        # Older builds stamped 2 and re-added editModeLayouts = {} from defaults.
+        r = self.run_lua("""
+            local p = { schemaVersion = 2, frameAnchor = "free",
+                        framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 500, yOfs = 0 },
+                        editMode = { schemaVersion = 2, layouts = { A = {} }, exclude = {} },
+                        editModeLayouts = {}, alwaysShowReplayFrame = true, nativeVOMode = "all" }
+            M:Run(p)
+            return p.schemaVersion, p.frameAnchor, p.editModeLayouts, p.alwaysShowReplayFrame,
+                p.nativeVOMode, p.editMode.layouts.A ~= nil
+        """)
+        self.assertEqual(r, (5, "free", None, None, "whitelist", True))
+
+    def test_moved_window_becomes_free(self):
+        r = self.run_lua("""
+            local p = { schemaVersion = 1,
+                        framePos = { point = "TOPLEFT", relativePoint = "TOPLEFT", xOfs = 10, yOfs = -10 } }
+            M:Run(p)
+            return p.frameAnchor
+        """)
+        self.assertEqual(r, "free")
+
+    def test_quest_playback_mode_variants(self):
+        r = self.run_lua("""
+            local a = { stopVoiceoverAfterDialogWindowClose = true, enableQuestPlaybackQueueing = true }
+            local b = { enableQuestPlaybackQueueing = true }
+            M.LegacyModeSettings(a); M.LegacyModeSettings(b)
+            return a.questPlaybackMode, b.questPlaybackMode, a.stopVoiceoverAfterDialogWindowClose
+        """)
+        self.assertEqual(r, ("stopOnClose", "queue", None))
+
+    def test_undocked_model_position_carried_over(self):
+        r = self.run_lua("""
+            local p = { modelFramePos = { point = "LEFT", relativePoint = "LEFT", xOfs = 3, yOfs = 4, width = 300 },
+                        editModeLayouts = { L = { npcModelFrameHeight = 120, frameSize = { width = 350, height = 140 } } } }
+            M.EditModeLayoutsV2(p)
+            local m = p.editMode.layouts.L.model
+            return m.docked, m.pos.point, m.pos.x, m.size.width, m.size.height,
+                p._editModeLegacyBackup.L.npcModelFrameHeight
+        """)
+        self.assertEqual(r, (False, "LEFT", 3, 300, 120, 120))
+
+    def test_profile_switch_migrates_new_profile(self):
+        r = self.run_lua("""
+            ChattyLittleNpcTestDB = { currentProfile = "Default", profiles = {
+                Default = {},
+                Old = { pauseOnNativeVO = true, alwaysShowReplayFrame = true },
+            } }
+            local db = ChattyLittleNpc.Database:New("ChattyLittleNpcTestDB", { profile = { nativeVOMode = "off" } }, true)
+            M:Attach(db)
+            local beforeSwitch = ChattyLittleNpcTestDB.profiles.Old.schemaVersion
+            db:SetProfile("Old")
+            local old = ChattyLittleNpcTestDB.profiles.Old
+            return ChattyLittleNpcTestDB.profiles.Default.schemaVersion, beforeSwitch,
+                old.schemaVersion, old.nativeVOMode, old.pauseOnNativeVO, old.alwaysShowReplayFrame
+        """)
+        self.assertEqual(r, (5, None, 5, "whitelist", None, None))
+
+    def test_reset_profile_is_migrated_again(self):
+        r = self.run_lua("""
+            ChattyLittleNpcTestDB2 = { currentProfile = "Default", profiles = { Default = { frameAnchor = "free" } } }
+            local db = ChattyLittleNpc.Database:New("ChattyLittleNpcTestDB2",
+                { profile = { framePos = { point = "CENTER", relativePoint = "CENTER", xOfs = 500, yOfs = 0 } } }, true)
+            M:Attach(db)
+            db:ResetProfile()
+            local p = ChattyLittleNpcTestDB2.profiles.Default
+            return p.schemaVersion, p.frameAnchor
+        """)
+        self.assertEqual(r, (5, "objectives"))
 
 
 if __name__ == "__main__":

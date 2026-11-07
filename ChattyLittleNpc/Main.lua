@@ -26,7 +26,6 @@ CLN.itemTextStyles = {}
 
 local defaults = {
     profile = {
-        schemaVersion = 1,
         autoPlayVoiceovers = true,
         playVoiceoverAfterDelay = 0,
         voiceoverLanguage = "auto",         -- locale code (e.g. "deDE") or "auto" for the game client's language
@@ -38,7 +37,6 @@ local defaults = {
         logToChat = false,
         overwriteExistingGossipValues = false,
         showReplayFrame = true,
-        alwaysShowReplayFrame = true, -- legacy: kept for saved variable compat, not user-facing
         showSpeakButton = true,
         showQuestInfoPanel = true,
         questInfoPanelCollapsed = true, -- starts as a small tab beside the quest dialog
@@ -84,8 +82,6 @@ local defaults = {
         itemPropOverrides = {},
         -- Portrait Tuner: per-shot camera tuning, keyed "shot" or "shot:bodyType"
         portraitShotTuning = {},
-        -- Per Edit Mode layout overrides (keyed by layoutName)
-        editModeLayouts = {},
         -- Replay UI: combat behavior
         combatAutoCollapse = true,
         -- Replay UI: subtitles
@@ -119,105 +115,11 @@ local defaults = {
     }
 }
 
--- Gossip cooldown moved from a minutes slider (0-120) to a seconds dropdown.
--- Runs for the active profile; also called on profile switch since other
--- profiles keep the old key until they are activated.
-function CLN:_MigrateGossipCooldown()
-    local p = self.db and self.db.profile
-    local minutes = p and p.gossipCooldownMinutes
-    if minutes == nil then return end
-    -- The old default (5) was written into every profile, so only carry the value
-    -- over when the cooldown was actually enabled; otherwise use the new default.
-    if p.gossipCooldownEnabled then
-        if minutes == 0 then
-            p.gossipCooldownSeconds = 0
-        elseif minutes <= 2 then
-            p.gossipCooldownSeconds = 60
-        else
-            p.gossipCooldownSeconds = 300
-        end
-    else
-        p.gossipCooldownSeconds = nil   -- falls back to the default
-    end
-    p.gossipCooldownMinutes = nil
-end
-
--- Migrate legacy saved variables from upstream format to fork format
-function CLN:_MigrateSavedVars()
-    if not (self.db and self.db.profile) then return end
-    local p = self.db.profile
-
-    -- Schema version guard: run migrations in order, then stamp current version
-    local sv = p.schemaVersion or 0
-
-    self:_MigrateGossipCooldown()
-
-    if sv < 1 then
-        -- v1: initial schema stamp (all existing migrations below remain for pre-v1 profiles)
-    end
-
-    if sv < 2 then
-        -- v2: docking next to the objectives tracker became the default placement.
-        -- Keep the window where it is for anyone who already moved it off the
-        -- old default spot (CENTER +500,0).
-        local pos = p.framePos
-        local atOldDefault = pos and pos.point == "CENTER" and pos.relativePoint == "CENTER"
-            and pos.xOfs == 500 and pos.yOfs == 0
-        p.frameAnchor = atOldDefault and "objectives" or "free"
-    end
-
-    p.schemaVersion = 2
-
-    -- Migrate pauseOnNativeVO boolean → nativeVOMode
-    if p.pauseOnNativeVO ~= nil then
-        if p.pauseOnNativeVO == true and (not p.nativeVOMode or p.nativeVOMode == "off") then
-            p.nativeVOMode = "whitelist"
-        end
-        p.pauseOnNativeVO = nil
-    end
-
-    -- Migrate legacy "all" mode → "whitelist" (all mode removed)
-    if p.nativeVOMode == "all" then
-        p.nativeVOMode = "whitelist"
-    end
-
-    -- Migrate enableQuestPlaybackQueueing + stopVoiceoverAfterDialogWindowClose → questPlaybackMode
-    if p.enableQuestPlaybackQueueing ~= nil or p.stopVoiceoverAfterDialogWindowClose ~= nil then
-        if p.stopVoiceoverAfterDialogWindowClose then
-            p.questPlaybackMode = "stopOnClose"
-        elseif p.enableQuestPlaybackQueueing == false then
-            p.questPlaybackMode = "manual"
-        else
-            p.questPlaybackMode = "queue"
-        end
-        p.enableQuestPlaybackQueueing = nil
-        p.stopVoiceoverAfterDialogWindowClose = nil
-    end
-
-    -- Migrate layoutPositions/layoutSizes → editModeLayouts (legacy pre-v1 keys)
-    -- These are migrated to v1 format here, then Persistence:MigrateIfNeeded()
-    -- handles v1→v2 migration on first Edit Mode init.
-    if p.layoutPositions or p.layoutSizes then
-        if not p.editModeLayouts then p.editModeLayouts = {} end
-        if type(p.layoutPositions) == "table" then
-            for name, pos in pairs(p.layoutPositions) do
-                if not p.editModeLayouts[name] then p.editModeLayouts[name] = {} end
-                p.editModeLayouts[name].framePos = pos
-            end
-        end
-        if type(p.layoutSizes) == "table" then
-            for name, size in pairs(p.layoutSizes) do
-                if not p.editModeLayouts[name] then p.editModeLayouts[name] = {} end
-                p.editModeLayouts[name].frameSize = size
-            end
-        end
-        p.layoutPositions = nil
-        p.layoutSizes = nil
-    end
-end
-
 function CLN:OnInitialize()
     self.db = ChattyLittleNpc.Database:New("ChattyLittleNpcDB", defaults, true, "ChattyLittleNpcCharDB")
+
+    -- Bring old saved settings up to date (also re-runs on every profile switch)
+    self.Migrations:Attach(self.db)
 
     -- Attach deferred IconAtlas if file loaded before addon existed
     if not self.IconAtlas and _G.ChattyLittleNpc_PendingAtlas then

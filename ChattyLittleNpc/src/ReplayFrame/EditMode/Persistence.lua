@@ -8,8 +8,7 @@ local EditMode = ReplayFrame.EditMode
 -- ============================================================================
 -- Per-Layout Persistence (v2 Schema)
 -- ============================================================================
--- Manages per-layout settings storage, migration from v1→v2, and
--- coordinated persist/apply across all registered window controllers.
+-- Manages per-layout settings storage and coordinated persist/apply across all registered window controllers.
 -- ============================================================================
 
 local Persistence = {}
@@ -40,15 +39,10 @@ end
 -- ============================================================================
 
 --- Ensure the v2 editMode container exists in the profile.
---- Runs migration first if legacy data exists, to prevent EnsureStore
---- from stamping schemaVersion=2 before migration can see v1 data.
+--- Legacy v1 data is converted earlier, by Core/Migrations.lua.
 ---@return table editMode root container
 function Persistence:EnsureStore()
     local p = CLN.db.profile
-    -- Run migration BEFORE creating the v2 container, so legacy data is preserved
-    if not p.editMode or not p.editMode.schemaVersion then
-        self:MigrateIfNeeded()
-    end
     if not p.editMode then
         p.editMode = { schemaVersion = 2, layouts = {}, exclude = {} }
     end
@@ -73,124 +67,6 @@ function Persistence:EnsureExcludeConfig()
         size   = false,
     }
     return em.exclude
-end
-
--- ============================================================================
--- Migration (v1 → v2)
--- ============================================================================
-
---- Migrate legacy flat editModeLayouts to the new namespaced v2 schema.
---- Safe to call multiple times (idempotent — checks schemaVersion).
-function Persistence:MigrateIfNeeded()
-    local p = CLN.db.profile
-
-    -- Already migrated?
-    if p.editMode and p.editMode.schemaVersion and p.editMode.schemaVersion >= 2 then
-        return
-    end
-
-    logInfo("Migrating Edit Mode data from v1 to v2 schema")
-
-    -- Create one-version backup shadow for safety (deep copy to avoid aliasing)
-    if p.editModeLayouts then
-        p._editModeLegacyBackup = {}
-        for k, v in pairs(p.editModeLayouts) do
-            if type(v) == "table" then
-                local copy = {}
-                for k2, v2 in pairs(v) do
-                    if type(v2) == "table" then
-                        local inner = {}
-                        for k3, v3 in pairs(v2) do inner[k3] = v3 end
-                        copy[k2] = inner
-                    else
-                        copy[k2] = v2
-                    end
-                end
-                p._editModeLegacyBackup[k] = copy
-            end
-        end
-    end
-
-    local migrated = { schemaVersion = 2, layouts = {}, exclude = {} }
-
-    -- Migrate per-layout data
-    local old = p.editModeLayouts or {}
-    for name, v1 in pairs(old) do
-        if type(v1) == "table" then
-            -- Build conversation state from v1 flat fields
-            local convState = {}
-            if v1.frameScale then convState.scale = v1.frameScale end
-            if v1.queueTextScale then convState.textScale = v1.queueTextScale end
-            if v1.frameSize then
-                convState.size = {
-                    width  = v1.frameSize.width,
-                    height = v1.frameSize.height,
-                }
-            end
-            -- v1 stored position as { point, relativePoint, x, y } in layout buckets
-            local pos = v1.framePos or v1.displayFramePos
-            if pos then
-                convState.pos = {
-                    point         = pos.point,
-                    relativePoint = pos.relativePoint or pos.relPoint,
-                    x             = pos.x or pos.xOfs or 0,
-                    y             = pos.y or pos.yOfs or 0,
-                }
-            end
-
-            -- Build model state — preserve undocked position from global profile
-            local globalModelPos = p.modelFramePos
-            local isDocked = (globalModelPos == nil or type(globalModelPos) ~= "table")
-            local modelState = {
-                docked = isDocked,
-            }
-            if v1.npcModelFrameHeight then
-                local w = (v1.frameSize and v1.frameSize.width) or 475
-                modelState.size = { width = w, height = v1.npcModelFrameHeight }
-            end
-            if not isDocked and globalModelPos then
-                modelState.pos = {
-                    point         = globalModelPos.point,
-                    relativePoint = globalModelPos.relativePoint,
-                    x             = globalModelPos.xOfs or 0,
-                    y             = globalModelPos.yOfs or 0,
-                }
-                if globalModelPos.width and modelState.size then
-                    modelState.size.width = globalModelPos.width
-                end
-            end
-
-            migrated.layouts[name] = {
-                conversation = convState,
-                model        = modelState,
-            }
-        end
-    end
-
-    -- Migrate exclude config
-    local oldExclude = p.editModeExclude or {}
-    migrated.exclude = {
-        conversation = {
-            pos       = oldExclude.framePos or false,
-            size      = oldExclude.frameSize or false,
-            scale     = oldExclude.frameScale or false,
-            textScale = oldExclude.queueTextScale or false,
-        },
-        model = {
-            docked = false,
-            pos    = oldExclude.framePos or false,
-            size   = oldExclude.npcModelFrameHeight or false,
-        },
-    }
-
-    p.editMode = migrated
-    logInfo("Migration complete — " .. self:CountLayouts() .. " layout(s) migrated")
-
-    -- HARD MIGRATION: Remove old v1 keys (no backward compatibility)
-    p.editModeLayouts = nil
-    p.editModeExclude = nil
-    p.layoutPositions = nil
-    p.layoutSizes = nil
 end
 
 --- Count layouts in the v2 store.

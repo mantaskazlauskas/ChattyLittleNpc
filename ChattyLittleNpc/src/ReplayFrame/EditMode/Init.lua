@@ -8,7 +8,7 @@ local EditMode = ReplayFrame.EditMode
 -- ============================================================================
 -- EditMode Bootstrap (Init.lua)
 -- ============================================================================
--- Registers window adapters, runs migration, initializes dock state,
+-- Registers window adapters, initializes dock state,
 -- and wires Edit Mode enter/exit hooks + combat deferral.
 -- Must load AFTER all other EditMode/ files and BEFORE EditModeIntegration.lua.
 -- ============================================================================
@@ -28,7 +28,7 @@ Registry:Register(ConvWindow)
 Registry:Register(ModelWin)
 
 -- ============================================================================
--- Migration & Dock State Init
+-- Dock State Init
 -- ============================================================================
 -- These run immediately at load time. CLN.db.profile may not exist yet,
 -- so we defer to PLAYER_LOGIN / ADDON_LOADED via the existing Init.lua flow.
@@ -39,9 +39,6 @@ Registry:Register(ModelWin)
 --- Safe to call multiple times (idempotent).
 function EditMode.Bootstrap()
     if EditMode._bootstrapped then return end
-
-    -- Run v1 → v2 migration (idempotent — checks schemaVersion)
-    Persistence:MigrateIfNeeded()
 
     -- Initialize model dock state from legacy profile data
     ModelWin:InitDockState()

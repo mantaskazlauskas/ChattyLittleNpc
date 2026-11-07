@@ -29,11 +29,6 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
             CLN:OnInitialize()
         end
 
-        -- Migrate legacy saved variables to new format
-        if CLN._MigrateSavedVars then
-            CLN:_MigrateSavedVars()
-        end
-
         -- Initialize dialog tracker tables and NPC metadata cache
         if CLN.NpcDialogTracker and CLN.NpcDialogTracker.InitializeTables then
             CLN.NpcDialogTracker:InitializeTables()

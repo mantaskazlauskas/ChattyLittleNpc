@@ -12,6 +12,7 @@ Core/Events.lua
 Core/Messages.lua
 Core/Timer.lua
 Core/Database.lua
+Core/Migrations.lua
 Core/Widgets.lua
 Core/Config.lua
 Core/NpcMetadataCache.lua
