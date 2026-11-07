@@ -15,9 +15,9 @@ local function safeCall(obj, method, ...)
 end
 
 local function debugf(category, fmt, ...)
-    local U = CLN and CLN.Utils
-    local cat = (CLN and CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories[category]) or category or (CLN and CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.modelFrame) or "modelFrame"
-    if not (U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug(cat) and U.LogAnimDebug) then return end
+    local U = CLN.Utils
+    local cat = CLN.Utils.LogCategories[category] or category or CLN.Utils.LogCategories.modelFrame
+    if not U:ShouldLogAnimDebug(cat) then return end
     local ok, msg = pcall(string.format, tostring(fmt), ...)
     if not ok then msg = tostring(fmt) end
     pcall(U.LogAnimDebug, U, cat, msg)

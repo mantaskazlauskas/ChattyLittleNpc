@@ -120,7 +120,7 @@ local function ta_getLexicons()
         return _lexCache
     end
     
-    local prof = CLN and CLN.db and CLN.db.profile or {}
+    local prof = CLN.db.profile
     local greetingWords = ta_mergeLists({
         "hello","hi","hey","greetings","hail","welcome","howdy","sup","yo",
         -- faction/race-flavored single-word cues

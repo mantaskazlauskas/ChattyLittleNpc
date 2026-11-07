@@ -6,19 +6,14 @@ local NS = ReplayFrame.ModelScene
 NS.Diagnostics = NS.Diagnostics or {}
 
 local function canLog()
-    return CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode
+    return CLN.db.profile.debugMode
 end
 
 function NS.Diagnostics.log(cat, fmt, ...)
     if not canLog() then return end
     local msg = string.format(fmt, ...)
     -- Route to Utils logger; LogsWindow captures and keeps it out of chat
-    if CLN.Utils and CLN.Utils.LogAnimDebug then
-        CLN.Utils:LogAnimDebug(tostring(cat or "misc"), msg)
-    elseif CLN and CLN.Logger then
-        local logCat = (CLN.Utils and CLN.Utils.LogCategories and CLN.Utils.LogCategories.projection) or "projection"
-        CLN.Logger:debug("[CLN:" .. tostring(cat or "?") .. "] " .. msg, false, logCat)
-    end
+    CLN.Utils:LogAnimDebug(tostring(cat or "misc"), msg)
 end
 
 -- Project a 3D point to 2D screen space using the ModelScene API.

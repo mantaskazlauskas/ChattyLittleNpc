@@ -96,7 +96,7 @@ function ReplayFrame:InitStateMachine()
                 end)
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "hello" then return end
-                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    local cur = CLN.VoiceoverPlayer.currentlyPlaying
                     local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
                     if isAudioPlaying then
                         if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
@@ -121,7 +121,7 @@ function ReplayFrame:InitStateMachine()
             if self.PlayEmote then
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "bow" then return end
-                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    local cur = CLN.VoiceoverPlayer.currentlyPlaying
                     local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
                     if isAudioPlaying then
                         if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
@@ -147,7 +147,7 @@ function ReplayFrame:InitStateMachine()
             if self.PlayEmote then
                 self:OnceEmote("EMOTE_COMPLETE", function(payload)
                     if not payload or payload.name ~= "point" then return end
-                    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+                    local cur = CLN.VoiceoverPlayer.currentlyPlaying
                     local isAudioPlaying = cur and cur.isPlaying and cur:isPlaying()
                     if isAudioPlaying then
                         if self._fsm and self._fsm.lastHandle ~= cur.soundHandle then
@@ -255,10 +255,8 @@ function ReplayFrame:FSM_OnPlaybackStart(cur)
         local visDt = now() - (self._modelBecameVisibleAt or 0)
         local visWnd = (self.Timings and self.Timings.waveAfterModelVisible) or 1.2
         modelGrace = visDt >= 0 and visDt < visWnd
-        if CLN.Utils and CLN.Utils.LogAnimDebug then 
-            local cat = CLN.Utils.LogCategories and CLN.Utils.LogCategories.framing or "framing"
-            CLN.Utils:LogAnimDebug(cat, "Visibility timing - visDt: " .. tostring(visDt) .. ", visWnd: " .. tostring(visWnd) .. ", modelGrace: " .. tostring(modelGrace))
-        end
+        local cat = CLN.Utils.LogCategories.framing
+        CLN.Utils:LogAnimDebug(cat, "Visibility timing - visDt: " .. tostring(visDt) .. ", visWnd: " .. tostring(visWnd) .. ", modelGrace: " .. tostring(modelGrace))
     end
     if self.Debug then self:Debug("Timing check - dt:", dt, "window:", wnd, "recentlyStarted:", recentlyStarted) end
     
@@ -421,7 +419,7 @@ function ReplayFrame:_processPendingContext()
         startTime = fsm.pendingContext.startTime,
         isPlaying = function() 
             -- Check if this sound is still the currently playing one
-            local actualCur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local actualCur = CLN.VoiceoverPlayer.currentlyPlaying
             return actualCur and actualCur.soundHandle == fsm.pendingContext.soundHandle and actualCur:isPlaying()
         end
     }
@@ -443,10 +441,9 @@ function ReplayFrame:FSM_Tick()
     if InCombatLockdown and InCombatLockdown() then return end
     if not self._fsm then return end
     local fsm = self._fsm
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     -- Use grace-period aware check to avoid false positives during dialog transitions
-    local playing = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.IsEffectivelyPlaying
-        and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
+    local playing = CLN.VoiceoverPlayer:IsEffectivelyPlaying()
         or (cur and cur.isPlaying and cur:isPlaying() or false)
 
     if playing then

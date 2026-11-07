@@ -12,7 +12,7 @@ ReplayFrame.FramerScene = ReplayFrame.FramerScene or {}
 local FS = ReplayFrame.FramerScene
 
 local function U()
-    return CLN and CLN.Utils
+    return CLN.Utils
 end
 
 local function debugf(cat, fmt, ...)
@@ -24,9 +24,9 @@ end
 
 -- Small helpers to read meta from ReplayFrame cache
 local function getMetaForCurrent(displayID)
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local npcId = cur and cur.npcId or nil
-    return ReplayFrame and ReplayFrame.GetModelMeta and ReplayFrame:GetModelMeta(displayID, npcId, false) or nil
+    return ReplayFrame:GetModelMeta(displayID, npcId, false)
 end
 
 -- Compute a more stable distance using both H and W at once and add slight composition bias.
@@ -58,7 +58,7 @@ local function placeCamera(host, dist, cx, cy, cz)
 end
 
 local function solveWorldRegionForDisplay(host, displayID, regionName)
-    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local MS = CLN.ReplayFrame.ModelScene
     if not (MS and MS.BodyRegions and MS.BodyRegions.SolveWorldRegion) then return nil, nil end
     local canonEntry = MS.CanonicalBbox and MS.CanonicalBbox.GetCached and displayID and MS.CanonicalBbox.GetCached(displayID)
     if canonEntry and canonEntry.bbox then
@@ -72,7 +72,7 @@ end
 
 local function computeDistanceForWorld(host, world, padding)
     if not (host and world) then return nil end
-    local MS = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local MS = CLN.ReplayFrame.ModelScene
     local vfov = host.GetFovV and host:GetFovV() or 0.8
     local aspect = host.GetAspect and host:GetAspect() or 1.0
     local pad = math.max(0, tonumber(padding) or 0.10)

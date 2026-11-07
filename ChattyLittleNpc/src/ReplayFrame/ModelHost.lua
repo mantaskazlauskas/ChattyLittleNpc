@@ -14,7 +14,7 @@ function ReplayFrame:CreateModelHost(parent, name)
     host:SetPoint("TOPRIGHT", parent, "TOPRIGHT", 0, 0)
     host:SetHeight(140)
 
-    local pref = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.renderBackend) or "auto"
+    local pref = CLN.db.profile.renderBackend or "auto"
     local sceneR = ReplayFrame.ModelSceneHost
     local playerR = ReplayFrame.PlayerModelRenderer
 
@@ -144,14 +144,14 @@ function ReplayFrame:CreateModelHost(parent, name)
     function host:_SwitchToPlayerBackendAndApplyDisplay(displayID)
         if not self:_SwitchToPlayerBackend() then return end
         if self.SetDisplayInfo then self:SetDisplayInfo(displayID) end
-        local U = CLN and CLN.Utils
-        if U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug("host") and U.LogAnimDebug then
+        local U = CLN.Utils
+        if U:ShouldLogAnimDebug("host") then
             U:LogAnimDebug("host", "ModelHost: switched backend to 'player' due to scene missing SetModelByCreatureDisplayID")
         end
     end
 
-    local U = CLN and CLN.Utils
-    if U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug("host") and U.LogAnimDebug then
+    local U = CLN.Utils
+    if U:ShouldLogAnimDebug("host") then
         U:LogAnimDebug("host", "ModelHost: using backend kind='" .. tostring(backend and backend.kind or "nil") .. "'")
     end
     host:Hide()

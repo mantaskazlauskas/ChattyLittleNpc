@@ -22,7 +22,7 @@ end
 
 -- Access to all ModelScene modules
 local function getModules()
-    local modules = CLN.ReplayFrame and CLN.ReplayFrame.ModelScene
+    local modules = CLN.ReplayFrame.ModelScene
     if modules then
     -- Diagnostics available; avoid printing to chat
     else
@@ -92,9 +92,7 @@ function M.Create(parent)
     -- Wire up OnAnimFinished diagnostic callback (for testing)
     if actor.SetOnAnimFinishedCallback then
         actor:SetOnAnimFinishedCallback(function(a)
-            if CLN and CLN.Print then
-                CLN:Print("|cff00ff00[AnimFinished]|r actor animation completed")
-            end
+            CLN:Print("|cff00ff00[AnimFinished]|r actor animation completed")
         end)
     end
     
@@ -158,7 +156,7 @@ function M.Attach(host, backend)
     end
 
     local function shouldCaptureFrameDiagnostics()
-        return CLN and CLN.db and CLN.db.profile and CLN.db.profile.debugMode
+        return CLN.db.profile.debugMode
     end
 
     function host:_EnsureFrameDiagOverlay()
@@ -492,9 +490,7 @@ function M.Attach(host, backend)
     ---@param creatureTypeHint string|nil UnitCreatureType result for morphology
     function host:SetDisplayInfo(displayID, creatureTypeHint)
         if not (backend.actor and backend.actor.SetModelByCreatureDisplayID) then
-            if CLN and CLN.Logger then
-                CLN.Logger:error("ModelSceneHost: actor lacks SetModelByCreatureDisplayID", false, CLN.Utils.LogCategories.host)
-            end
+            CLN.Logger:error("ModelSceneHost: actor lacks SetModelByCreatureDisplayID", false, CLN.Utils.LogCategories.host)
             return
         end
         
@@ -1346,13 +1342,10 @@ function M.Attach(host, backend)
         end
 
         local dur = tonumber(duration) or 0.3
-        local r = CLN and CLN.ReplayFrame
-        if r then
-            if r.AnimPanTo then r:AnimPanTo(aimTargetZ, dur) end
-            -- Convert geometry distance to zoom-space for AnimZoomTo
-            local zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
-            if r.AnimZoomTo then r:AnimZoomTo(zoom, dur) end
-        end
+        CLN.ReplayFrame:AnimPanTo(aimTargetZ, dur)
+        -- Convert geometry distance to zoom-space for AnimZoomTo
+        local zoom = math.max(0, math.min(1.5, (3.2 - math.max(1.2, d)) / 2.6))
+        CLN.ReplayFrame:AnimZoomTo(zoom, dur)
         self:_DebugLog("framing", "TransitionToRegion(%s) dist=%.2f focusZ=%.2f targetZ=%.2f dur=%.2f", regionName, d, world.focusZ or -1, aimTargetZ, dur)
     end
 
@@ -1627,7 +1620,7 @@ function M.Attach(host, backend)
             self:_DebugLog("host", "DUMP[%s] parent=%s strata=%s lvl=%s shown=%s vis=%s", label, _frameName(p), tostring(pStrata), tostring(pLevel), tostring(pShown), tostring(pVisible))
         end
         -- Profile flags of interest
-        local adv = CLN and CLN.db and CLN.db.profile and CLN.db.profile.advancedCameraFitting
+        local adv = CLN.db.profile.advancedCameraFitting
     self:_DebugLog("host", "DUMP[%s] advancedCameraFitting=%s", label, tostring(adv))
     end
 end

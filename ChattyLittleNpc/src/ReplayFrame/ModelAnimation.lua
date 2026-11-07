@@ -120,7 +120,7 @@ end
 -- Internal: start a generic animation
 function ReplayFrame:_AnimStart(kind, from, to, duration, opts)
     if self:_CameraAnimsDisabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "_AnimStart skipped due to debug no-op: " .. tostring(kind))
         end
         return nil
@@ -128,7 +128,7 @@ function ReplayFrame:_AnimStart(kind, from, to, duration, opts)
     ensureAnimTable(self)
     -- Skip creating an animation if there is effectively no delta
     if approxEqual(from, to) then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "_AnimStart skipped no-op: " .. tostring(kind) .. " from=" .. tostring(from) .. " to=" .. tostring(to))
         end
         return nil
@@ -143,7 +143,7 @@ function ReplayFrame:_AnimStart(kind, from, to, duration, opts)
         onComplete = opts and opts.onComplete,
     }
     
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "_AnimStart: " .. tostring(kind) .. " from=" .. tostring(from) .. " to=" .. tostring(to) .. " dur=" .. tostring(anim.dur))
     end
     
@@ -155,7 +155,7 @@ end
 -- Public: animate zoom to target in [0..1.5]
 function ReplayFrame:AnimZoomTo(target, duration, opts)
     if self:_CameraAnimsDisabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimZoomTo skipped due to debug no-op")
         end
         return nil
@@ -169,7 +169,7 @@ function ReplayFrame:AnimZoomTo(target, duration, opts)
     end
     target = applyClamp(target or (self.Config and self.Config.DEFAULT_ZOOM or 0.65), 0, 1.5)
     
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimZoomTo: from=" .. tostring(from) .. " to=" .. tostring(target) .. " dur=" .. tostring(duration or 0.5))
     end
     
@@ -189,7 +189,7 @@ end
 -- Public: animate vertical pan (Z) to target
 function ReplayFrame:AnimPanTo(targetZ, duration, opts)
     if self:_CameraAnimsDisabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimPanTo skipped due to debug no-op")
         end
         return nil
@@ -204,7 +204,7 @@ function ReplayFrame:AnimPanTo(targetZ, duration, opts)
         fromZ = m._lastCamSnapshot.tz
     end
     
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.animation) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.animation, "AnimPanTo: from=" .. tostring(fromZ) .. " to=" .. tostring(targetZ) .. " dur=" .. tostring(duration or 0.25))
     end
     

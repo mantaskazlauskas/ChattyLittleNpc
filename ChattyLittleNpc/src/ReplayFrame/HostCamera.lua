@@ -25,8 +25,8 @@ local function has(fn)
 end
 
 local function debugf(fmt, ...)
-    local U = CLN and CLN.Utils
-    if not (U and U.ShouldLogAnimDebug and U:ShouldLogAnimDebug("camera") and U.LogAnimDebug) then return end
+    local U = CLN.Utils
+    if not U:ShouldLogAnimDebug("camera") then return end
     local ok, msg = pcall(string.format, tostring(fmt), ...)
     pcall(U.LogAnimDebug, U, "camera", ok and msg or tostring(fmt))
 end
@@ -131,7 +131,7 @@ function HC.Attach(host)
 
     -- If advanced camera fitting is enabled and this is a ModelScene backend,
     -- delegate fit helpers to FramerScene for better results.
-    local useAdvanced = (CLN and CLN.db and CLN.db.profile and CLN.db.profile.advancedCameraFitting) and true or false
+    local useAdvanced = CLN.db.profile.advancedCameraFitting and true or false
     local isScene = host._backend and host._backend.kind == "scene"
     if useAdvanced and isScene and ReplayFrame and ReplayFrame.FramerScene then
         local FS = ReplayFrame.FramerScene

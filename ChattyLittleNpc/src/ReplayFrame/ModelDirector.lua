@@ -85,10 +85,8 @@ function Director:LooksLikeGreeting(msg)
                                          string.find(firstWords, "%f[%a]come%f[%A]") or
                                          string.find(firstWords, "need") or
                                          string.find(firstWords, "help")
-            if CLN.Utils and CLN.Utils.LogAnimDebug then 
-                local cat = CLN.Utils.LogCategories and CLN.Utils.LogCategories.fsm or "fsm"
-                CLN.Utils:LogAnimDebug(cat, "Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
-            end
+            local cat = CLN.Utils.LogCategories.fsm
+            CLN.Utils:LogAnimDebug(cat, "Heuristic analysis - animId: " .. tostring(animId) .. ", hasGreetingWords: " .. tostring(hasCommonGreetingWords) .. ", length: " .. tostring(#firstPart))
             if hasCommonGreetingWords and #firstPart < GREETING_HEURISTIC_MAX_LEN then
                 if ReplayFrame and ReplayFrame.Debug then ReplayFrame:Debug("Heuristic detected greeting") end
                 return true
@@ -131,7 +129,7 @@ local function getWaveKey()
         end)
         if ok and key then return key end
     end
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     if cur and cur.npcId then return tostring(cur.npcId) end
     return nil
 end

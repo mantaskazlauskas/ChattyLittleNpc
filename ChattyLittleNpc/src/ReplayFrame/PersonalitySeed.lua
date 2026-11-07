@@ -67,7 +67,7 @@ function PersonalitySeed:ResetCache()
 end
 
 function ReplayFrame:GetPersonalityTraits(npcId)
-    local cur = CLN and CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local resolvedNpcId = npcId or (cur and cur.npcId) or self._lastUnitNpcId
     return PersonalitySeed:GetTraits(resolvedNpcId)
 end

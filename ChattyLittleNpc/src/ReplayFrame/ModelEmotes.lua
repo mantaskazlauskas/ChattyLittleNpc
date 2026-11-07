@@ -13,9 +13,7 @@ function ReplayFrame:_EmitEmoteEvent(event, payload)
     local ev = tostring(event or "")
     if ev == "" then return end
     -- Addon-wide broadcast via shared event bus
-    if CLN and CLN.SendMessage then
-        pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
-    end
+    pcall(CLN.SendMessage, CLN, "CLN_" .. ev, payload, self)
     -- Local listeners on this frame (snapshot to avoid mutation during iteration)
     if self._emoteEventHandlers and self._emoteEventHandlers[ev] then
         local snapshot = {unpack(self._emoteEventHandlers[ev])}
@@ -304,26 +302,26 @@ end
 -- Note: completion is emitted via EMOTE_COMPLETE; external callbacks are deprecated.
 function ReplayFrame:_StartEmoteSequence(steps, opts)
     if self:_NoAnimDebugEnabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence skipped due to debug no-op")
         end
         return false
     end
     if not (steps and type(steps) == "table" and #steps > 0) then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - invalid steps: " .. tostring(steps))
         end
         return false
     end
     local m = self.NpcModelFrame
     if not m then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "_StartEmoteSequence failed - no NpcModelFrame")
         end
         return false
     end
 
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "Emote sequence start: steps=" .. tostring(#steps))
     end
 
@@ -498,7 +496,7 @@ function ReplayFrame:PlayNodEmote(opts)
         :panPercent(0.75, 0.15)
         :onComplete(function()
             -- Let animation system handle next steps after nod
-            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur = CLN.VoiceoverPlayer.currentlyPlaying
             if cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop and self.NpcModelFrame and self.NpcModelFrame:IsShown() then
                 self:StartEmoteLoop()
             end
@@ -524,7 +522,7 @@ function ReplayFrame:PlayHeadShakeEmote(opts)
         :panPercent(0.75, 0.15)
         :onComplete(function()
             -- Let animation system handle next steps after head shake
-            local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur = CLN.VoiceoverPlayer.currentlyPlaying
             if cur and cur.isPlaying and cur:isPlaying() and self.StartEmoteLoop and self.NpcModelFrame and self.NpcModelFrame:IsShown() then
                 self:StartEmoteLoop()
             end
@@ -698,7 +696,7 @@ end
 function ReplayFrame.EmoteBuilder:run(opts)
     local r = self.r
     if r and r:_NoAnimDebugEnabled() then
-        if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+        if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
             CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run skipped due to debug no-op")
         end
         return false
@@ -709,7 +707,7 @@ function ReplayFrame.EmoteBuilder:run(opts)
     end
     
     -- Minimal logging only when debug is explicitly enabled
-    if CLN.Utils and CLN.Utils.ShouldLogAnimDebug and CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
+    if CLN.Utils:ShouldLogAnimDebug(CLN.Utils.LogCategories.emotes) then
         CLN.Utils:LogAnimDebug(CLN.Utils.LogCategories.emotes, "EmoteBuilder run: steps=" .. tostring(#self.steps) .. ", name=" .. tostring(self._name))
     end
     
@@ -745,7 +743,7 @@ function ReplayFrame:PlayTalkEmote(opts)
     if not m then return false end
     -- Percent-based camera targets for TALK: upper body
     local talkRange = { p0 = 0.50, p1 = 1.00 }
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local talkId = 60
     if self.ChooseTalkAnimIdForText and cur and cur.title then
         talkId = self:ChooseTalkAnimIdForText(cur.title)
@@ -810,7 +808,7 @@ end
 function ReplayFrame:StartEmoteLoop(opts)
     if self:_NoAnimDebugEnabled() then return end
     if self._npcIsDead then return end
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     if not (cur and cur.soundHandle and cur.isPlaying and cur:isPlaying()) then return end
     -- Guard: don't start another loop if already active for this handle
     if self._emoteLoopActive and self._emoteLoopHandle == cur.soundHandle then return end
@@ -854,7 +852,7 @@ end
 
 -- Internal: Emote loop helpers
 function ReplayFrame:_EmoteLoop_StillValid()
-    local now = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local now = CLN.VoiceoverPlayer.currentlyPlaying
     return self._emoteLoopActive and now and now.soundHandle == self._emoteLoopHandle and now.isPlaying and now:isPlaying()
 end
 
@@ -865,7 +863,7 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
     local talkMin, talkMax = self._loopTalkMin or 3.5, self._loopTalkMax or 7.5
     local idleMin, idleMax = self._loopIdleMin or 0.15, self._loopIdleMax or 0.35
     local nowT = now or (GetTime and GetTime() or 0)
-    local cur = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+    local cur = CLN.VoiceoverPlayer.currentlyPlaying
     local traits = self.GetPersonalityTraits and self:GetPersonalityTraits(cur and cur.npcId) or { playful = 0.5, energy = 0.5, idleVarianceScale = 1, talkEnergyScale = 1 }
     local playful = tonumber(traits.playful) or 0.5
     local energy = tonumber(traits.energy) or 0.5
@@ -895,7 +893,7 @@ function ReplayFrame:_EmoteLoop_PickAndStartSegment(now)
         end
         -- Point gesture: only if not idle, not recently pointed, and model supports it
         if not chooseIdle and not self._loopLastWasPoint and math.random() < 0.05 then
-            local cur2 = CLN.VoiceoverPlayer and CLN.VoiceoverPlayer.currentlyPlaying
+            local cur2 = CLN.VoiceoverPlayer.currentlyPlaying
             if cur2 and cur2.title and self.GetEmphasisConfidence then
                 local emphConf = self:GetEmphasisConfidence(cur2.title)
                 if emphConf > 0.3 and self.ModelHasAnimation and self:ModelHasAnimation((self.AnimIds and self.AnimIds.POINT) or 25) then
