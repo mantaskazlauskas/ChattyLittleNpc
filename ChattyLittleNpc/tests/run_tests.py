@@ -62,6 +62,16 @@ def make_lua():
         CLN.Utils = CLN.Utils or {}
         CLN.questsQueue = {}
 
+        -- No-op stand-ins for modules that are always loaded in-game (see the
+        -- .toc) but not in most tests. Code no longer nil-guards these, so a
+        -- test that needs the real module loads it with load_file().
+        local function noop() end
+        CLN.Utils.EstimateVODuration = function() return nil end
+        CLN.NpcMetadataCache = { Lookup = function() return nil end, Enrich = noop }
+        CLN.EventHandler = {
+            SuspendTimers = noop, ResumeTimers = noop, ScheduleWhitelistPopup = noop,
+        }
+
         -- WoW API stubs
         function GetTime() return 0 end
         function UnitName() return "TestPlayer" end
