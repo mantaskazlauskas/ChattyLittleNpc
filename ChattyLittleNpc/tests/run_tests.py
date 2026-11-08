@@ -1438,6 +1438,8 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
         """)
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Queue.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Pause.lua")
         load_file(cls.lua, "src/ReplayFrame/init.lua")
         cls.lua.execute("""
             local CLN = _G.ChattyLittleNpc
@@ -3121,6 +3123,8 @@ class TestGossipCooldown(unittest.TestCase):
         load_file(cls.lua, "Core/Migrations.lua")
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Queue.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Pause.lua")
 
     def setUp(self):
         lua_call(self.lua, """
@@ -3371,6 +3375,8 @@ class TestPlayLibraryFile(unittest.TestCase):
         load_file(cls.lua, "Main.lua")
         load_file(cls.lua, "src/VoiceoverPacks.lua")
         load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Queue.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Pause.lua")
         # History goes out on the message bus; collect it like the replay frame would
         cls.lua.execute("""
             local CLN = ChattyLittleNpc
