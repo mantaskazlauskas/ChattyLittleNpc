@@ -33,10 +33,7 @@ function VoiceoverPlayer:PauseForNativeVO(estimatedDuration)
     CLN.EventHandler:SuspendTimers()
 
     -- Freeze model animations
-    if CLN.ReplayFrame.NpcModelFrame then
-        local m = CLN.ReplayFrame.NpcModelFrame
-        if m and m.SetScript then m:SetScript("OnUpdate", nil) end
-    end
+    send("ANIMATION_FREEZE")
 
     -- Schedule auto-resume
     if self._nativeVOResumeTimer then
@@ -176,10 +173,7 @@ function VoiceoverPlayer:PausePlayback()
     end
 
     -- Freeze model animations
-    if CLN.ReplayFrame.NpcModelFrame then
-        local m = CLN.ReplayFrame.NpcModelFrame
-        if m and m.SetScript then m:SetScript("OnUpdate", nil) end
-    end
+    send("ANIMATION_FREEZE")
 
     CLN.Logger:debug("Playback paused by user", false, CLN.Utils.LogCategories.loader)
     self:NotifyQueueDirty()

@@ -998,6 +998,11 @@ if CLN.RegisterMessage and CLN.Messages then
         ReplayFrame:ResetAnimationState() -- ModelFrame.lua
     end)
 
+    CLN:RegisterMessage(M.ANIMATION_FREEZE, function()
+        local m = ReplayFrame.NpcModelFrame
+        if m and m.SetScript then m:SetScript("OnUpdate", nil) end
+    end)
+
     CLN:RegisterMessage(M.ANIMATION_START, function()
         -- If the portrait is hidden, its OnShow hook starts the animation instead
         if ReplayFrame.NpcModelFrame and ReplayFrame.NpcModelFrame:IsShown() then

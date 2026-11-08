@@ -1872,14 +1872,109 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
     def test_library_start_leaves_a_hidden_portrait_alone(self):
         self.assertEqual(self._play_library_line(False), (True, "reset"))
 
+    def test_skip_stop_and_pause_cancel_subtitles_during_text_continuation(self):
+        for call in ("VP:SkipCurrentSound()", "VP:StopCurrentSound()", "VP:PausePlayback()"):
+            with self.subTest(call=call):
+                hides = lua_call(self.lua, f"""
+                    local CLN = _G.ChattyLittleNpc
+                    local VP = CLN.VoiceoverPlayer
+                    local RF = CLN.ReplayFrame
+                    local count = 0
+                    local orig = RF.HideSubtitle
+                    RF.HideSubtitle = function() count = count + 1 end
+                    VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+                    VP.currentlyPlaying.title = "Line A"
+                    VP.currentlyPlaying._textContinuation = true
+                    {call}
+                    RF.HideSubtitle = orig
+                    VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+                    VP._skipping = nil
+                    return count
+                """)
+                self.assertEqual(hides, 1)
+
+    def _pause_with_portrait(self, call):
+        return lua_call(self.lua, f"""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            local cleared = 0
+            local origNewTimer = C_Timer.NewTimer
+            C_Timer.NewTimer = function() return {{ Cancel = function() end }} end
+            RF.NpcModelFrame = {{
+                SetScript = function(_, name, fn)
+                    if name == "OnUpdate" and fn == nil then cleared = cleared + 1 end
+                end,
+            }}
+            local cp = VP:GetCurrentlyPlayingObject()
+            cp.title = "Line A"
+            cp.soundHandle = 11
+            cp.isPlaying = function() return true end
+            VP.currentlyPlaying = cp
+            {call}
+            C_Timer.NewTimer = origNewTimer
+            RF.NpcModelFrame = nil
+            if VP._nativeVOResumeTimer then VP._nativeVOResumeTimer = nil end
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            return cleared
+        """)
+
+    def test_user_pause_freezes_the_portrait(self):
+        self.assertEqual(self._pause_with_portrait("VP:PausePlayback()"), 1)
+
+    def test_native_vo_pause_freezes_the_portrait(self):
+        self.assertEqual(self._pause_with_portrait("VP:PauseForNativeVO(5)"), 1)
+
+    def test_gossip_start_resets_then_animates_a_visible_portrait(self):
+        order = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            local U = CLN.Utils
+            local order = {}
+            local origReset, origAnim = RF.ResetAnimationState, RF.UpdateConversationAnimation
+            local origHashes, origPath, origEmpty = U.GetHashes, U.GetPathToNonQuestFile, U.IsNilOrEmpty
+            local origMode = CLN.db.profile.gossipQueueMode
+            RF.ResetAnimationState = function() table.insert(order, "reset") end
+            RF.UpdateConversationAnimation = function() table.insert(order, "animate") end
+            RF.NpcModelFrame = { IsShown = function() return true end }
+            U.GetHashes = function(_, npcId, text) return { npcId .. ":" .. text } end
+            U.GetPathToNonQuestFile = function() return "guard.ogg" end
+            U.IsNilOrEmpty = U.IsNilOrEmpty or function(_, v) return v == nil or v == "" end
+            CLN.db.profile.gossipQueueMode = "none"
+            VP._gossipCooldowns = {}
+            VP:PlayNonQuestSound(68, "Gossip", "Well met", "Male")
+            RF.ResetAnimationState, RF.UpdateConversationAnimation = origReset, origAnim
+            U.GetHashes, U.GetPathToNonQuestFile, U.IsNilOrEmpty = origHashes, origPath, origEmpty
+            CLN.db.profile.gossipQueueMode = origMode
+            RF.NpcModelFrame = nil
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            return table.concat(order, ",")
+        """)
+        self.assertEqual(order, "reset,animate")
+
+    def test_quest_start_resets_but_does_not_send_animation_start(self):
+        self._record_messages()
+        msgs = lua_call(self.lua, """
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP:PlayQuestSound(100, "Desc", 9, 10)
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            return table.concat(_msgs, ";")
+        """)
+        self.assertIn("CLN_ANIMATION_RESET", msgs)
+        self.assertNotIn("CLN_ANIMATION_START", msgs)
+
     def test_every_playback_send_uses_a_known_message(self):
         # send() silently ignores unknown keys, so a typo would otherwise go unnoticed
-        messages = open(os.path.join(ADDON_ROOT, "Core/Messages.lua"), encoding="utf-8").read()
+        def read(path):
+            with open(os.path.join(ADDON_ROOT, path), encoding="utf-8") as fh:
+                return fh.read()
+        messages = read("Core/Messages.lua")
         known = set(re.findall(r"(?m)^    ([A-Z_]+) = ", messages))
         files = ["src/VoiceoverPlayer.lua", "src/VoiceoverPlayer/Queue.lua", "src/VoiceoverPlayer/Pause.lua"]
         used = set()
         for f in files:
-            used |= set(re.findall(r"""\bsend\(\s*["']([^"']+)["']""", open(os.path.join(ADDON_ROOT, f), encoding="utf-8").read()))
+            used |= set(re.findall(r"""\bsend\(\s*["']([^"']+)["']""", read(f)))
         self.assertTrue(used)
         self.assertEqual(used - known, set())
 

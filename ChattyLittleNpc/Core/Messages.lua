@@ -43,6 +43,9 @@ CLN.Messages = {
     --- lines don't send this; their animation starts from the display update.
     --- No payload.
     ANIMATION_START = "CLN_ANIMATION_START",
+
+    --- Playback was paused: stop the portrait animating. No payload.
+    ANIMATION_FREEZE = "CLN_ANIMATION_FREEZE",
 }
 
 return CLN.Messages
