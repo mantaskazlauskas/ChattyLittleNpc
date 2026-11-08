@@ -3862,6 +3862,273 @@ class TestLogsPrintCapture(unittest.TestCase):
         self.assertEqual(self.captured(), "once")
 
 
+class TestPublicAPI(unittest.TestCase):
+    """ChattyLittleNpc.API, the interface other addons rely on."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "Utils/Utils.lua")
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            function CLN.Utils:GetHashes(npcId, text) return { npcId .. ":" .. text } end
+            function CLN.Utils:GetPathToNonQuestFile(npcId, soundType, hashes, gender)
+                _lastLookup = table.concat({ npcId, soundType, hashes[1], gender }, "|")
+                return _gossipPath
+            end
+            function CLN:GetTitleForQuestID(id) return "Quest " .. id end
+            function GetLocale() return "enUS" end
+            function GetTime() return 100 end
+            C_Sound = { IsPlaying = function() return _audible end }
+            C_Timer.NewTimer = function() return { Cancel = function() end } end
+            CLN.VoiceoverPacks = {
+                ChattyLittleNpc_Test_voiceovers = { _voiceoverIndex = { ["100_Desc.ogg"] = true } },
+            }
+        """)
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Queue.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Pause.lua")
+        load_file(cls.lua, "src/API.lua")
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            CLN.db.profile = { audioChannel = "MASTER", questPlaybackMode = "queue",
+                gossipQueueMode = "none", playVoiceoverAfterDelay = 2 }
+            CLN.questsQueue = {}
+            _audible, _gossipPath, _played, _stopped = true, "dir/guard.ogg", {}, 0
+            function PlaySoundFile(path) table.insert(_played, path) return true, 500 end
+            function StopSound() _stopped = _stopped + 1 end
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP._suspendedPlayback = nil
+            VP._lastForceStopTime = nil
+            VP._nativeVOResumeTimer = nil
+            VP._skipping = nil
+            API = CLN.API
+        """)
+
+    def run_lua(self, code):
+        return lua_call(self.lua, f"""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            {code}
+        """)
+
+    def played(self):
+        return self.run_lua("return #_played")
+
+    def test_version_is_one(self):
+        self.assertEqual(self.run_lua("return API.version"), 1)
+
+    def test_before_loading_everything_is_safe(self):
+        result = self.run_lua("""
+            local db = CLN.db
+            CLN.db = nil
+            API.PlayQuest(100, "Desc"); API.PlayGossip(5, "Gossip", "Hi"); API.Stop()
+            API.Pause(); API.Resume(); API.Skip()
+            local out = table.pack(API.IsReady(), API.IsPlaying(), API.IsPaused(), API.GetCurrent(),
+                API.GetAutoPlayDelay(), API.HasQuestVoiceover(100, "Desc"), API.HasGossipVoiceover(5, "Gossip", "Hi"))
+            CLN.db = db
+            return out[1], out[2], out[3], out[4], out[5], out[6], out[7]
+        """)
+        self.assertEqual(result, (False, False, False, None, 0, False, False))
+        self.assertEqual(self.played(), 0)
+
+    def test_play_quest_records_the_npc(self):
+        result = self.run_lua('API.PlayQuest(100, "Desc", 9); return VP.currentlyPlaying.questId, VP.currentlyPlaying.npcId')
+        self.assertEqual(result, (100, 9))
+
+    def test_play_gossip_passes_every_argument(self):
+        result = self.run_lua("""
+            API.PlayGossip(68, "GameObject", "Well met", "Male")
+            local cp = VP.currentlyPlaying
+            return cp.npcId, cp.entryType, cp.title, cp.gender
+        """)
+        self.assertEqual(result, (68, "GameObject", "Well met", "Male"))
+
+    def test_is_playing_follows_the_sound(self):
+        self.assertFalse(self.run_lua("return API.IsPlaying()"))
+        self.run_lua('API.PlayQuest(100, "Desc")')
+        self.assertIs(self.run_lua("return API.IsPlaying()"), True)
+        self.run_lua("_audible = false")
+        self.assertIs(self.run_lua("return API.IsPlaying()"), False)
+
+    def test_pause_resume_and_skip(self):
+        result = self.run_lua("""
+            API.PlayQuest(100, "Desc")
+            API.Pause()
+            local paused, audible = API.IsPaused(), API.IsPlaying()
+            API.Resume()
+            local after = API.IsPaused()
+            API.Skip()
+            return paused, audible, after, API.GetCurrent() == nil
+        """)
+        self.assertEqual(result, (True, False, False, True))
+
+    def test_get_current_is_a_detached_copy(self):
+        result = self.run_lua("""
+            API.PlayQuest(100, "Desc", 9)
+            local line = API.GetCurrent()
+            local title, id, state, isPlayingField, handle = line.title, line.questId, line.state, line.isPlaying, line.soundHandle
+            line.title = "changed"
+            return title, id, state, isPlayingField, handle, VP.currentlyPlaying.title
+        """)
+        self.assertEqual(result, ("Quest 100", 100, "playing", None, None, "Quest 100"))
+
+    def test_get_current_is_nil_when_idle(self):
+        self.assertIsNone(self.run_lua("return API.GetCurrent()"))
+
+    def test_auto_play_delay(self):
+        self.assertEqual(self.run_lua("return API.GetAutoPlayDelay()"), 2)
+
+    def test_has_quest_voiceover_accepts_blizzard_phase_names(self):
+        for phase, expected in (("Desc", True), ("detail", True), ("DETAIL", True), ("Comp", False), ("Nope", False)):
+            with self.subTest(phase=phase):
+                self.assertIs(self.run_lua(f'return API.HasQuestVoiceover(100, "{phase}")'), expected)
+
+    def test_has_quest_voiceover_needs_arguments(self):
+        self.assertIs(self.run_lua('return API.HasQuestVoiceover(nil, "Desc")'), False)
+        self.assertIs(self.run_lua("return API.HasQuestVoiceover(100, nil)"), False)
+
+    def test_has_gossip_voiceover(self):
+        for path, expected in (('"dir/guard.ogg"', True), ('""', False), ("nil", False)):
+            with self.subTest(path=path):
+                result = self.run_lua(f'_gossipPath = {path}; return API.HasGossipVoiceover(68, "Gossip", "Hi", "Male")')
+                self.assertIs(result, expected)
+        self.assertEqual(self.run_lua("return _lastLookup"), "68|Gossip|68:Hi|Male")
+
+    def test_has_gossip_voiceover_defaults_the_gender(self):
+        self.run_lua('API.HasGossipVoiceover(68, "Gossip", "Hi")')
+        self.assertEqual(self.run_lua("return _lastLookup"), "68|Gossip|68:Hi|")
+
+    def gender_looked_up(self, given):
+        self.run_lua(f"""
+            local orig = CLN.NpcMetadataCache.Lookup
+            CLN.NpcMetadataCache.Lookup = function() return {{ gender = "Female" }} end
+            API.HasGossipVoiceover(68, "Gossip", "Hi", {given})
+            CLN.NpcMetadataCache.Lookup = orig
+        """)
+        return self.run_lua("return _lastLookup")
+
+    def test_has_gossip_voiceover_fills_a_missing_gender_from_the_cache(self):
+        self.assertEqual(self.gender_looked_up("nil"), "68|Gossip|68:Hi|Female")
+        self.assertEqual(self.gender_looked_up('""'), "68|Gossip|68:Hi|Female")
+
+    def test_has_gossip_voiceover_keeps_a_given_gender(self):
+        self.assertEqual(self.gender_looked_up('"Male"'), "68|Gossip|68:Hi|Male")
+
+    def test_play_quest_right_after_stop_still_plays(self):
+        result = self.run_lua("""
+            API.PlayQuest(100, "Desc")
+            API.Stop()
+            API.PlayQuest(100, "Desc")
+            return #_played, VP.currentlyPlaying.questId
+        """)
+        self.assertEqual(result, (2, 100))
+
+    def test_pausing_while_idle_does_not_stall_later_lines(self):
+        result = self.run_lua("""
+            local suspended, orig = 0, CLN.EventHandler.SuspendTimers
+            CLN.EventHandler.SuspendTimers = function() suspended = suspended + 1 end
+            API.Pause()
+            CLN.EventHandler.SuspendTimers = orig
+            return suspended, API.IsPaused()
+        """)
+        self.assertEqual(result, (0, False))
+
+    def stop(self, options, mode):
+        return self.run_lua(f"""
+            CLN.db.profile.questPlaybackMode = "{mode}"
+            API.PlayQuest(100, "Desc")
+            CLN.questsQueue = {{ {{ questId = 200, phase = "Prog" }} }}
+            API.Stop({options})
+            return API.GetCurrent() == nil, #CLN.questsQueue
+        """)
+
+    def test_stop_stops_even_in_queue_mode_and_keeps_the_queue(self):
+        self.assertEqual(self.stop("", "queue"), (True, 1))
+
+    def test_stop_can_clear_the_queue(self):
+        self.assertEqual(self.stop("{ clearQueue = true }", "queue"), (True, 0))
+
+    def test_stop_respecting_queue_mode_leaves_a_queue_alone(self):
+        self.assertEqual(self.stop("{ clearQueue = true, respectQueueMode = true }", "queue"), (False, 1))
+
+    def test_stop_respecting_queue_mode_works_outside_it(self):
+        self.assertEqual(self.stop("{ clearQueue = true, respectQueueMode = true }", "override"), (True, 0))
+
+    def test_callback_receives_a_copy_of_the_line(self):
+        result = self.run_lua("""
+            local seen = {}
+            local function cb(event, state, line) table.insert(seen, { event, state, line }) end
+            assert(API.RegisterCallback("PLAYBACK_STATE_CHANGED", cb))
+            API.PlayQuest(100, "Desc")
+            API.UnregisterCallback("PLAYBACK_STATE_CHANGED", cb)
+            local last = seen[#seen]
+            local line = last[3]
+            return last[1], last[2], line.questId, line.isPlaying, line == VP.currentlyPlaying
+        """)
+        self.assertEqual(result, ("PLAYBACK_STATE_CHANGED", "playing", 100, None, False))
+
+    def test_callback_for_idle_state_gets_no_line(self):
+        result = self.run_lua("""
+            local got = "unset"
+            local function cb(_, _, line) got = line end
+            API.RegisterCallback("PLAYBACK_STATE_CHANGED", cb)
+            VP:NotifyDisplayDirty()
+            API.UnregisterCallback("PLAYBACK_STATE_CHANGED", cb)
+            return got
+        """)
+        self.assertIsNone(result)
+
+    def test_all_documented_events_fire(self):
+        result = self.run_lua("""
+            local seen = {}
+            local function cb(event) seen[event] = true end
+            for _, e in ipairs({ "QUEUE_CHANGED", "HISTORY_ADDED", "CONVERSATION_ENDED" }) do
+                assert(API.RegisterCallback(e, cb))
+            end
+            API.PlayQuest(100, "Desc")
+            API.Stop({ clearQueue = true })
+            for _, e in ipairs({ "QUEUE_CHANGED", "HISTORY_ADDED", "CONVERSATION_ENDED" }) do
+                API.UnregisterCallback(e, cb)
+            end
+            return seen.QUEUE_CHANGED, seen.HISTORY_ADDED, seen.CONVERSATION_ENDED
+        """)
+        self.assertEqual(result, (True, True, True))
+
+    def test_registering_twice_calls_once_and_unregister_stops_it(self):
+        result = self.run_lua("""
+            local count = 0
+            local function cb() count = count + 1 end
+            API.RegisterCallback("QUEUE_CHANGED", cb)
+            API.RegisterCallback("QUEUE_CHANGED", cb)
+            VP:NotifyQueueDirty()
+            local first = count
+            API.UnregisterCallback("QUEUE_CHANGED", cb)
+            VP:NotifyQueueDirty()
+            return first, count
+        """)
+        self.assertEqual(result, (1, 1))
+
+    def test_register_rejects_internal_events_and_bad_callbacks(self):
+        result = self.run_lua("""
+            return API.RegisterCallback("ANIMATION_RESET", function() end),
+                API.RegisterCallback("NOPE", function() end),
+                API.RegisterCallback("QUEUE_CHANGED", "not a function")
+        """)
+        self.assertEqual(result, (False, False, False))
+
+    def test_unregistering_something_unknown_is_harmless(self):
+        self.run_lua('API.UnregisterCallback("QUEUE_CHANGED", function() end); API.UnregisterCallback("NOPE", print)')
+
+    def test_api_file_is_in_the_toc(self):
+        with open(os.path.join(ADDON_ROOT, "ChattyLittleNpc.toc"), encoding="utf-8") as fh:
+            self.assertIn("src/API.lua", fh.read())
+
+
 class TestWindowFadeIn(unittest.TestCase):
     """_DisplayFrameFadeIn must leave a hidden portrait ready to be shown."""
 

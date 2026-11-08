@@ -106,6 +106,7 @@ src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua
 src/VoiceoverPlayer/Queue.lua
 src/VoiceoverPlayer/Pause.lua
+src/API.lua
 src/VoiceoverLibrary.lua
 src/RaceModelManager.lua
 src/ItemPropPicker.lua

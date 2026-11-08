@@ -61,6 +61,10 @@ Retail (including Midnight), Mists of Pandaria Classic, Cataclysm Classic, Wrath
 | `/clnwelcome` | Show the welcome screen again |
 | `/clnlogs` | Open the addon log window |
 
+## For Addon Authors
+
+Other addons can play, stop and react to voiceovers through `ChattyLittleNpc.API`. See the [API documentation](ChattyLittleNpc/docs/API.md).
+
 ## Help Expand the Database
 
 Missing a voiceover? The addon can record the quest and NPC dialog you see while playing (turn on **Track NPC Dialog Data** in Settings > Developer). New voiceovers are made from this data.
