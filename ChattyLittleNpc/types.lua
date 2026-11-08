@@ -37,6 +37,66 @@
 ---@class PrintUtil
 ---@field Print fun(self: PrintUtil, ...: any)
 
+--- The portrait host from ReplayFrame:CreateModelHost. It draws through one of
+--- two back ends, in `_backend.kind`:
+--- - "scene"  (Renderers/ModelSceneHost.lua): ModelScene + actor, real camera and bounds
+--- - "player" (Renderers/PlayerModelRenderer.lua): PlayerModel, camera emulated with zoom
+---
+--- A scene host switches to "player" for what its actor can't draw (props and
+--- creature IDs). The switch is one-way, and the scene-only methods stay on the
+--- host afterwards, so to choose by back end check `_backend.kind`, not whether
+--- a method exists.
+---
+--- The fields below work on both back ends. Those marked "via HostCamera" are
+--- filled in by HostCamera.Attach when a back end lacks them. The exception is
+--- the last-resort host CreateModelHost builds if neither renderer is available:
+--- it has no `_backend` and only part of this interface.
+---@class ModelRenderer
+---@field _backend {kind: "scene"|"player", frame: table, actor?: table}
+---@field ClearModel fun(self: ModelRenderer)
+---@field SetDisplayInfo fun(self: ModelRenderer, displayID: number, creatureTypeHint?: string) The hint is used by the scene back end only
+---@field SetUnit fun(self: ModelRenderer, unit: string)
+---@field OnModelLoadedOnce fun(self: ModelRenderer, callback: function)
+---@field SetAnimation fun(self: ModelRenderer, animId: number)
+---@field GetAnimation fun(self: ModelRenderer): number|nil
+---@field HasAnimation fun(self: ModelRenderer, animId: number): boolean|nil nil means unknown (model not loaded yet); callers treat that as supported
+---@field SetSheathed fun(self: ModelRenderer, sheathed: boolean) No effect on the scene back end
+---@field SetPaused fun(self: ModelRenderer, paused: boolean)
+---@field SetPortraitZoom fun(self: ModelRenderer, zoom: number)
+---@field GetPortraitZoom fun(self: ModelRenderer): number
+---@field SetTarget fun(self: ModelRenderer, target: {x?: number, y?: number, z?: number})
+---@field GetActorYaw fun(self: ModelRenderer): number Radians
+---@field SetActorYaw fun(self: ModelRenderer, yaw: number) Radians
+---@field GetBounds fun(self: ModelRenderer): table|nil Always nil on the player back end
+---@field GetFovV fun(self: ModelRenderer): number Vertical field of view, radians
+---@field GetAspect fun(self: ModelRenderer): number Width / height
+---@field PointCameraAtHead fun(self: ModelRenderer) No effect on the player back end
+---@field FrameFullBodyFront fun(self: ModelRenderer, paddingFrac?: number) Padding is used by the scene back end only
+---@field SetModelPosition fun(self: ModelRenderer, anchor: string, xPct: number, yPct: number): boolean|nil
+---@field ReapplyModelPosition fun(self: ModelRenderer): boolean|nil
+---@field ClearModelPosition fun(self: ModelRenderer)
+---@field SetPosition fun(self: ModelRenderer, x: number, y: number, z: number) Via HostCamera on the scene back end
+---@field SetRotation fun(self: ModelRenderer, radians: number) Via HostCamera on the scene back end
+---@field ProjectFit fun(self: ModelRenderer, scale?: number, targetCenter?: table) Via HostCamera on the scene back end
+---@field FitDefault fun(self: ModelRenderer, padding?: number) Via HostCamera on the scene back end
+---@field ShowUpper fun(self: ModelRenderer, frac?: number, padding?: number) Via HostCamera. With advanced camera fitting on, a host that switched to player still drives the hidden scene
+---@field ZoomToHeightFactor fun(self: ModelRenderer, factor: number, padding?: number) Via HostCamera, with the same caveat as ShowUpper
+---@field HostCameraSet fun(self: ModelRenderer, zoom?: number, z?: number, yaw?: number) Via HostCamera
+---@field SetCreatureByNpcId fun(self: ModelRenderer, npcId: number, fileId?: number): boolean Switches to the player back end
+---@field FrameRegion? fun(self: ModelRenderer, regionName: string, paddingFrac?: number) Scene only
+---@field TransitionToRegion? fun(self: ModelRenderer, regionName: string, duration?: number) Scene only
+---@field FitDistanceForCurrentTarget? fun(self: ModelRenderer, paddingFrac?: number) Scene only
+---@field FrameFullBodyFront_Immediate? fun(self: ModelRenderer, paddingFrac?: number) Scene only
+---@field FaceCamera? fun(self: ModelRenderer) Scene only
+---@field GetActorScale? fun(self: ModelRenderer): number Player only
+---@field SetActorScale? fun(self: ModelRenderer, scale: number) Player only
+---@field SetCamera? fun(self: ModelRenderer, distance: number, yaw: number, pitch: number) Player only
+---@field SetPropModel? fun(self: ModelRenderer, prop: table) Player only
+---@field HasPropLoaded? fun(self: ModelRenderer, fileId: number): boolean Player only
+---@field FrameProp? fun(self: ModelRenderer, prop: table) Player only
+---@field SetCreatureModel? fun(self: ModelRenderer, npcId: number, fileId?: number): boolean Player only
+---@field ApplyPreset? fun(self: ModelRenderer, presetName: string) Player only
+
 ---@class ReplayFrame
 ---@field waveLowerDelta? number Optional override for wave emote lower delta (default 0.05)
 ---@field talkChance? number Optional override for talk chance in emote loop
