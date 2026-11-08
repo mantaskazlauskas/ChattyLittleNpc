@@ -161,10 +161,10 @@ function VoiceoverPlayer:PausePlayback()
         cp._elapsedAtPause = GetTime() - cp.startTime
     end
 
-    -- Suspend watcher and history-prune timers while paused
-    CLN.EventHandler:SuspendTimers()
-
     if cp and (cp.soundHandle or wasNativePaused) then
+        -- Only when there is a line to pause: with nothing paused, IsPaused()
+        -- stays false and nothing would ever restart these timers
+        CLN.EventHandler:SuspendTimers()
         self:SetPlaybackState(cp, self.State.PAUSED_USER)
         if cp.soundHandle then
             StopSound(cp.soundHandle, 0)

@@ -4409,6 +4409,22 @@ class TestPlaybackPathDifferences(unittest.TestCase):
         """)
         self.assertEqual(self.log().count("play:"), 2)
 
+    def suspends_when_pausing(self, prepare):
+        return self.run_lua(f"""
+            local count, orig = 0, CLN.EventHandler.SuspendTimers
+            CLN.EventHandler.SuspendTimers = function() count = count + 1 end
+            {prepare}
+            VP:PausePlayback()
+            CLN.EventHandler.SuspendTimers = orig
+            return count, VP:IsPaused()
+        """)
+
+    def test_pausing_with_nothing_playing_leaves_the_timers_running(self):
+        self.assertEqual(self.suspends_when_pausing(""), (0, False))
+
+    def test_pausing_a_playing_line_suspends_the_timers(self):
+        self.assertEqual(self.suspends_when_pausing("_gossipPlaying()"), (1, True))
+
     # Clicking a queued line
 
     THREE_QUEUED = """CLN.questsQueue = {
