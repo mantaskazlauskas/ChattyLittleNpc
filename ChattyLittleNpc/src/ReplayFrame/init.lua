@@ -989,4 +989,8 @@ if CLN.RegisterMessage and CLN.Messages then
     CLN:RegisterMessage(M.CONVERSATION_ENDED, function(_, lastText)
         if ReplayFrame.OnConversationStop then ReplayFrame:OnConversationStop(lastText) end
     end)
+
+    CLN:RegisterMessage(M.SUBTITLES_CANCELLED, function()
+        ReplayFrame:HideSubtitle() -- Subtitles.lua
+    end)
 end

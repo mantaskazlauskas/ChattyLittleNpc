@@ -30,6 +30,10 @@ CLN.Messages = {
     --- Playback stopped with nothing left to play (natural end or forced stop).
     --- Payload: lastText (string|nil) — title of the line that was playing, if known.
     CONVERSATION_ENDED = "CLN_CONVERSATION_ENDED",
+
+    --- Text continuation was stopped or paused: drop any subtitles on screen
+    --- and cancel their timers. No payload.
+    SUBTITLES_CANCELLED = "CLN_SUBTITLES_CANCELLED",
 }
 
 return CLN.Messages

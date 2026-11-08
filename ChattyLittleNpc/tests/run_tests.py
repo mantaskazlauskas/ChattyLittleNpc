@@ -1807,6 +1807,39 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
         self.assertEqual(msgs, "CLN_PLAYBACK_STATE_CHANGED|paused_user")
         self.assertEqual(lua_call(self.lua, "return #_G._loggedErrors"), 0)
 
+    def test_stopping_text_continuation_cancels_subtitles_before_conversation_ends(self):
+        self._record_messages()
+        msgs, hides = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            local count = 0
+            local orig = RF.HideSubtitle
+            RF.HideSubtitle = function() count = count + 1 end
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP.currentlyPlaying.title = "Line A"
+            VP.currentlyPlaying._textContinuation = true
+            VP:ForceStopCurrentSound(false, true)
+            RF.HideSubtitle = orig
+            return table.concat(_msgs, ";"), count
+        """)
+        names = [m.split("|")[0] for m in msgs.split(";")]
+        self.assertEqual(hides, names.count("CLN_SUBTITLES_CANCELLED"))
+        self.assertGreaterEqual(hides, 1)
+        self.assertLess(names.index("CLN_SUBTITLES_CANCELLED"), names.index("CLN_CONVERSATION_ENDED"))
+
+    def test_normal_stop_does_not_cancel_subtitles(self):
+        self._record_messages()
+        msgs = lua_call(self.lua, """
+            local VP = _G.ChattyLittleNpc.VoiceoverPlayer
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP.currentlyPlaying.title = "Line A"
+            VP.currentlyPlaying.soundHandle = 11
+            VP:ForceStopCurrentSound(false, true)
+            return table.concat(_msgs, ";")
+        """)
+        self.assertNotIn("CLN_SUBTITLES_CANCELLED", msgs)
+
     def test_force_stop_with_clear_sends_messages_in_order_and_resets_scroll(self):
         self._record_messages()
         msgs, scroll, hist_calls = lua_call(self.lua, """

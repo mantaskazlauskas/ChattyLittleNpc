@@ -14,7 +14,7 @@ local function send(messageKey, ...)
     end
 end
 
-VoiceoverPlayer._send = send  -- used by VoiceoverPlayer/Queue.lua
+VoiceoverPlayer._send = send  -- used by VoiceoverPlayer/Queue.lua and Pause.lua
 
 -- ============================================================================
 -- Gossip Cooldown
@@ -330,7 +330,7 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
 
     -- Cancel any active text continuation
     if cp and cp._textContinuation then
-        CLN.ReplayFrame:HideSubtitle()
+        send("SUBTITLES_CANCELLED")
     end
 
     -- Deterministic animation cleanup: the polling watcher won't fire
@@ -429,7 +429,7 @@ function VoiceoverPlayer:SkipCurrentSound()
 
     -- Cancel any active text continuation
     if cp._textContinuation then
-        CLN.ReplayFrame:HideSubtitle()
+        send("SUBTITLES_CANCELLED")
     end
 
     -- Clear current without touching suspended or queue
@@ -529,7 +529,7 @@ function VoiceoverPlayer:StopCurrentSound()
 
     -- Cancel any active text continuation before clearing currentlyPlaying
     if cp and cp._textContinuation then
-        CLN.ReplayFrame:HideSubtitle()
+        send("SUBTITLES_CANCELLED")
     end
     
     -- Clear the currentlyPlaying object

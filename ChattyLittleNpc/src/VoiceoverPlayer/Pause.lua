@@ -3,6 +3,7 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
 local VoiceoverPlayer = CLN.VoiceoverPlayer
+local send = VoiceoverPlayer._send
 
 -- ============================================================================
 -- Native VO Pause/Resume
@@ -129,7 +130,7 @@ function VoiceoverPlayer:PausePlayback()
     if cp and cp._textContinuation then
         self:SetPlaybackState(cp, self.State.PAUSED_USER)
         -- Cancel subtitle timers
-        CLN.ReplayFrame:HideSubtitle()
+        send("SUBTITLES_CANCELLED")
         CLN.EventHandler:SuspendTimers()
         CLN.Logger:debug("Text continuation paused by user", false, CLN.Utils.LogCategories.loader)
         self:NotifyQueueDirty()
