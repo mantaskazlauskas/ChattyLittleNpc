@@ -3850,6 +3850,31 @@ class TestPlaybackPathDifferences(unittest.TestCase):
                     """)
                     self.assertEqual(shown, (expected, "Female", "Beast"))
 
+    def test_empty_gender_and_type_count_as_gaps_but_real_values_are_kept(self):
+        cases = (("nil", "nil", "Female", "Beast"),
+                 ('""', '""', "Female", "Beast"),
+                 ('"Male"', '"Humanoid"', "Male", "Humanoid"))
+        for gender, creature, want_gender, want_creature in cases:
+            calls = (f'VP:PlayQuestSound(100, "Desc", 9, 10, {gender}, {creature})',
+                     f'VP:PlayNonQuestSound(9, "Gossip", "Hi", {gender}, 10, {creature})')
+            for call in calls:
+                with self.subTest(call=call):
+                    self.setUp()
+                    shown = self.run_lua(f"""
+                        _cache = {{ displayID = 77, gender = "Female", creatureType = "Beast" }}
+                        {call}
+                        return VP.currentlyPlaying.gender, VP.currentlyPlaying.creatureType
+                    """)
+                    self.assertEqual(shown, (want_gender, want_creature))
+
+    def test_quest_without_an_npc_skips_the_cache(self):
+        shown = self.run_lua("""
+            _cache = { displayID = 77, gender = "Female", creatureType = "Beast" }
+            VP:PlayQuestSound(100, "Desc")
+            return VP.currentlyPlaying.displayID, VP.currentlyPlaying.gender
+        """)
+        self.assertEqual(shown, (None, None))
+
     def test_library_overwrites_from_the_cache_for_npc_lines_only(self):
         result = self.run_lua("""
             _cache = { displayID = 77, gender = "Female", creatureType = "Beast" }
@@ -3980,6 +4005,42 @@ class TestPlaybackPathDifferences(unittest.TestCase):
         self.run_lua(f"_questPlaying(); VP:PlayLibraryFile({self.LIBRARY})")
         self.assertIn("play:lib.ogg", self.log())
         self.assertEqual(self.queued(), 0)
+
+    QUEUE_ROUTES = (
+        ("native pause", '_gossipPlaying({ state = VP.State.PAUSED_NATIVE, soundHandle = false })'),
+        ("user pause", '_gossipPlaying({ state = VP.State.PAUSED_USER, soundHandle = false })'),
+    )
+
+    def queued_entry(self, playing, call):
+        """Every field of the single entry a call queues, as sorted key=value text."""
+        return self.run_lua(f"""
+            P.gossipQueueMode = "all"
+            {playing}
+            {call}
+            local q = CLN.questsQueue[1]
+            local parts = {{}}
+            for k, v in pairs(q) do table.insert(parts, k .. "=" .. tostring(v)) end
+            table.sort(parts)
+            return #CLN.questsQueue, table.concat(parts, ";")
+        """)
+
+    def test_quest_queue_entry_is_the_same_on_every_route(self):
+        expected = (1, "cantBeInterrupted=true;creatureType=Humanoid;displayID=10;entryType=quest;"
+                       "gender=Male;npcId=9;phase=Desc;questId=100;state=queued;title=Quest 100")
+        call = 'VP:PlayQuestSound(100, "Desc", 9, 10, "Male", "Humanoid")'
+        for name, playing in self.QUEUE_ROUTES + (("behind a locked quest", "_questPlaying()"),):
+            with self.subTest(route=name):
+                self.setUp()
+                self.assertEqual(self.queued_entry(playing, call), expected)
+
+    def test_non_quest_queue_entry_is_the_same_on_every_route(self):
+        expected = (1, "cantBeInterrupted=false;creatureType=Humanoid;displayID=10;entryType=Item;"
+                       "gender=Male;npcId=68;state=queued;title=Well met")
+        call = 'VP:PlayNonQuestSound(68, "Item", "Well met", "Male", 10, "Humanoid")'
+        for name, playing in self.QUEUE_ROUTES + (("behind playback", "_gossipPlaying()"),):
+            with self.subTest(route=name):
+                self.setUp()
+                self.assertEqual(self.queued_entry(playing, call), expected)
 
     # Cooldown
 

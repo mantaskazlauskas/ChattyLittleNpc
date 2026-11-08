@@ -549,6 +549,54 @@ function VoiceoverPlayer:StopCurrentSound()
     self:NotifyDisplayDirty()
 end
 
+--- Fill details the live unit didn't provide from the persistent metadata cache
+--- (auto-populated during gameplay). Values already known are kept.
+---@return number|nil displayID, string|nil gender, string|nil creatureType
+local function fillFromMetadataCache(npcId, displayID, gender, creatureType)
+    local cached = npcId and CLN.NpcMetadataCache:Lookup(npcId)
+    if cached then
+        if not displayID then displayID = cached.displayID end
+        if not gender or gender == "" then gender = cached.gender end
+        if not creatureType or creatureType == "" then creatureType = cached.creatureType end
+    end
+    return displayID, gender, creatureType
+end
+
+--- Add a quest line to the queue and announce the change.
+---@return table entry The queued record
+local function enqueueQuest(self, questId, phase, npcId, displayID, gender, creatureType)
+    local entry = {
+        questId = questId,
+        phase = phase,
+        title = CLN:GetTitleForQuestID(questId),
+        cantBeInterrupted = true,
+        entryType = "quest",
+        state = self.State.QUEUED,
+        npcId = npcId,
+        displayID = displayID,
+        gender = gender,
+        creatureType = creatureType,
+    }
+    table.insert(CLN.questsQueue, entry)
+    self:NotifyQueueDirty()
+    return entry
+end
+
+--- Add a non-quest line (gossip, item) to the queue and announce the change.
+local function enqueueNonQuest(self, npcId, soundType, text, gender, displayID, creatureType)
+    table.insert(CLN.questsQueue, {
+        npcId = npcId,
+        title = text,
+        entryType = soundType,
+        gender = gender,
+        displayID = displayID,
+        creatureType = creatureType,
+        cantBeInterrupted = false,
+        state = self.State.QUEUED,
+    })
+    self:NotifyQueueDirty()
+end
+
 ---@param questId number The quest ID to play audio for
 ---@param phase string The quest phase ("Desc"|"Prog"|"Comp")
 ---@param npcId number|nil Optional NPC ID for context
@@ -563,16 +611,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
         return -- fail fast if no quest ID
     end
 
-    -- Resolve displayID from the metadata cache if not captured from the live unit
-    if npcId then
-        -- Persistent metadata cache (auto-populated during gameplay)
-        local cached = CLN.NpcMetadataCache:Lookup(npcId)
-        if cached then
-            if not displayID then displayID = cached.displayID end
-            if not gender or gender == "" then gender = cached.gender end
-            if not creatureType or creatureType == "" then creatureType = cached.creatureType end
-        end
-    end
+    displayID, gender, creatureType = fillFromMetadataCache(npcId, displayID, gender, creatureType)
     local originalPhase = phase
     phase = CLN.Utils:NormalizeQuestPhase(phase)
     local valid = CLN.Utils:IsCanonicalQuestPhase(phase)
@@ -608,20 +647,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
         if CLN.db.profile.questPlaybackMode == 'queue' then
             local alreadyQueued = self:IsQuestPhaseQueued(questId, phase)
             if not alreadyQueued then
-                local audioFileInfo = {
-                    questId = questId,
-                    phase = phase,
-                    title = CLN:GetTitleForQuestID(questId),
-                    cantBeInterrupted = true,
-                    entryType = "quest",
-                    state = self.State.QUEUED,
-                    npcId = npcId,
-                    displayID = displayID,
-                    gender = gender,
-                    creatureType = creatureType,
-                }
-                table.insert(CLN.questsQueue, audioFileInfo)
-                self:NotifyQueueDirty()
+                enqueueQuest(self, questId, phase, npcId, displayID, gender, creatureType)
                 if CLN.db.profile.debugMode then
                     CLN.Logger:debug("Queued quest during native VO pause: ".. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
                 end
@@ -638,20 +664,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
     if self:IsPaused() and CLN.db.profile.questPlaybackMode == 'queue' then
         local alreadyQueued = self:IsQuestPhaseQueued(questId, phase)
         if not alreadyQueued then
-            local audioFileInfo = {
-                questId = questId,
-                phase = phase,
-                title = CLN:GetTitleForQuestID(questId),
-                cantBeInterrupted = true,
-                entryType = "quest",
-                state = self.State.QUEUED,
-                npcId = npcId,
-                displayID = displayID,
-                gender = gender,
-                creatureType = creatureType,
-            }
-            table.insert(CLN.questsQueue, audioFileInfo)
-            self:NotifyQueueDirty()
+            enqueueQuest(self, questId, phase, npcId, displayID, gender, creatureType)
             if CLN.db.profile.debugMode then
                 CLN.Logger:debug("Queued quest while paused: ".. tostring(questId) .. " phase=" .. tostring(phase), false, CLN.Utils.LogCategories.loader)
             end
@@ -678,25 +691,12 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
 
         if VoiceoverPlayer.currentlyPlaying.cantBeInterrupted then
             -- Quest sound is playing: queue new item behind it
-            local audioFileInfo = {
-                questId = questId,
-                phase = phase,
-                title = CLN:GetTitleForQuestID(questId),
-                cantBeInterrupted = true,
-                entryType = "quest",
-                state = self.State.QUEUED,
-                npcId = npcId,
-                displayID = displayID,
-                gender = gender,
-                creatureType = creatureType,
-            }
+            local queued = enqueueQuest(self, questId, phase, npcId, displayID, gender, creatureType)
 
             if CLN.db.profile.debugMode then
-                CLN.Logger:info("Queued quest: " .. tostring(audioFileInfo.questId) .. " Title: " .. tostring(audioFileInfo.title), false, CLN.Utils.LogCategories.loader)
+                CLN.Logger:info("Queued quest: " .. tostring(queued.questId) .. " Title: " .. tostring(queued.title), false, CLN.Utils.LogCategories.loader)
             end
 
-            table.insert(CLN.questsQueue, audioFileInfo)
-            self:NotifyQueueDirty()
             self:NotifyDisplayDirty()
             return
         else
@@ -865,29 +865,11 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
         return
     end
 
-    -- Resolve displayID from the metadata cache if not captured from the live unit
-    if npcId then
-        local cached = CLN.NpcMetadataCache:Lookup(npcId)
-        if cached then
-            if not displayID then displayID = cached.displayID end
-            if not gender or gender == "" then gender = cached.gender end
-            if not creatureType or creatureType == "" then creatureType = cached.creatureType end
-        end
-    end
+    displayID, gender, creatureType = fillFromMetadataCache(npcId, displayID, gender, creatureType)
     if self:IsNativeVOPauseActive() then
         local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
         if gossipQueue ~= "none" then
-            table.insert(CLN.questsQueue, {
-                npcId = npcId,
-                title = text,
-                entryType = soundType,
-                gender = gender,
-                displayID = displayID,
-                creatureType = creatureType,
-                cantBeInterrupted = false,
-                state = self.State.QUEUED,
-            })
-            self:NotifyQueueDirty()
+            enqueueNonQuest(self, npcId, soundType, text, gender, displayID, creatureType)
             if CLN.db.profile.debugMode then
                 CLN.Logger:debug("Queued gossip during native VO pause: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
             end
@@ -903,17 +885,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
     if self:IsPaused() then
         local gossipQueue = CLN.db.profile.gossipQueueMode or "none"
         if gossipQueue ~= "none" then
-            table.insert(CLN.questsQueue, {
-                npcId = npcId,
-                title = text,
-                entryType = soundType,
-                gender = gender,
-                displayID = displayID,
-                creatureType = creatureType,
-                cantBeInterrupted = false,
-                state = self.State.QUEUED,
-            })
-            self:NotifyQueueDirty()
+            enqueueNonQuest(self, npcId, soundType, text, gender, displayID, creatureType)
             if CLN.db.profile.debugMode then
                 CLN.Logger:debug("Queued gossip while paused: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
             end
@@ -965,18 +937,7 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                 end
             end
             if shouldQueue then
-                -- Queue as a non-interruptible entry
-                table.insert(CLN.questsQueue, {
-                    npcId = npcId,
-                    title = text,
-                    entryType = soundType,
-                    gender = gender,
-                    displayID = displayID,
-                    creatureType = creatureType,
-                    cantBeInterrupted = false,
-                    state = self.State.QUEUED,
-                })
-                self:NotifyQueueDirty()
+                enqueueNonQuest(self, npcId, soundType, text, gender, displayID, creatureType)
                 if CLN.db.profile.debugMode then
                     CLN.Logger:debug("Queued gossip behind active playback: ".. tostring(text):sub(1, 60), false, CLN.Utils.LogCategories.loader)
                 end
