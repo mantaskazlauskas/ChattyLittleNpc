@@ -331,34 +331,21 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
 
     if success then
         -- Rebuild currentlyPlaying with the new sound handle, preserving all metadata
-        self.currentlyPlaying = self:GetCurrentlyPlayingObject()
-        self.currentlyPlaying.soundHandle = newSoundHandle
-        self.currentlyPlaying.questId = cp.questId
-        self.currentlyPlaying.phase = cp.phase
-        self.currentlyPlaying.npcId = cp.npcId
-        self.currentlyPlaying.displayID = cp.displayID
-        self.currentlyPlaying.title = cp.title
-        self.currentlyPlaying.entryType = cp.entryType
-        self.currentlyPlaying.gender = cp.gender
-        self.currentlyPlaying.creatureType = cp.creatureType
-        self.currentlyPlaying.cantBeInterrupted = cp.cantBeInterrupted
-        if GetTime then self.currentlyPlaying.startTime = GetTime() end
-        -- Store duration: prefer pack-provided, fall back to text estimate
         local replayFileName = cp._voiceoverFileName
             or (cp.questId and cp.phase and (cp.questId .. "_" .. cp.phase .. ".ogg"))
             or nil
-        local estBody = self:GetQuestBodyText(self.currentlyPlaying)
-        local replayDur, replayIsPack = self:GetBestDuration(replayFileName, estBody or self.currentlyPlaying.title)
-        self.currentlyPlaying._estimatedDuration = replayDur
-        self.currentlyPlaying._hasPackDuration = replayIsPack
-        self.currentlyPlaying._voiceoverFileName = replayFileName
-        if CLN.db.profile.debugMode then
-            CLN.Logger:debug("Replaying: " .. tostring(replayFileName)
-                .. " | duration: " .. (replayDur and string.format("%.1fs", replayDur) or "unknown")
-                .. (replayIsPack and " (pack)" or " (estimate)"),
-                false, CLN.Utils.LogCategories.loader)
-        end
-        self:SetPlaybackState(self.currentlyPlaying, self.State.PLAYING)
+        self:_BeginPlaybackRecord({
+            soundHandle = newSoundHandle,
+            questId = cp.questId,
+            phase = cp.phase,
+            npcId = cp.npcId,
+            displayID = cp.displayID,
+            title = cp.title,
+            entryType = cp.entryType,
+            gender = cp.gender,
+            creatureType = cp.creatureType,
+            cantBeInterrupted = cp.cantBeInterrupted,
+        }, replayFileName, "Replaying")
         -- Don't touch the queue — the paused item was never in it
         self:NotifyQueueDirty()
         self:NotifyDisplayDirty()

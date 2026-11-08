@@ -248,6 +248,35 @@ function VoiceoverPlayer:GetQuestBodyText(cp)
     return text
 end
 
+--- Make a new "now playing" record for a sound that has just started, and
+--- timestamp it and work out how long it will run.
+---@param fields table Identity of the line (soundHandle, questId, npcId, title, ...)
+---@param fileName string|nil The .ogg actually played
+---@param verb string "Playing" or "Replaying", for the debug log
+---@return table record The new currentlyPlaying
+function VoiceoverPlayer:_BeginPlaybackRecord(fields, fileName, verb)
+    local cp = self:GetCurrentlyPlayingObject()
+    for key, value in pairs(fields) do
+        cp[key] = value
+    end
+    -- Playback start time, used for animation gating
+    if GetTime then cp.startTime = GetTime() end
+    -- Prefer the pack-provided duration, fall back to a text estimate
+    cp._voiceoverFileName = fileName
+    local duration, isPack = self:GetBestDuration(fileName, self:GetQuestBodyText(cp) or cp.title)
+    cp._estimatedDuration = duration
+    cp._hasPackDuration = isPack
+    if CLN.db.profile.debugMode then
+        CLN.Logger:debug(verb .. ": " .. tostring(fileName)
+            .. " | duration: " .. (duration and string.format("%.1fs", duration) or "unknown")
+            .. (isPack and " (pack)" or " (estimate)"),
+            false, CLN.Utils.LogCategories.loader)
+    end
+    self.currentlyPlaying = cp
+    self:SetPlaybackState(cp, self.State.PLAYING)
+    return cp
+end
+
 local PLAYBACK_GRACE_SEC = 0.6
 -- Extended grace from last watcher confirmation (watcher runs every 0.5s)
 local WATCHER_GRACE_SEC = 1.5
@@ -729,36 +758,19 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
 
         success, newSoundHandle = PlaySoundFile(foundPath, CLN.db.profile.audioChannel)
         if (success) then
-            VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
-
-            VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
-            VoiceoverPlayer.currentlyPlaying.phase = phase
-            VoiceoverPlayer.currentlyPlaying.questId = questId
-            VoiceoverPlayer.currentlyPlaying.npcId = npcId
-            VoiceoverPlayer.currentlyPlaying.displayID = displayID
-            VoiceoverPlayer.currentlyPlaying.creatureType = creatureType
-            VoiceoverPlayer.currentlyPlaying.title = CLN:GetTitleForQuestID(questId)
-            VoiceoverPlayer.currentlyPlaying.entryType = "quest"
-            VoiceoverPlayer.currentlyPlaying.gender = gender
-            -- Non-interruptible only when in queue mode
-            VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = (CLN.db.profile.questPlaybackMode == 'queue')
-            -- Mark playback start time for animation gating
-            if GetTime then
-                VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
-            end
-            -- Store duration: prefer pack-provided, fall back to text estimate
-            VoiceoverPlayer.currentlyPlaying._voiceoverFileName = fileName
-            local estBody = self:GetQuestBodyText(VoiceoverPlayer.currentlyPlaying)
-            local questDur, questIsPack = self:GetBestDuration(fileName, estBody or VoiceoverPlayer.currentlyPlaying.title)
-            VoiceoverPlayer.currentlyPlaying._estimatedDuration = questDur
-            VoiceoverPlayer.currentlyPlaying._hasPackDuration = questIsPack
-            if CLN.db.profile.debugMode then
-                CLN.Logger:debug("Playing: " .. tostring(fileName)
-                    .. " | duration: " .. (questDur and string.format("%.1fs", questDur) or "unknown")
-                    .. (questIsPack and " (pack)" or " (estimate)"),
-                    false, CLN.Utils.LogCategories.loader)
-            end
-            self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
+            self:_BeginPlaybackRecord({
+                soundHandle = newSoundHandle,
+                phase = phase,
+                questId = questId,
+                npcId = npcId,
+                displayID = displayID,
+                creatureType = creatureType,
+                title = CLN:GetTitleForQuestID(questId),
+                entryType = "quest",
+                gender = gender,
+                -- Non-interruptible only when in queue mode
+                cantBeInterrupted = (CLN.db.profile.questPlaybackMode == 'queue'),
+            }, fileName, "Playing")
 
             -- Always start fresh for new playback to avoid stale state
             send("ANIMATION_RESET")
@@ -962,35 +974,20 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
                 self:PushToHistory(VoiceoverPlayer.currentlyPlaying)
                 StopSound(VoiceoverPlayer.currentlyPlaying.soundHandle, 0.5)
             end
-            VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
-            VoiceoverPlayer.currentlyPlaying.soundHandle = newSoundHandle
-            VoiceoverPlayer.currentlyPlaying.npcId = npcId
-            VoiceoverPlayer.currentlyPlaying.displayID = displayID
-            VoiceoverPlayer.currentlyPlaying.creatureType = creatureType
-            -- Non-quest lines are never queue-locked
-            VoiceoverPlayer.currentlyPlaying.cantBeInterrupted = false
-            VoiceoverPlayer.currentlyPlaying.title = text
-            VoiceoverPlayer.currentlyPlaying.entryType = soundType
-            VoiceoverPlayer.currentlyPlaying.gender = gender
-            -- Mark playback start time for animation gating
-            if GetTime then
-                VoiceoverPlayer.currentlyPlaying.startTime = GetTime()
-            end
-            -- Store duration: prefer pack-provided, fall back to text estimate.
             -- Use the file actually played: it may be another hash variant or a
             -- gender-suffixed file, which a first-hash file name would miss.
             local nqFileName = type(pathToFile) == "string" and pathToFile:match("([^\\/]+)$") or nil
-            VoiceoverPlayer.currentlyPlaying._voiceoverFileName = nqFileName
-            local nqDur, nqIsPack = self:GetBestDuration(nqFileName, text)
-            VoiceoverPlayer.currentlyPlaying._estimatedDuration = nqDur
-            VoiceoverPlayer.currentlyPlaying._hasPackDuration = nqIsPack
-            if CLN.db.profile.debugMode then
-                CLN.Logger:debug("Playing: " .. tostring(nqFileName)
-                    .. " | duration: " .. (nqDur and string.format("%.1fs", nqDur) or "unknown")
-                    .. (nqIsPack and " (pack)" or " (estimate)"),
-                    false, CLN.Utils.LogCategories.loader)
-            end
-            self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
+            self:_BeginPlaybackRecord({
+                soundHandle = newSoundHandle,
+                npcId = npcId,
+                displayID = displayID,
+                creatureType = creatureType,
+                -- Non-quest lines are never queue-locked
+                cantBeInterrupted = false,
+                title = text,
+                entryType = soundType,
+                gender = gender,
+            }, nqFileName, "Playing")
             if soundType == "Gossip" then
                 self:RecordGossipCooldown(hashes)
             end

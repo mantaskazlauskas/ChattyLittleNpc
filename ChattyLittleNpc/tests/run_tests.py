@@ -3680,7 +3680,9 @@ class TestPlaybackPathDifferences(unittest.TestCase):
             C_Sound = { IsPlaying = function() return true end }
             C_Timer.NewTimer = function() return { Cancel = function() end } end
             CLN.VoiceoverPacks = {
-                ChattyLittleNpc_Test_voiceovers = { _voiceoverIndex = {
+                ChattyLittleNpc_Test_voiceovers = {
+                  VoiceoverDurations = { ["100_Desc.ogg"] = 12, ["guard.ogg"] = 7 },
+                  _voiceoverIndex = {
                     ["100_Desc.ogg"] = true, ["200_Prog.ogg"] = true,
                     -- Exists so that only the phase check can reject this phase
                     ["100_Nope.ogg"] = true,
@@ -3738,6 +3740,9 @@ class TestPlaybackPathDifferences(unittest.TestCase):
             CLN.NpcMetadataCache.Lookup = function() return _cache end
             _resumed = 0
             CLN.EventHandler.ResumeTimers = function() _resumed = _resumed + 1 end
+            CLN.Utils.EstimateVODuration = function(text) return #text end
+            CLN.locale = "enUS"
+            _G.NpcInfoDB = nil
             function PlaySoundFile(path)
                 if path == "missing" then return false end
                 table.insert(_log, "play:" .. path:match("([^/\\\\\\\\]+)$"))
@@ -3888,6 +3893,82 @@ class TestPlaybackPathDifferences(unittest.TestCase):
             return a, b, c, item, quest
         """)
         self.assertEqual(result, (77, "Male", "Beast", None, None))
+
+    # The "now playing" record, compared whole
+
+    QUEST_RECORD = {
+        "_estimatedDuration": "12", "_hasPackDuration": "true", "_voiceoverFileName": "100_Desc.ogg",
+        "cantBeInterrupted": "true", "creatureType": "Humanoid", "displayID": "10", "entryType": "quest",
+        "gender": "Male", "npcId": "9", "phase": "Desc", "questId": "100", "soundHandle": "500",
+        "startTime": "100", "state": "playing", "title": "Quest 100",
+    }
+    GOSSIP_RECORD = {
+        "_estimatedDuration": "7", "_hasPackDuration": "true", "_voiceoverFileName": "guard.ogg",
+        "cantBeInterrupted": "false", "creatureType": "Humanoid", "displayID": "10", "entryType": "Gossip",
+        "gender": "Male", "npcId": "68", "soundHandle": "500", "startTime": "100", "state": "playing",
+        "title": "Well met",
+    }
+    PLAY_QUEST = 'VP:PlayQuestSound(100, "Desc", 9, 10, "Male", "Humanoid")'
+    PLAY_GOSSIP = 'VP:PlayNonQuestSound(68, "Gossip", "Well met", "Male", 10, "Humanoid")'
+
+    def record(self, code):
+        """Run code, then return the now-playing record's data fields as a dict."""
+        text = self.run_lua(f"""
+            {code}
+            local parts = {{}}
+            for k, v in pairs(VP.currentlyPlaying) do
+                if type(v) ~= "function" then table.insert(parts, k .. "=" .. tostring(v)) end
+            end
+            return table.concat(parts, ";")
+        """)
+        return dict(part.split("=", 1) for part in text.split(";"))
+
+    def replay(self, play, prepare=""):
+        return f"""
+            {play}
+            local old = VP.currentlyPlaying
+            old.soundHandle = nil
+            VP:SetPlaybackState(old, VP.State.PAUSED_USER)
+            _now = 103
+            {prepare}
+            assert(VP:ReplayPausedEntry(old))
+        """
+
+    def test_quest_record_is_complete(self):
+        self.assertEqual(self.record(self.PLAY_QUEST), self.QUEST_RECORD)
+
+    def test_gossip_record_is_complete(self):
+        self.assertEqual(self.record(self.PLAY_GOSSIP), self.GOSSIP_RECORD)
+
+    def test_quest_without_pack_duration_estimates_from_the_body_text(self):
+        record = self.record("""
+            _G.NpcInfoDB = { [9] = { enUS = { quests = { [200] = { quest_progress = "A longer body text" } } } } }
+            VP:PlayQuestSound(200, "Prog", 9)
+        """)
+        self.assertEqual((record["_estimatedDuration"], record["_hasPackDuration"]), ("18", "false"))
+
+    def test_quest_without_body_text_estimates_from_the_title(self):
+        record = self.record('VP:PlayQuestSound(200, "Prog", 9)')
+        self.assertEqual((record["_estimatedDuration"], record["_hasPackDuration"]), (str(len("Quest 200")), "false"))
+
+    def test_gossip_without_pack_duration_estimates_from_its_text(self):
+        record = self.record('_gossipPath = "dir/other.ogg"; VP:PlayNonQuestSound(68, "Gossip", "Well met")')
+        self.assertEqual((record["_estimatedDuration"], record["_hasPackDuration"], record["_voiceoverFileName"]),
+                         ("8", "false", "other.ogg"))
+
+    def test_replaying_a_paused_line_rebuilds_the_same_record(self):
+        for play, expected in ((self.PLAY_QUEST, self.QUEST_RECORD), (self.PLAY_GOSSIP, self.GOSSIP_RECORD)):
+            with self.subTest(play=play):
+                self.setUp()
+                self.assertEqual(self.record(self.replay(play)), dict(expected, startTime="103"))
+
+    def test_replay_recovers_a_missing_file_name(self):
+        for play, expected in ((self.PLAY_QUEST, "100_Desc.ogg"), (self.PLAY_GOSSIP, "guard.ogg")):
+            with self.subTest(play=play):
+                self.setUp()
+                record = self.record(self.replay(play, "old._voiceoverFileName = nil"))
+                self.assertEqual(record["_voiceoverFileName"], expected)
+                self.assertEqual(record["_hasPackDuration"], "true")
 
     # Replacing what is playing: the three paths stop and start in different orders
 
