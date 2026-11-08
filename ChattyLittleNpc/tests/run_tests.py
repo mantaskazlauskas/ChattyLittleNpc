@@ -4097,6 +4097,33 @@ class TestPlaybackPathDifferences(unittest.TestCase):
         """)
         self.assertEqual(self.run_lua("return _resumed"), 0)
 
+    def test_stop_and_skip_restart_the_timers_for_a_paused_line(self):
+        calls = ("VP:ForceStopCurrentSound(false, true)", "VP:SkipCurrentSound()")
+        for call in calls:
+            for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+                with self.subTest(call=call, state=state):
+                    self.setUp()
+                    resumed = self.run_lua(f"""
+                        _gossipPlaying({{ state = VP.State.{state}, soundHandle = false }})
+                        {call}
+                        return _resumed
+                    """)
+                    self.assertEqual(resumed, 1)
+
+    def test_stop_and_skip_leave_the_timers_alone_when_not_paused(self):
+        for call in ("VP:ForceStopCurrentSound(false, true)", "VP:SkipCurrentSound()"):
+            with self.subTest(call=call):
+                self.setUp()
+                self.assertEqual(self.run_lua(f"_gossipPlaying(); {call}; return _resumed"), 0)
+
+    def test_ignored_force_stop_keeps_the_pause_and_timers(self):
+        result = self.run_lua("""
+            _gossipPlaying({ state = VP.State.PAUSED_USER, soundHandle = false })
+            VP:ForceStopCurrentSound(false, false)
+            return _resumed, VP:IsPaused()
+        """)
+        self.assertEqual(result, (0, True))
+
     def test_library_replacing_a_paused_line_restarts_the_timers(self):
         for state in ("PAUSED_USER", "PAUSED_NATIVE"):
             with self.subTest(state=state):

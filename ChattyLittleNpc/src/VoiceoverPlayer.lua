@@ -296,6 +296,7 @@ function VoiceoverPlayer:ForceStopCurrentSound(clearQueue, force)
     -- Cancel any pending native VO resume (must be after queue-mode guard
     -- so an "ignored" ForceStop doesn't kill the resume timer)
     self:CancelNativeVOResume()
+    self:_ResumeTimersIfUserPaused()
 
     -- Record the force-stop time so PlayQuestSound can reject rapid re-triggers
     self._lastForceStopTime = GetTime and GetTime() or 0
@@ -402,6 +403,15 @@ function VoiceoverPlayer:IsPaused()
     return self:GetPlaybackState() == self.State.PAUSED_USER
 end
 
+--- Call before discarding a user-paused line. Pausing suspended the watcher,
+--- and once the line is gone nothing else would restart it. Must run while the
+--- line still reads as paused, before its state changes.
+function VoiceoverPlayer:_ResumeTimersIfUserPaused()
+    if self:IsPaused() then
+        CLN.EventHandler:ResumeTimers()
+    end
+end
+
 --- Skip the currently playing sound and advance to the next item.
 --- Unlike ForceStopCurrentSound, this preserves suspended playback and the
 --- queue, advancing through queue → suspended → idle in order.
@@ -413,14 +423,15 @@ function VoiceoverPlayer:SkipCurrentSound()
     local cp = self.currentlyPlaying
     if not cp then self._skipping = false; return end
 
+    -- Both read the paused state, so they must run before it becomes DROPPED
+    self:CancelNativeVOResume()
+    self:_ResumeTimersIfUserPaused()
+
     -- Push skipped item to history
     if cp.title or cp.questId then
         self:SetPlaybackState(cp, self.State.DROPPED)
         self:PushToHistory(cp)
     end
-
-    -- Cancel native VO timer if active
-    self:CancelNativeVOResume()
 
     -- Stop the sound
     if cp.soundHandle then
@@ -710,11 +721,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
 
     -- Only stop the current sound if we have a replacement to play
     if foundPath then
-        -- A user-paused line is being replaced (override mode): pausing suspended
-        -- the watcher, and nothing else would restart it for the new line.
-        if self:IsPaused() then
-            CLN.EventHandler:ResumeTimers()
-        end
+        self:_ResumeTimersIfUserPaused()
         VoiceoverPlayer:StopCurrentSound()
         if CLN.db.profile.debugMode then
             CLN.Logger:debug("FileNameFound in: " .. tostring(foundPath), false, CLN.Utils.LogCategories.loader)
@@ -800,9 +807,7 @@ function VoiceoverPlayer:PlayLibraryFile(entry, opts)
 
     -- Leave user-paused / native-paused states cleanly so the watcher runs again.
     self:CancelNativeVOResume()
-    if self:IsPaused() then
-        CLN.EventHandler:ResumeTimers()
-    end
+    self:_ResumeTimersIfUserPaused()
     if opts and opts.resume then
         -- Continuing the same line: replace the paused record without a history entry.
         VoiceoverPlayer.currentlyPlaying = VoiceoverPlayer:GetCurrentlyPlayingObject()
