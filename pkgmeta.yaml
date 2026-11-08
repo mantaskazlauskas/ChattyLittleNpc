@@ -8,3 +8,6 @@ ignore:
   - .github
   - .venv
   - __pycache__
+  - ChattyLittleNpc/tests
+  - ChattyLittleNpc/docs
+  - ChattyLittleNpc/types.lua
