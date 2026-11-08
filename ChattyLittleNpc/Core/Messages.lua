@@ -34,6 +34,15 @@ CLN.Messages = {
     --- Text continuation was stopped or paused: drop any subtitles on screen
     --- and cancel their timers. No payload.
     SUBTITLES_CANCELLED = "CLN_SUBTITLES_CANCELLED",
+
+    --- A line is about to start or was restored: forget the portrait's
+    --- animation state left over from the previous one. No payload.
+    ANIMATION_RESET = "CLN_ANIMATION_RESET",
+
+    --- A non-quest or library line started: animate the portrait now. Quest
+    --- lines don't send this; their animation starts from the display update.
+    --- No payload.
+    ANIMATION_START = "CLN_ANIMATION_START",
 }
 
 return CLN.Messages

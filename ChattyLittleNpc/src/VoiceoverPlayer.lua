@@ -749,10 +749,7 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
             self:SetPlaybackState(VoiceoverPlayer.currentlyPlaying, self.State.PLAYING)
 
             -- Always start fresh for new playback to avoid stale state
-            local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
-            if not ok then
-                CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
-            end
+            send("ANIMATION_RESET")
 
             self:RemoveQueuedQuestEntry(questId, phase)
             self:NotifyQueueDirty()
@@ -842,10 +839,8 @@ function VoiceoverPlayer:PlayLibraryFile(entry, opts)
     VoiceoverPlayer.currentlyPlaying = cp
     self:SetPlaybackState(cp, self.State.PLAYING)
 
-    pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
-    if CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown() then
-        CLN.ReplayFrame:UpdateConversationAnimation()
-    end
+    send("ANIMATION_RESET")
+    send("ANIMATION_START")
     self:NotifyQueueDirty()
     self:NotifyDisplayDirty()
     return true
@@ -1030,16 +1025,10 @@ function VoiceoverPlayer:PlayNonQuestSound(npcId, soundType, text, gender, displ
             end
 
             -- Always start fresh for new playback to avoid stale state
-            local ok, err = pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
-            if not ok then
-                CLN.Logger:warn("ResetAnimationState failed: " .. tostring(err), false, CLN.Utils.LogCategories.animation)
-            end
+            send("ANIMATION_RESET")
 
             -- Trigger animation pipeline immediately for non-quest lines
-            -- Only call if the model is visible; otherwise the ModelFrame OnShow hook will handle it
-            if CLN.ReplayFrame.NpcModelFrame and CLN.ReplayFrame.NpcModelFrame:IsShown() then
-                CLN.ReplayFrame:UpdateConversationAnimation()
-            end
+            send("ANIMATION_START")
 
             self:NotifyDisplayDirty()
         end

@@ -8,6 +8,7 @@ Run: python tests/run_tests.py
 
 import sys
 import os
+import re
 import unittest
 import math
 
@@ -1827,6 +1828,60 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
         self.assertEqual(hides, names.count("CLN_SUBTITLES_CANCELLED"))
         self.assertGreaterEqual(hides, 1)
         self.assertLess(names.index("CLN_SUBTITLES_CANCELLED"), names.index("CLN_CONVERSATION_ENDED"))
+
+    def test_advance_queue_resets_animation_through_the_bus(self):
+        self._record_messages()
+        msgs, resets = lua_call(self.lua, """
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            local count = 0
+            local origReset, origPlay = RF.ResetAnimationState, VP.PlayNonQuestSound
+            RF.ResetAnimationState = function() count = count + 1 end
+            VP.PlayNonQuestSound = function() end
+            CLN.questsQueue = { { npcId = 5, title = "Hello", entryType = "Gossip" } }
+            VP:AdvanceQueue()
+            RF.ResetAnimationState, VP.PlayNonQuestSound = origReset, origPlay
+            CLN.questsQueue = {}
+            return table.concat(_msgs, ";"), count
+        """)
+        self.assertEqual(resets, 1)
+        self.assertIn("CLN_ANIMATION_RESET", msgs)
+
+    def _play_library_line(self, portrait_shown):
+        return lua_call(self.lua, f"""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local RF = CLN.ReplayFrame
+            local order = {{}}
+            local origReset, origAnim = RF.ResetAnimationState, RF.UpdateConversationAnimation
+            RF.ResetAnimationState = function() table.insert(order, "reset") end
+            RF.UpdateConversationAnimation = function() table.insert(order, "animate") end
+            RF.NpcModelFrame = {{ IsShown = function() return {str(portrait_shown).lower()} end }}
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            local ok = VP:PlayLibraryFile({{ path = "a.ogg", fileName = "a.ogg", id = 7 }})
+            RF.ResetAnimationState, RF.UpdateConversationAnimation = origReset, origAnim
+            RF.NpcModelFrame = nil
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            return ok, table.concat(order, ",")
+        """)
+
+    def test_library_start_resets_then_animates_a_visible_portrait(self):
+        self.assertEqual(self._play_library_line(True), (True, "reset,animate"))
+
+    def test_library_start_leaves_a_hidden_portrait_alone(self):
+        self.assertEqual(self._play_library_line(False), (True, "reset"))
+
+    def test_every_playback_send_uses_a_known_message(self):
+        # send() silently ignores unknown keys, so a typo would otherwise go unnoticed
+        messages = open(os.path.join(ADDON_ROOT, "Core/Messages.lua"), encoding="utf-8").read()
+        known = set(re.findall(r"(?m)^    ([A-Z_]+) = ", messages))
+        files = ["src/VoiceoverPlayer.lua", "src/VoiceoverPlayer/Queue.lua", "src/VoiceoverPlayer/Pause.lua"]
+        used = set()
+        for f in files:
+            used |= set(re.findall(r"""\bsend\(\s*["']([^"']+)["']""", open(os.path.join(ADDON_ROOT, f), encoding="utf-8").read()))
+        self.assertTrue(used)
+        self.assertEqual(used - known, set())
 
     def test_normal_stop_does_not_cancel_subtitles(self):
         self._record_messages()

@@ -202,12 +202,12 @@ function VoiceoverPlayer:AdvanceQueue()
         local nextItem = CLN.questsQueue[1]
         if nextItem.questId and nextItem.phase then
             -- Clean animation state before starting next item
-            pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+            send("ANIMATION_RESET")
             -- PlayQuestSound handles its own queue removal on success
             self:PlayQuestSound(nextItem.questId, nextItem.phase, nextItem.npcId, nextItem.displayID, nextItem.gender, nextItem.creatureType)
             return
         elseif nextItem.npcId and nextItem.title and nextItem.entryType then
-            pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+            send("ANIMATION_RESET")
             table.remove(CLN.questsQueue, 1)
             self:NotifyQueueDirty()
             self:PlayNonQuestSound(nextItem.npcId, nextItem.entryType, nextItem.title, nextItem.gender, nextItem.displayID, nextItem.creatureType)

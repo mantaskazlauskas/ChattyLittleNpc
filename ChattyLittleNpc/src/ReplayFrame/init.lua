@@ -993,4 +993,15 @@ if CLN.RegisterMessage and CLN.Messages then
     CLN:RegisterMessage(M.SUBTITLES_CANCELLED, function()
         ReplayFrame:HideSubtitle() -- Subtitles.lua
     end)
+
+    CLN:RegisterMessage(M.ANIMATION_RESET, function()
+        ReplayFrame:ResetAnimationState() -- ModelFrame.lua
+    end)
+
+    CLN:RegisterMessage(M.ANIMATION_START, function()
+        -- If the portrait is hidden, its OnShow hook starts the animation instead
+        if ReplayFrame.NpcModelFrame and ReplayFrame.NpcModelFrame:IsShown() then
+            ReplayFrame:UpdateConversationAnimation() -- ModelFrame.lua
+        end
+    end)
 end

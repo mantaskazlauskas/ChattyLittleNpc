@@ -368,7 +368,7 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
         -- Don't touch the queue — the paused item was never in it
         self:NotifyQueueDirty()
         self:NotifyDisplayDirty()
-        pcall(CLN.ReplayFrame.ResetAnimationState, CLN.ReplayFrame)
+        send("ANIMATION_RESET")
         return true
     end
     return false
