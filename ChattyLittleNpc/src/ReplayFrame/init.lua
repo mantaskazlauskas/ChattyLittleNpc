@@ -669,11 +669,14 @@ function ReplayFrame:UpdateVisibility()
         return false
     end
 
-    -- Respect user-hidden during playback: keep minimized indicator instead of reopening
-    if (not forced) and self.userHidden and self:IsVoiceoverCurrenltyPlaying() then
+    -- Respect user-hidden: keep minimized indicator instead of reopening
+    if (not forced) and self.userHidden then
         self:EnsureMinimizedButton()
         if self.MinButton then self.MinButton:Show() end
-        if self.HideSubtitle then self:HideSubtitle() end
+        -- Text continuation ends through its subtitle timers, so cancelling
+        -- them here would leave the line stuck and the queue stalled
+        local cp = CLN.VoiceoverPlayer.currentlyPlaying
+        if self.HideSubtitle and not (cp and cp._textContinuation) then self:HideSubtitle() end
         return false
     end
 
@@ -708,6 +711,21 @@ function ReplayFrame:UpdateVisibility()
     return true
 end
 
+--- Hide the window until the user brings it back, or bring it back if hidden.
+--- While hidden it stays closed across new lines, with the minimized button shown.
+function ReplayFrame:ToggleUserHidden()
+    -- Edit Mode owns visibility, and display updates are paused during it
+    if self._forceShow or self._editMode or self._blizzardEditMode then return end
+    local frame = self.DisplayFrame
+    if frame and frame:IsShown() and not self._frameFadingOut then
+        self.userHidden = true
+        self:_DisplayFrameFadeOut()
+    else
+        self.userHidden = false
+    end
+    self:UpdateDisplayFrameState()
+end
+
 -- Combat auto-collapse: hide frame during combat (FSM skips all frame
 -- manipulation in combat lockdown, so showing a stale frame is worse than hiding)
 function ReplayFrame:OnCombatStart()
@@ -737,7 +755,7 @@ function ReplayFrame:OnCombatEnd()
         local isPlaying = CLN.VoiceoverPlayer
             and CLN.VoiceoverPlayer.IsEffectivelyPlaying
             and CLN.VoiceoverPlayer:IsEffectivelyPlaying()
-        if wasIdle and not isPlaying and self:IsShowReplayFrameToggleIsEnabled() then
+        if wasIdle and not isPlaying and not self.userHidden and self:IsShowReplayFrameToggleIsEnabled() then
             -- Frame was already idle-faded before combat and nothing is playing —
             -- restore it directly at the idle alpha to avoid a spurious full
             -- fade-in followed immediately by another idle fade-out.

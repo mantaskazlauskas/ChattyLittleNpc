@@ -112,16 +112,7 @@ function MinimapButton:Create()
         if button == "LeftButton" then
             CLN.SettingsWindow:Toggle()
         elseif button == "RightButton" then
-            if CLN.ReplayFrame.ToggleUserHidden then
-                CLN.ReplayFrame:ToggleUserHidden()
-            elseif CLN.ReplayFrame.DisplayFrame then
-                local df = CLN.ReplayFrame.DisplayFrame
-                if df:IsShown() then
-                    df:Hide()
-                else
-                    df:Show()
-                end
-            end
+            CLN.ReplayFrame:ToggleUserHidden()
         end
     end)
 

@@ -3654,6 +3654,168 @@ class TestPlayLibraryFile(unittest.TestCase):
         self.assertEqual(result, (1, "68_Gossip_ab_Male.ogg"))
 
 
+class TestUserHiddenWindow(unittest.TestCase):
+    """ReplayFrame:ToggleUserHidden and how the window honours it."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.Utils.LogCategories = { loader = "loader", ui = "ui", animation = "animation" }
+        """)
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/ReplayFrame/init.lua")
+        cls.lua.execute("""
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            function RF:IsShowReplayFrameToggleIsEnabled() return true end
+            function RF:IsVoiceoverCurrenltyPlaying() return _playing end
+            function RF:EnsureMinimizedButton() self.MinButton = _min end
+            function RF:HideSubtitle() end
+            function RF:UpdateParent() end
+            function RF:CheckAndShowModel() end
+            function RF:_IdleFadeTouch() end
+            function RF:UpdateDisplayFrameState() self:UpdateVisibility() end
+            function RF:_RestoreAsIdle() _restored = true end
+            function RF:_DisplayFrameFadeOut() _fades = _fades + 1; _shown = false end
+            function RF:_DisplayFrameFadeIn() _shown = true end
+        """)
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+            _playing, _shown, _fades, _restored = false, true, 0, false
+            _minShown = false
+            _min = { Show = function() _minShown = true end, Hide = function() _minShown = false end }
+            RF.DisplayFrame = { IsShown = function() return _shown end }
+            RF.MinButton = _min
+            RF.userHidden = false
+            RF._frameFadingOut = false
+            RF._forceShow = false
+            RF._glowTriggered = true
+            RF._combatAutoCollapsed = nil
+            function CLN.VoiceoverPlayer:IsEffectivelyPlaying() return _playing end
+        """)
+
+    def state(self):
+        return lua_call(self.lua, """
+            return _G.ChattyLittleNpc.ReplayFrame.userHidden, _shown, _minShown, _fades
+        """)
+
+    def toggle(self):
+        self.lua.execute("_G.ChattyLittleNpc.ReplayFrame:ToggleUserHidden()")
+
+    def test_toggle_hides_a_visible_window_and_shows_the_minimized_button(self):
+        self.toggle()
+        self.assertEqual(self.state(), (True, False, True, 1))
+
+    def test_toggle_again_brings_it_back(self):
+        self.toggle()
+        self.toggle()
+        self.assertEqual(self.state(), (False, True, False, 1))
+
+    def test_hidden_window_stays_hidden_when_a_line_starts(self):
+        self.toggle()
+        self.lua.execute("_playing = true; _G.ChattyLittleNpc.ReplayFrame:UpdateVisibility()")
+        self.assertEqual(self.state(), (True, False, True, 1))
+
+    def test_hidden_window_stays_hidden_while_idle(self):
+        self.toggle()
+        self.lua.execute("_G.ChattyLittleNpc.ReplayFrame:UpdateVisibility()")
+        self.assertEqual(self.state(), (True, False, True, 1))
+
+    def test_toggle_during_a_fade_out_brings_it_back(self):
+        self.lua.execute("_G.ChattyLittleNpc.ReplayFrame._frameFadingOut = true")
+        self.toggle()
+        hidden = self.state()[0]
+        self.assertFalse(hidden)
+
+    def hide_subtitle_calls(self, continuing):
+        return lua_call(self.lua, f"""
+            local CLN = _G.ChattyLittleNpc
+            local RF = CLN.ReplayFrame
+            local count, orig = 0, RF.HideSubtitle
+            RF.HideSubtitle = function() count = count + 1 end
+            CLN.VoiceoverPlayer.currentlyPlaying = {{ _textContinuation = {str(continuing).lower()} }}
+            RF:ToggleUserHidden()
+            RF.HideSubtitle = orig
+            CLN.VoiceoverPlayer.currentlyPlaying = CLN.VoiceoverPlayer:GetCurrentlyPlayingObject()
+            return count
+        """)
+
+    def test_hiding_leaves_text_continuation_subtitles_running(self):
+        self.assertEqual(self.hide_subtitle_calls(True), 0)
+
+    def test_hiding_clears_ordinary_subtitles(self):
+        self.assertEqual(self.hide_subtitle_calls(False), 1)
+
+    def test_toggle_does_nothing_in_edit_mode(self):
+        for flag in ("_forceShow", "_editMode", "_blizzardEditMode"):
+            with self.subTest(flag=flag):
+                self.setUp()
+                self.lua.execute(f"_G.ChattyLittleNpc.ReplayFrame.{flag} = true")
+                self.toggle()
+                self.lua.execute(f"_G.ChattyLittleNpc.ReplayFrame.{flag} = nil")
+                self.assertEqual(self.state()[0], False)
+                self.assertEqual(self.state()[3], 0)
+
+    def test_combat_end_does_not_restore_a_hidden_window(self):
+        self.toggle()
+        restored = lua_call(self.lua, """
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            RF._combatAutoCollapsed = true
+            RF._combatPreCombatIdleState = "idle"
+            RF:OnCombatEnd()
+            return _restored, _shown
+        """)
+        self.assertEqual(restored, (False, False))
+
+    def test_combat_end_still_restores_a_window_the_user_left_open(self):
+        restored = lua_call(self.lua, """
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            RF._combatAutoCollapsed = true
+            RF._combatPreCombatIdleState = "idle"
+            RF:OnCombatEnd()
+            return _restored
+        """)
+        self.assertTrue(restored)
+
+
+class TestWindowFadeIn(unittest.TestCase):
+    """_DisplayFrameFadeIn must leave a hidden portrait ready to be shown."""
+
+    def model_alphas(self, container_shown):
+        lua = make_lua()
+        load_file(lua, "src/ReplayFrame/WindowFade.lua")
+        return lua_call(lua, f"""
+            local RF = _G.ChattyLittleNpc.ReplayFrame
+            local alphas = {{}}
+            function RF:_CancelModelFade() end
+            function RF:_SetModelVisualAlpha(a) table.insert(alphas, a) end
+            function RF:_FadeModelTo(a) table.insert(alphas, "to" .. a) end
+            local shown = false
+            RF.DisplayFrame = {{
+                IsShown = function() return shown end,
+                Show = function() shown = true end,
+                GetAlpha = function() return 0 end,
+                SetAlpha = function() end,
+            }}
+            RF.ModelContainer = {{ IsShown = function() return {str(container_shown).lower()} end }}
+            RF:_DisplayFrameFadeIn()
+            local parts = {{}}
+            for _, a in ipairs(alphas) do table.insert(parts, tostring(a)) end
+            return table.concat(parts, ",")
+        """)
+
+    def test_hidden_portrait_is_reset_to_opaque(self):
+        self.assertEqual(self.model_alphas(False), "1")
+
+    def test_visible_portrait_fades_in(self):
+        self.assertEqual(self.model_alphas(True), "0,to1")
+
+
 class TestPlaybackPathDifferences(unittest.TestCase):
     """Pins how the quest, non-quest and library paths differ, ahead of merging them (roadmap 3.2)."""
 

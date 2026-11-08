@@ -105,6 +105,10 @@ function ReplayFrame:_DisplayFrameFadeIn()
     if self.ModelContainer and self.ModelContainer:IsShown() then
         self:_SetModelVisualAlpha(0)
         self:_FadeModelTo(1, F2 and F2.frameFadeIn or 0.2)
+    else
+        -- A fade-out with no portrait up left this at 0; the next line's
+        -- portrait would be shown invisible
+        self:_SetModelVisualAlpha(1)
     end
 end
 
