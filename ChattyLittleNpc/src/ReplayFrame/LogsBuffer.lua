@@ -165,35 +165,30 @@ local function ensureHook()
             end
         end
     end
-    -- Hook global print — deferred until log window is first shown
-    -- (see LW:Show / LW:Hide in LogsWindow.lua for install/restore)
+    -- Global print is hooked the first time the log window is shown;
+    -- LW:Show / LW:Hide in LogsWindow.lua switch capture on and off
 end
 
-local _printHookInstalled = false
+-- A secure hook can't be removed, so it stays in place once made and this flag
+-- switches capture on and off. Unlike replacing _G.print, it can't throw away
+-- a wrapper another addon put around print in the meantime.
+local _printHooked = false
+local _capturingPrint = false
 
 local function installPrintHook()
-    if _printHookInstalled then return end
-    _printHookInstalled = true
-    if not _G.__CLN_ORIG_PRINT then
-        _G.__CLN_ORIG_PRINT = _G.print
-        _G.print = function(...)
-            local parts = {}
-            for i = 1, select('#', ...) do parts[#parts+1] = tostring(select(i, ...)) end
-            local msg = table.concat(parts, " ")
-            pushLine("print", msg, nil, "print")
-            if _G.__CLN_ORIG_PRINT then _G.__CLN_ORIG_PRINT(...) end
-            return
-        end
-    end
+    _capturingPrint = true
+    if _printHooked then return end
+    _printHooked = true
+    hooksecurefunc("print", function(...)
+        if not _capturingPrint then return end
+        local parts = {}
+        for i = 1, select('#', ...) do parts[#parts+1] = tostring(select(i, ...)) end
+        pushLine("print", table.concat(parts, " "), nil, "print")
+    end)
 end
 
 local function uninstallPrintHook()
-    if not _printHookInstalled then return end
-    _printHookInstalled = false
-    if _G.__CLN_ORIG_PRINT then
-        _G.print = _G.__CLN_ORIG_PRINT
-        _G.__CLN_ORIG_PRINT = nil
-    end
+    _capturingPrint = false
 end
 
 -- Install hooks as soon as this file loads so early logs are captured

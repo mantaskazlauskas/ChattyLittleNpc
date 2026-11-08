@@ -62,8 +62,5 @@ globals = {
     "StaticPopupDialogs",
     "UISpecialFrames",
 
-    -- Logs window temporarily wraps the global print while it is open
-    "print",
-    "__CLN_ORIG_PRINT",
     "ChattyLittleNpc_PendingAtlas",
 }

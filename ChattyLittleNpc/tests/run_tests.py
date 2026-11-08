@@ -3783,6 +3783,85 @@ class TestUserHiddenWindow(unittest.TestCase):
         self.assertTrue(restored)
 
 
+class TestLogsPrintCapture(unittest.TestCase):
+    """The logs window reads print() through a secure hook and never replaces it."""
+
+    def setUp(self):
+        self.lua = make_lua()
+        self.lua.execute("""
+            _printed = {}
+            _G.print = function(...) table.insert(_printed, table.concat({...}, " ")) end
+            _hooks = 0
+            function hooksecurefunc(name, fn)
+                _hooks = _hooks + 1
+                local orig = _G[name]
+                _G[name] = function(...)
+                    local result = orig(...)
+                    fn(...)
+                    return result
+                end
+            end
+            _G.ChattyLittleNpc.Utils.LogCategories = {}
+        """)
+        load_file(self.lua, "src/ReplayFrame/LogsBuffer.lua")
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN._AnimLogBuffer = { lines = {}, cats = {}, max = 2000 }
+            _shared = CLN.ReplayFrame.LogsWindow._shared
+        """)
+
+    def captured(self):
+        return lua_call(self.lua, """
+            local parts = {}
+            for _, l in ipairs(_G.ChattyLittleNpc._AnimLogBuffer.lines) do table.insert(parts, l.m) end
+            return table.concat(parts, "|")
+        """)
+
+    def test_print_is_captured_only_while_the_window_is_open(self):
+        self.lua.execute("""
+            print("before")
+            _shared.installPrintHook()
+            print("open", "line")
+            _shared.uninstallPrintHook()
+            print("closed")
+            _shared.installPrintHook()
+            print("reopened")
+        """)
+        self.assertEqual(self.captured(), "open line|reopened")
+
+    def test_print_still_reaches_the_original(self):
+        printed = lua_call(self.lua, """
+            _shared.installPrintHook()
+            print("hello")
+            _shared.uninstallPrintHook()
+            print("again")
+            return table.concat(_printed, "|")
+        """)
+        self.assertEqual(printed, "hello|again")
+
+    def test_closing_keeps_a_wrapper_another_addon_added(self):
+        kept = lua_call(self.lua, """
+            _shared.installPrintHook()
+            local wrapper = function() end
+            _G.print = wrapper
+            _shared.uninstallPrintHook()
+            return _G.print == wrapper
+        """)
+        self.assertTrue(kept)
+
+    def test_reopening_does_not_stack_hooks(self):
+        result = lua_call(self.lua, """
+            _shared.installPrintHook()
+            _shared.uninstallPrintHook()
+            _shared.installPrintHook()
+            _shared.installPrintHook()
+            print("once")
+            return _hooks
+        """)
+        self.assertEqual(result, 1)
+        self.assertEqual(self.captured(), "once")
+
+
 class TestWindowFadeIn(unittest.TestCase):
     """_DisplayFrameFadeIn must leave a hidden portrait ready to be shown."""
 
