@@ -1466,6 +1466,8 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
             VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
             VP._suspendedPlayback = nil
             VP._lastForceStopTime = nil
+            VP._skipping = nil
+            VP._nativeVOResumeTimer = nil
 
             local RF = CLN.ReplayFrame
             RF._replayHistory = {}
@@ -1888,12 +1890,11 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
                     {call}
                     RF.HideSubtitle = orig
                     VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
-                    VP._skipping = nil
                     return count
                 """)
                 self.assertEqual(hides, 1)
 
-    def _pause_with_portrait(self, call):
+    def _pause_with_portrait(self, call, prepare=""):
         return lua_call(self.lua, f"""
             local CLN = _G.ChattyLittleNpc
             local VP = CLN.VoiceoverPlayer
@@ -1911,10 +1912,10 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
             cp.soundHandle = 11
             cp.isPlaying = function() return true end
             VP.currentlyPlaying = cp
+            {prepare}
             {call}
             C_Timer.NewTimer = origNewTimer
             RF.NpcModelFrame = nil
-            if VP._nativeVOResumeTimer then VP._nativeVOResumeTimer = nil end
             VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
             return cleared
         """)
@@ -1925,27 +1926,32 @@ class TestReplayQueuePipelineFixes(unittest.TestCase):
     def test_native_vo_pause_freezes_the_portrait(self):
         self.assertEqual(self._pause_with_portrait("VP:PauseForNativeVO(5)"), 1)
 
+    def test_pause_during_text_continuation_leaves_the_portrait_alone(self):
+        cleared = self._pause_with_portrait("VP:PausePlayback()", "cp._textContinuation = true")
+        self.assertEqual(cleared, 0)
+
+    def test_pause_skipped_near_the_end_of_a_line_leaves_the_portrait_alone(self):
+        cleared = self._pause_with_portrait("VP:PausePlayback()", """
+            cp.startTime = GetTime()
+            cp._hasPackDuration = true
+            cp._estimatedDuration = 1
+        """)
+        self.assertEqual(cleared, 0)
+
     def test_gossip_start_resets_then_animates_a_visible_portrait(self):
         order = lua_call(self.lua, """
             local CLN = _G.ChattyLittleNpc
             local VP = CLN.VoiceoverPlayer
             local RF = CLN.ReplayFrame
-            local U = CLN.Utils
             local order = {}
             local origReset, origAnim = RF.ResetAnimationState, RF.UpdateConversationAnimation
-            local origHashes, origPath, origEmpty = U.GetHashes, U.GetPathToNonQuestFile, U.IsNilOrEmpty
             local origMode = CLN.db.profile.gossipQueueMode
             RF.ResetAnimationState = function() table.insert(order, "reset") end
             RF.UpdateConversationAnimation = function() table.insert(order, "animate") end
             RF.NpcModelFrame = { IsShown = function() return true end }
-            U.GetHashes = function(_, npcId, text) return { npcId .. ":" .. text } end
-            U.GetPathToNonQuestFile = function() return "guard.ogg" end
-            U.IsNilOrEmpty = U.IsNilOrEmpty or function(_, v) return v == nil or v == "" end
             CLN.db.profile.gossipQueueMode = "none"
-            VP._gossipCooldowns = {}
             VP:PlayNonQuestSound(68, "Gossip", "Well met", "Male")
             RF.ResetAnimationState, RF.UpdateConversationAnimation = origReset, origAnim
-            U.GetHashes, U.GetPathToNonQuestFile, U.IsNilOrEmpty = origHashes, origPath, origEmpty
             CLN.db.profile.gossipQueueMode = origMode
             RF.NpcModelFrame = nil
             VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
@@ -3646,6 +3652,549 @@ class TestPlayLibraryFile(unittest.TestCase):
             return #_hist, _hist[1].libraryEntry and _hist[1].libraryEntry.fileName
         """)
         self.assertEqual(result, (1, "68_Gossip_ab_Male.ogg"))
+
+
+class TestPlaybackPathDifferences(unittest.TestCase):
+    """Pins how the quest, non-quest and library paths differ, ahead of merging them (roadmap 3.2)."""
+
+    QUEST_FILE = "100_Desc.ogg"
+    GOSSIP_FILE = "guard.ogg"
+    LIBRARY = '{ path = "lib.ogg", fileName = "lib.ogg", kind = 4, id = 68, name = "Guard", entryType = "Gossip", gender = "Male" }'
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN.Utils.LogCategories = { loader = "loader" }
+            function CLN.Utils:NormalizeQuestPhase(phase) return phase end
+            function CLN.Utils:IsCanonicalQuestPhase(phase)
+                return phase == "Desc" or phase == "Prog" or phase == "Comp"
+            end
+            function CLN.Utils:GetHashes(npcId, text) return { npcId .. ":" .. text } end
+            function CLN.Utils:GetPathToNonQuestFile() return _gossipPath end
+            function CLN.Utils:IsNilOrEmpty(v) return v == nil or v == "" end
+            function CLN:GetTitleForQuestID(id) return "Quest " .. id end
+            function GetLocale() return "enUS" end
+            function GetTime() return _now end
+            C_Sound = { IsPlaying = function() return true end }
+            C_Timer.NewTimer = function() return { Cancel = function() end } end
+            CLN.VoiceoverPacks = {
+                ChattyLittleNpc_Test_voiceovers = { _voiceoverIndex = {
+                    ["100_Desc.ogg"] = true, ["200_Prog.ogg"] = true,
+                    -- Exists so that only the phase check can reject this phase
+                    ["100_Nope.ogg"] = true,
+                } },
+            }
+
+            -- A line already playing, built the way the Play functions leave it
+            function _current(fields)
+                local VP = CLN.VoiceoverPlayer
+                local cp = VP:GetCurrentlyPlayingObject()
+                cp.soundHandle = 11
+                cp.startTime = _now
+                cp.state = VP.State.PLAYING
+                for k, v in pairs(fields) do cp[k] = v end
+                VP.currentlyPlaying = cp
+                return cp
+            end
+            function _questPlaying(fields)
+                local cp = _current({ questId = 300, phase = "Comp", title = "Old quest",
+                    entryType = "quest", cantBeInterrupted = true })
+                for k, v in pairs(fields or {}) do cp[k] = v end
+                return cp
+            end
+            function _gossipPlaying(fields)
+                local cp = _current({ npcId = 5, title = "Old gossip", entryType = "Gossip",
+                    cantBeInterrupted = false })
+                for k, v in pairs(fields or {}) do cp[k] = v end
+                return cp
+            end
+        """)
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Queue.lua")
+        load_file(cls.lua, "src/VoiceoverPlayer/Pause.lua")
+        cls.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            CLN:RegisterMessage(CLN.Messages.HISTORY_ADDED, function(_, e) table.insert(_hist, e) end)
+            CLN:RegisterMessage(CLN.Messages.ANIMATION_RESET, function() table.insert(_log, "reset") end)
+            CLN:RegisterMessage(CLN.Messages.ANIMATION_START, function() table.insert(_log, "animate") end)
+        """)
+
+    def setUp(self):
+        self.lua.execute("""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local P = CLN.db.profile
+            P.audioChannel = "MASTER"
+            P.questPlaybackMode = "queue"
+            P.gossipQueueMode = "none"
+            P.gossipCooldownEnabled = false
+            P.gossipCooldownSeconds = 0
+            _now = 100
+            _log, _hist, _gossipPath = {}, {}, "dir/guard.ogg"
+            _cache = nil
+            CLN.NpcMetadataCache.Lookup = function() return _cache end
+            _resumed = 0
+            CLN.EventHandler.ResumeTimers = function() _resumed = _resumed + 1 end
+            function PlaySoundFile(path)
+                if path == "missing" then return false end
+                table.insert(_log, "play:" .. path:match("([^/\\\\\\\\]+)$"))
+                return true, 500
+            end
+            function StopSound(handle, fade)
+                table.insert(_log, "stop:" .. tostring(handle) .. ":" .. tostring(fade))
+            end
+            CLN.questsQueue = {}
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP._suspendedPlayback = nil
+            VP._lastForceStopTime = nil
+            VP._nativeVOResumeTimer = nil
+            VP._gossipCooldowns = {}
+        """)
+
+    def run_lua(self, code):
+        return lua_call(self.lua, f"""
+            local CLN = _G.ChattyLittleNpc
+            local VP = CLN.VoiceoverPlayer
+            local P = CLN.db.profile
+            {code}
+        """)
+
+    def log(self):
+        return self.run_lua('return table.concat(_log, ",")')
+
+    def queued(self):
+        return self.run_lua("return #CLN.questsQueue")
+
+    def history(self):
+        return self.run_lua("return #_hist")
+
+    def assertNothingPlayed(self):
+        self.assertNotIn("play:", self.log())
+
+    # Rejected input
+
+    def test_quest_needs_an_id_and_a_known_phase(self):
+        self.run_lua('VP:PlayQuestSound(nil, "Desc"); VP:PlayQuestSound(100, nil); VP:PlayQuestSound(100, "Nope")')
+        self.assertNothingPlayed()
+
+    def test_non_quest_needs_npc_type_and_text(self):
+        self.run_lua('VP:PlayNonQuestSound(nil, "Gossip", "Hi"); VP:PlayNonQuestSound(5, nil, "Hi"); VP:PlayNonQuestSound(5, "Gossip", nil)')
+        self.assertNothingPlayed()
+
+    def test_library_needs_a_path_and_reports_it(self):
+        self.assertFalse(self.run_lua("return VP:PlayLibraryFile({})"))
+        self.assertNothingPlayed()
+
+    # Starting from idle
+
+    def test_quest_start_records_the_line_and_only_resets_the_portrait(self):
+        result = self.run_lua("""
+            VP:PlayQuestSound(100, "Desc", 9, 10, "Male", "Humanoid")
+            local cp = VP.currentlyPlaying
+            return cp.entryType, cp.questId, cp.phase, cp.npcId, cp.displayID, cp.gender, cp.creatureType,
+                cp.title, cp.state, cp._voiceoverFileName, cp.soundHandle
+        """)
+        self.assertEqual(result, ("quest", 100, "Desc", 9, 10, "Male", "Humanoid",
+                                  "Quest 100", "playing", self.QUEST_FILE, 500))
+        self.assertEqual(self.log(), "play:100_Desc.ogg,reset")
+
+    def test_non_quest_start_records_the_line_and_animates(self):
+        result = self.run_lua("""
+            VP:PlayNonQuestSound(68, "Gossip", "Well met", "Male", 10, "Humanoid")
+            local cp = VP.currentlyPlaying
+            return cp.entryType, cp.npcId, cp.displayID, cp.gender, cp.creatureType,
+                cp.title, cp.state, cp._voiceoverFileName, cp.cantBeInterrupted
+        """)
+        self.assertEqual(result, ("Gossip", 68, 10, "Male", "Humanoid", "Well met", "playing",
+                                  self.GOSSIP_FILE, False))
+        self.assertEqual(self.log(), "play:guard.ogg,reset,animate")
+
+    def test_library_start_animates_and_returns_true(self):
+        self.assertTrue(self.run_lua(f"return VP:PlayLibraryFile({self.LIBRARY})"))
+        self.assertEqual(self.log(), "play:lib.ogg,reset,animate")
+
+    def test_only_queue_mode_locks_a_quest_line(self):
+        for mode, locked in (("queue", True), ("override", False)):
+            with self.subTest(mode=mode):
+                self.setUp()
+                result = self.run_lua(f"""
+                    P.questPlaybackMode = "{mode}"
+                    VP:PlayQuestSound(100, "Desc")
+                    return VP.currentlyPlaying.cantBeInterrupted
+                """)
+                self.assertEqual(result, locked)
+
+    def test_library_line_is_never_locked(self):
+        self.assertFalse(self.run_lua(f"VP:PlayLibraryFile({self.LIBRARY}); return VP.currentlyPlaying.cantBeInterrupted"))
+
+    def test_starting_a_quest_removes_its_queue_entry(self):
+        self.run_lua('CLN.questsQueue = { { questId = 100, phase = "Desc" } }; VP:PlayQuestSound(100, "Desc")')
+        self.assertEqual(self.queued(), 0)
+
+    # Metadata
+
+    def test_quest_and_non_quest_only_fill_gaps_from_the_cache(self):
+        calls = ('VP:PlayQuestSound(100, "Desc", 9, {})', 'VP:PlayNonQuestSound(9, "Gossip", "Hi", nil, {})')
+        for call in calls:
+            for given, expected in ((None, 77), (10, 10)):
+                with self.subTest(call=call, given=given):
+                    self.setUp()
+                    shown = self.run_lua(f"""
+                        _cache = {{ displayID = 77, gender = "Female", creatureType = "Beast" }}
+                        {call.format("nil" if given is None else given)}
+                        local cp = VP.currentlyPlaying
+                        return cp.displayID, cp.gender, cp.creatureType
+                    """)
+                    self.assertEqual(shown, (expected, "Female", "Beast"))
+
+    def test_library_overwrites_from_the_cache_for_npc_lines_only(self):
+        result = self.run_lua("""
+            _cache = { displayID = 77, gender = "Female", creatureType = "Beast" }
+            VP:PlayLibraryFile({ path = "a.ogg", kind = 4, id = 68, name = "G", gender = "Male" })
+            local npc = VP.currentlyPlaying
+            local a, b, c = npc.displayID, npc.gender, npc.creatureType
+            VP:PlayLibraryFile({ path = "b.ogg", kind = 6, id = 68, name = "Item" })
+            local item = VP.currentlyPlaying.displayID
+            VP:PlayLibraryFile({ path = "c.ogg", kind = 1, id = 100, name = "Q", phase = "Desc" })
+            local quest = VP.currentlyPlaying.displayID
+            return a, b, c, item, quest
+        """)
+        self.assertEqual(result, (77, "Male", "Beast", None, None))
+
+    # Replacing what is playing: the three paths stop and start in different orders
+
+    def test_quest_stops_the_old_line_before_starting_the_new_one(self):
+        result = self.run_lua("""
+            P.questPlaybackMode = "override"
+            _questPlaying()
+            VP:PlayQuestSound(100, "Desc")
+            return _hist[1].title
+        """)
+        self.assertEqual(result, "Old quest")
+        self.assertEqual(self.log(), "stop:11:nil,play:100_Desc.ogg,reset")
+
+    def test_non_quest_starts_first_then_fades_the_old_line(self):
+        result = self.run_lua("""
+            _gossipPlaying()
+            VP:PlayNonQuestSound(68, "Gossip", "Well met")
+            return _hist[1].title
+        """)
+        self.assertEqual(result, "Old gossip")
+        self.assertEqual(self.log(), "play:guard.ogg,stop:11:0.5,reset,animate")
+
+    def test_library_starts_first_then_stops_the_old_line(self):
+        self.run_lua(f"_gossipPlaying(); VP:PlayLibraryFile({self.LIBRARY})")
+        self.assertEqual(self.history(), 1)
+        self.assertEqual(self.log(), "play:lib.ogg,stop:11:nil,reset,animate")
+
+    def test_library_with_resume_replaces_the_line_without_history(self):
+        self.run_lua(f"_gossipPlaying(); VP:PlayLibraryFile({self.LIBRARY}, {{ resume = true }})")
+        self.assertEqual(self.history(), 0)
+        self.assertNotIn("stop:", self.log())
+
+    def test_same_quest_already_playing_is_not_restarted(self):
+        for mode in ("queue", "override"):
+            with self.subTest(mode=mode):
+                self.setUp()
+                self.run_lua(f"""
+                    P.questPlaybackMode = "{mode}"
+                    _questPlaying({{ questId = 100, phase = "Desc" }})
+                    VP:PlayQuestSound(100, "Desc")
+                """)
+                self.assertNothingPlayed()
+                self.assertEqual(self.queued(), 0)
+
+    # Force-stop guard
+
+    def test_force_stop_guard_holds_quests_for_half_a_second(self):
+        for delay, plays in ((0.4, False), (0.5, True)):
+            with self.subTest(delay=delay):
+                self.setUp()
+                self.run_lua(f'VP._lastForceStopTime = _now - {delay}; VP:PlayQuestSound(100, "Desc")')
+                self.assertEqual("play:" in self.log(), plays)
+
+    def test_force_stop_guard_does_not_apply_to_other_paths(self):
+        self.run_lua(f"""
+            VP._lastForceStopTime = _now
+            VP:PlayNonQuestSound(68, "Gossip", "Well met")
+            VP:PlayLibraryFile({self.LIBRARY})
+        """)
+        self.assertIn("play:guard.ogg", self.log())
+        self.assertIn("play:lib.ogg", self.log())
+
+    # Queue or override
+
+    def test_quest_queues_behind_a_locked_quest_without_duplicates(self):
+        result = self.run_lua("""
+            _questPlaying()
+            VP:PlayQuestSound(100, "Desc", 9)
+            VP:PlayQuestSound(100, "Desc", 9)
+            local q = CLN.questsQueue[1]
+            return #CLN.questsQueue, q.entryType, q.cantBeInterrupted, q.state, q.title
+        """)
+        self.assertEqual(result, (1, "quest", True, "queued", "Quest 100"))
+        self.assertNothingPlayed()
+
+    def test_quest_suspends_a_gossip_line_and_plays_over_it(self):
+        result = self.run_lua("""
+            _gossipPlaying()
+            VP:PlayQuestSound(100, "Desc")
+            return VP._suspendedPlayback.title, VP.currentlyPlaying.questId, #_hist
+        """)
+        self.assertEqual(result, ("Old gossip", 100, 0))
+        self.assertEqual(self.log(), "stop:11:0,play:100_Desc.ogg,reset")
+
+    def test_gossip_is_dropped_behind_a_locked_quest_when_not_queueing(self):
+        self.run_lua('_questPlaying(); VP:PlayNonQuestSound(68, "Gossip", "Well met")')
+        self.assertNothingPlayed()
+        self.assertEqual(self.queued(), 0)
+
+    def test_gossip_queues_behind_anything_in_all_mode(self):
+        result = self.run_lua("""
+            P.gossipQueueMode = "all"
+            _gossipPlaying()
+            VP:PlayNonQuestSound(68, "Gossip", "Well met", "Male")
+            local q = CLN.questsQueue[1]
+            return q.title, q.entryType, q.cantBeInterrupted, q.state, q.gender
+        """)
+        self.assertEqual(result, ("Well met", "Gossip", False, "queued", "Male"))
+        self.assertNothingPlayed()
+
+    def test_gossip_queue_thresholds_depend_on_elapsed_time(self):
+        cases = (("medium", 4, False), ("medium", 6, True), ("long", 9, False), ("long", 11, True))
+        for mode, elapsed, queues in cases:
+            with self.subTest(mode=mode, elapsed=elapsed):
+                self.setUp()
+                self.run_lua(f"""
+                    P.gossipQueueMode = "{mode}"
+                    _gossipPlaying({{ startTime = _now - {elapsed} }})
+                    VP:PlayNonQuestSound(68, "Gossip", "Well met")
+                """)
+                self.assertEqual(self.queued(), 1 if queues else 0)
+                self.assertEqual("play:" in self.log(), not queues)
+
+    def test_library_ignores_a_locked_quest_and_the_queue(self):
+        self.run_lua(f"_questPlaying(); VP:PlayLibraryFile({self.LIBRARY})")
+        self.assertIn("play:lib.ogg", self.log())
+        self.assertEqual(self.queued(), 0)
+
+    # Cooldown
+
+    def test_cooldown_applies_to_gossip_only(self):
+        for sound_type, plays in (("Gossip", 1), ("Item", 2)):
+            with self.subTest(sound_type=sound_type):
+                self.setUp()
+                self.run_lua(f"""
+                    P.gossipCooldownEnabled = true
+                    VP:PlayNonQuestSound(68, "{sound_type}", "Well met")
+                    VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+                    VP:PlayNonQuestSound(68, "{sound_type}", "Well met")
+                """)
+                self.assertEqual(self.log().count("play:"), plays)
+
+    def test_multi_paragraph_gossip_is_exempt_from_the_cooldown(self):
+        self.run_lua("""
+            P.gossipCooldownEnabled = true
+            VP:PlayNonQuestSound(68, "Gossip", "One\\n\\nTwo")
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP:PlayNonQuestSound(68, "Gossip", "One\\n\\nTwo")
+        """)
+        self.assertEqual(self.log().count("play:"), 2)
+
+    def test_item_lines_neither_check_nor_stamp_the_cooldown(self):
+        stamped = self.run_lua("""
+            P.gossipCooldownEnabled = true
+            VP._gossipCooldowns["68:Well met"] = _now
+            VP:PlayNonQuestSound(68, "Item", "Well met")
+            VP._gossipCooldowns = {}
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP:PlayNonQuestSound(68, "Item", "Well met")
+            return next(VP._gossipCooldowns) ~= nil
+        """)
+        self.assertFalse(stamped)
+        self.assertEqual(self.log().count("play:"), 2)
+
+    def test_skip_cooldown_replays_gossip(self):
+        self.run_lua("""
+            P.gossipCooldownEnabled = true
+            VP:PlayNonQuestSound(68, "Gossip", "Well met")
+            VP.currentlyPlaying = VP:GetCurrentlyPlayingObject()
+            VP:PlayNonQuestSound(68, "Gossip", "Well met", nil, nil, nil, { skipCooldown = true })
+        """)
+        self.assertEqual(self.log().count("play:"), 2)
+
+    # While paused
+
+    def test_paused_quest_queues_once_in_queue_mode(self):
+        for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+            with self.subTest(state=state):
+                self.setUp()
+                result = self.run_lua(f"""
+                    _gossipPlaying({{ state = VP.State.{state} }})
+                    VP:PlayQuestSound(100, "Desc")
+                    VP:PlayQuestSound(100, "Desc")
+                    return #CLN.questsQueue, CLN.questsQueue[1].cantBeInterrupted
+                """)
+                self.assertEqual(result, (1, True))
+                self.assertNothingPlayed()
+
+    def test_quest_during_native_pause_is_dropped_outside_queue_mode(self):
+        self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying({ state = VP.State.PAUSED_NATIVE })
+            VP:PlayQuestSound(100, "Desc")
+        """)
+        self.assertNothingPlayed()
+        self.assertEqual(self.queued(), 0)
+
+    def test_quest_plays_through_a_user_pause_outside_queue_mode(self):
+        self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying({ state = VP.State.PAUSED_USER })
+            VP:PlayQuestSound(100, "Desc")
+        """)
+        self.assertIn("play:100_Desc.ogg", self.log())
+
+    def test_quest_replacing_a_paused_line_restarts_the_timers(self):
+        result = self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying({ state = VP.State.PAUSED_USER, soundHandle = false })
+            VP:PlayQuestSound(100, "Desc")
+            return _resumed, VP:IsPaused()
+        """)
+        self.assertEqual(result, (1, False))
+
+    def test_quest_with_no_file_leaves_the_pause_and_timers_alone(self):
+        result = self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying({ state = VP.State.PAUSED_USER, soundHandle = false })
+            VP:PlayQuestSound(999, "Desc")
+            return _resumed, VP:IsPaused()
+        """)
+        self.assertEqual(result, (0, True))
+
+    def test_quest_that_fails_to_start_still_restarts_the_timers(self):
+        # The paused line is already gone by the time PlaySoundFile fails
+        result = self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying({ state = VP.State.PAUSED_USER, soundHandle = false })
+            PlaySoundFile = function() return false end
+            VP:PlayQuestSound(100, "Desc")
+            return _resumed, VP:IsPaused()
+        """)
+        self.assertEqual(result, (1, False))
+
+    def test_timers_are_left_alone_when_nothing_was_paused(self):
+        self.run_lua(f"""
+            P.questPlaybackMode = "override"
+            _gossipPlaying()
+            VP:PlayQuestSound(100, "Desc")
+            VP:PlayLibraryFile({self.LIBRARY})
+            VP:PlayNonQuestSound(68, "Gossip", "Well met")
+        """)
+        self.assertEqual(self.run_lua("return _resumed"), 0)
+
+    def test_library_replacing_a_paused_line_restarts_the_timers(self):
+        for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+            with self.subTest(state=state):
+                self.setUp()
+                result = self.run_lua(f"""
+                    _gossipPlaying({{ state = VP.State.{state}, soundHandle = false }})
+                    VP:PlayLibraryFile({self.LIBRARY})
+                    return _resumed
+                """)
+                self.assertEqual(result, 1)
+
+    def test_paused_gossip_never_plays_and_queues_without_deduplicating(self):
+        for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+            for mode, count in (("none", 0), ("all", 2)):
+                with self.subTest(state=state, mode=mode):
+                    self.setUp()
+                    self.run_lua(f"""
+                        P.gossipQueueMode = "{mode}"
+                        -- Pausing clears the handle, as it does in play
+                        _gossipPlaying({{ state = VP.State.{state}, soundHandle = false }})
+                        VP:PlayNonQuestSound(68, "Gossip", "Well met")
+                        VP:PlayNonQuestSound(68, "Gossip", "Well met")
+                    """)
+                    self.assertNothingPlayed()
+                    self.assertEqual(self.queued(), count)
+
+    def test_library_plays_through_a_pause(self):
+        for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+            with self.subTest(state=state):
+                self.setUp()
+                self.run_lua(f"_gossipPlaying({{ state = VP.State.{state} }}); VP:PlayLibraryFile({self.LIBRARY})")
+                self.assertIn("play:lib.ogg", self.log())
+
+    def test_a_native_pause_counts_as_playing(self):
+        self.assertTrue(self.run_lua("""
+            _gossipPlaying({ state = VP.State.PAUSED_NATIVE, soundHandle = false })
+            return VP:IsEffectivelyPlaying()
+        """))
+
+    # When the file cannot be played
+
+    def test_a_missing_file_still_refreshes_the_display(self):
+        calls = ('VP:PlayQuestSound(999, "Desc")', 'VP:PlayNonQuestSound(68, "Gossip", "Well met")')
+        for call in calls:
+            with self.subTest(call=call):
+                self.setUp()
+                count = self.run_lua(f"""
+                    _gossipPath = nil
+                    local count = 0
+                    local function onChange() count = count + 1 end
+                    CLN:RegisterMessage(CLN.Messages.PLAYBACK_STATE_CHANGED, onChange)
+                    {call}
+                    CLN:UnregisterMessage(CLN.Messages.PLAYBACK_STATE_CHANGED, onChange)
+                    return count
+                """)
+                self.assertEqual(count, 1)
+
+    def test_missing_quest_file_leaves_the_old_line_and_clears_the_queue_entry(self):
+        result = self.run_lua("""
+            P.questPlaybackMode = "override"
+            _gossipPlaying()
+            CLN.questsQueue = { { questId = 999, phase = "Desc" } }
+            VP:PlayQuestSound(999, "Desc")
+            return VP.currentlyPlaying.title, #CLN.questsQueue
+        """)
+        self.assertEqual(result, ("Old gossip", 0))
+        self.assertEqual(self.log(), "")
+
+    def test_missing_quest_file_restores_a_suspended_line(self):
+        result = self.run_lua("""
+            _gossipPlaying()
+            VP:PlayQuestSound(999, "Desc")
+            return VP.currentlyPlaying.title, VP._suspendedPlayback == nil
+        """)
+        self.assertEqual(result, ("Old gossip", True))
+        self.assertEqual(self.log(), "stop:11:0,play:guard.ogg,reset,animate")
+
+    def test_missing_gossip_file_leaves_the_old_line(self):
+        for path in ("nil", '""', '"missing"'):
+            with self.subTest(path=path):
+                self.setUp()
+                result = self.run_lua(f"""
+                    _gossipPath = {path}
+                    _gossipPlaying()
+                    VP:PlayNonQuestSound(68, "Gossip", "Well met")
+                    return VP.currentlyPlaying.title
+                """)
+                self.assertEqual(result, "Old gossip")
+                self.assertEqual(self.log(), "")
+
+    def test_unplayable_library_file_leaves_the_old_line(self):
+        result = self.run_lua("""
+            _gossipPlaying()
+            local ok = VP:PlayLibraryFile({ path = "missing" })
+            return ok, VP.currentlyPlaying.title
+        """)
+        self.assertEqual(result, (False, "Old gossip"))
+        self.assertEqual(self.log(), "")
 
 
 def make_player_lua(name, cls, race):

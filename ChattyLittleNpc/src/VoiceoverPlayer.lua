@@ -710,6 +710,11 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
 
     -- Only stop the current sound if we have a replacement to play
     if foundPath then
+        -- A user-paused line is being replaced (override mode): pausing suspended
+        -- the watcher, and nothing else would restart it for the new line.
+        if self:IsPaused() then
+            CLN.EventHandler:ResumeTimers()
+        end
         VoiceoverPlayer:StopCurrentSound()
         if CLN.db.profile.debugMode then
             CLN.Logger:debug("FileNameFound in: " .. tostring(foundPath), false, CLN.Utils.LogCategories.loader)
