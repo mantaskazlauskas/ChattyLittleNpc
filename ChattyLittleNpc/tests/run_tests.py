@@ -4168,6 +4168,158 @@ class TestPlaybackPathDifferences(unittest.TestCase):
         """)
         self.assertEqual(self.log().count("play:"), 2)
 
+    # Clicking a queued line
+
+    THREE_QUEUED = """CLN.questsQueue = {
+        { questId = 200, phase = "Prog", title = "Q200", entryType = "quest" },
+        { questId = 100, phase = "Desc", title = "Q100", entryType = "quest", npcId = 9 },
+        { npcId = 5, title = "Later", entryType = "Gossip" },
+    }"""
+    GOSSIP_QUEUED = 'CLN.questsQueue = { { npcId = 68, title = "Well met", entryType = "Gossip" } }'
+
+    def test_clicking_a_queued_quest_plays_it_over_a_locked_quest(self):
+        result = self.run_lua(f"""
+            _questPlaying()
+            {self.THREE_QUEUED}
+            VP:PlayQueuedItemAtIndex(2)
+            local titles = {{}}
+            for _, h in ipairs(_hist) do table.insert(titles, h.title) end
+            table.sort(titles)
+            return VP.currentlyPlaying.questId, #CLN.questsQueue, CLN.questsQueue[1].title, table.concat(titles, ",")
+        """)
+        self.assertEqual(result, (100, 1, "Later", "Old quest,Q200"))
+        self.assertEqual(self.log(), "stop:11:nil,play:100_Desc.ogg,reset")
+
+    def test_clicking_queued_gossip_plays_it_whatever_the_queue_mode(self):
+        for mode, playing in (("none", "_questPlaying()"), ("all", "_gossipPlaying()")):
+            with self.subTest(mode=mode):
+                self.setUp()
+                result = self.run_lua(f"""
+                    P.gossipQueueMode = "{mode}"
+                    {playing}
+                    {self.GOSSIP_QUEUED}
+                    VP:PlayQueuedItemAtIndex(1)
+                    return VP.currentlyPlaying.title, #CLN.questsQueue
+                """)
+                self.assertEqual(result, ("Well met", 0))
+                self.assertIn("play:guard.ogg", self.log())
+
+    def test_clicking_a_queued_line_bypasses_the_cooldown(self):
+        self.run_lua(f"""
+            P.gossipCooldownEnabled = true
+            VP._gossipCooldowns["68:Well met"] = _now
+            {self.GOSSIP_QUEUED}
+            VP:PlayQueuedItemAtIndex(1)
+        """)
+        self.assertIn("play:guard.ogg", self.log())
+
+    def test_clicking_a_queued_line_works_while_paused(self):
+        for state in ("PAUSED_USER", "PAUSED_NATIVE"):
+            with self.subTest(state=state):
+                self.setUp()
+                result = self.run_lua(f"""
+                    _gossipPlaying({{ state = VP.State.{state}, soundHandle = false }})
+                    {self.THREE_QUEUED}
+                    VP:PlayQueuedItemAtIndex(2)
+                    return VP.currentlyPlaying.questId, _resumed, VP:IsPaused()
+                """)
+                self.assertEqual(result, (100, 1, False))
+
+    def test_clicking_a_queued_line_right_after_a_force_stop_still_plays(self):
+        result = self.run_lua(f"""
+            VP._lastForceStopTime = _now
+            {self.THREE_QUEUED}
+            VP:PlayQueuedItemAtIndex(2)
+            return VP.currentlyPlaying.questId
+        """)
+        self.assertEqual(result, 100)
+
+    def test_clicking_a_queued_line_with_no_file_moves_on(self):
+        result = self.run_lua("""
+            _questPlaying()
+            CLN.questsQueue = {
+                { questId = 999, phase = "Desc", title = "No file", entryType = "quest" },
+                { questId = 100, phase = "Desc", title = "Q100", entryType = "quest" },
+            }
+            VP:PlayQueuedItemAtIndex(1)
+            return VP.currentlyPlaying.questId, #CLN.questsQueue
+        """)
+        self.assertEqual(result, (100, 0))
+
+    def test_clicking_skips_past_several_lines_with_no_file(self):
+        result = self.run_lua("""
+            CLN.questsQueue = {
+                { questId = 997, phase = "Desc", entryType = "quest" },
+                { questId = 998, phase = "Desc", entryType = "quest" },
+                { questId = 999, phase = "Desc", entryType = "quest" },
+                { questId = 100, phase = "Desc", entryType = "quest" },
+            }
+            VP:PlayQueuedItemAtIndex(1)
+            return VP.currentlyPlaying.questId, #CLN.questsQueue
+        """)
+        self.assertEqual(result, (100, 0))
+
+    def test_clicking_a_line_stuck_in_the_queue_does_not_loop_forever(self):
+        result = self.run_lua("""
+            CLN.questsQueue = {
+                { questId = 999, phase = "Desc", entryType = "quest" },
+                { questId = 100, phase = "Nope", entryType = "quest" },
+            }
+            VP:PlayQueuedItemAtIndex(1)
+            return #CLN.questsQueue, VP.currentlyPlaying.soundHandle
+        """)
+        self.assertEqual(result, (1, None))
+
+    def test_clicking_the_last_line_with_no_file_announces_the_end(self):
+        result = self.run_lua("""
+            local ended = {}
+            local function onEnd(_, title) table.insert(ended, tostring(title)) end
+            CLN:RegisterMessage(CLN.Messages.CONVERSATION_ENDED, onEnd)
+            _questPlaying()
+            CLN.questsQueue = { { questId = 999, phase = "Desc", entryType = "quest" } }
+            VP:PlayQueuedItemAtIndex(1)
+            CLN:UnregisterMessage(CLN.Messages.CONVERSATION_ENDED, onEnd)
+            return table.concat(ended, ",")
+        """)
+        self.assertEqual(result, "Old quest")
+
+    def test_clicking_a_line_that_starts_does_not_announce_the_end(self):
+        result = self.run_lua(f"""
+            local count = 0
+            local function onEnd() count = count + 1 end
+            CLN:RegisterMessage(CLN.Messages.CONVERSATION_ENDED, onEnd)
+            _questPlaying()
+            {self.THREE_QUEUED}
+            VP:PlayQueuedItemAtIndex(2)
+            CLN:UnregisterMessage(CLN.Messages.CONVERSATION_ENDED, onEnd)
+            return count
+        """)
+        self.assertEqual(result, 0)
+
+    def test_clicking_a_no_file_line_restores_a_suspended_gossip_line(self):
+        result = self.run_lua("""
+            _gossipPath = nil
+            VP._suspendedPlayback = { npcId = 5, title = "Held", entryType = "Gossip", state = VP.State.SUSPENDED }
+            CLN.questsQueue = { { npcId = 68, title = "Well met", entryType = "Gossip" } }
+            VP:PlayQueuedItemAtIndex(1)
+            _gossipPath = "dir/guard.ogg"
+            return VP._suspendedPlayback == nil
+        """)
+        self.assertTrue(result)
+
+    def test_clicking_a_bad_index_or_unknown_entry_keeps_the_current_line(self):
+        for setup, index in (("CLN.questsQueue = {}", 1), ("CLN.questsQueue = { {} }", 1), ("CLN.questsQueue = { {} }", 5)):
+            with self.subTest(setup=setup, index=index):
+                self.setUp()
+                title = self.run_lua(f"""
+                    _gossipPlaying()
+                    {setup}
+                    VP:PlayQueuedItemAtIndex({index})
+                    return VP.currentlyPlaying.title
+                """)
+                self.assertEqual(title, "Old gossip")
+                self.assertEqual(self.log(), "")
+
     # While paused
 
     def test_paused_quest_queues_once_in_queue_mode(self):

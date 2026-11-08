@@ -247,8 +247,8 @@ function VoiceoverPlayer:DropQueuedRange(startIdx, endIdx)
     self:NotifyQueueDirty()
 end
 
---- Play a specific queued item by index, dropping everything before it.
---- This is the player-owned version of what QueueList's click handler does.
+--- Play a specific queued item right now: drop everything before it and stop
+--- whatever is playing. This is what clicking a queued line does.
 ---@param queueIndex number 1-based index of the item to play
 function VoiceoverPlayer:PlayQueuedItemAtIndex(queueIndex)
     if not CLN.questsQueue or queueIndex < 1 or queueIndex > #CLN.questsQueue then return end
@@ -258,18 +258,44 @@ function VoiceoverPlayer:PlayQueuedItemAtIndex(queueIndex)
         self:DropQueuedRange(1, queueIndex - 1)
     end
 
-    -- The target is now at index 1
-    local item = CLN.questsQueue[1]
+    -- The target is now at index 1. Take it out of the queue first, or
+    -- PlayQuestSound would treat it as a duplicate of itself.
+    local item = table.remove(CLN.questsQueue, 1)
+    self:NotifyQueueDirty()
     if not item then return end
 
-    if item.questId and item.phase then
+    local isQuest = item.questId and item.phase
+    local isNonQuest = item.npcId and item.title and item.entryType
+    if not (isQuest or isNonQuest) then return end
+
+    -- Clear the current line so the queueing and interruption rules don't
+    -- apply: the user asked for this one specifically.
+    local stoppedTitle = self.currentlyPlaying and self.currentlyPlaying.title
+    self:CancelNativeVOResume()
+    self:_ResumeTimersIfUserPaused()
+    self:StopCurrentSound()
+    self._lastForceStopTime = nil
+
+    if isQuest then
         self:PlayQuestSound(item.questId, item.phase, item.npcId, item.displayID, item.gender, item.creatureType)
-    elseif item.npcId and item.title and item.entryType then
-        table.remove(CLN.questsQueue, 1)
-        self:NotifyQueueDirty()
-        self:PlayNonQuestSound(item.npcId, item.entryType, item.title, item.gender, item.displayID, item.creatureType, { skipCooldown = true })
     else
-        table.remove(CLN.questsQueue, 1)
-        self:NotifyQueueDirty()
+        self:PlayNonQuestSound(item.npcId, item.entryType, item.title, item.gender, item.displayID, item.creatureType, { skipCooldown = true })
+    end
+
+    -- No file for this line: carry on rather than leaving playback stopped.
+    -- The watcher can't advance a queue with nothing playing, so keep trying
+    -- for as long as each attempt removes an entry.
+    local function started()
+        return self.currentlyPlaying and self.currentlyPlaying.soundHandle
+    end
+    if started() then return end
+    repeat
+        local before = #CLN.questsQueue
+        self:AdvanceQueue()
+    until started() or before == 0 or #CLN.questsQueue >= before
+
+    -- Nothing left to play, and the watcher won't report it with no sound handle
+    if not started() then
+        send("CONVERSATION_ENDED", stoppedTitle)
     end
 end
