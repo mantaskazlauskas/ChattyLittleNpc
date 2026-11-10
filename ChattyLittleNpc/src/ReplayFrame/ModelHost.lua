@@ -140,16 +140,6 @@ function ReplayFrame:CreateModelHost(parent, name)
         return self.SetCreatureModel and self:SetCreatureModel(npcId, fileId) or false
     end
 
-    -- Provide a helper for renderer fallback when scene actor can't handle displayIDs
-    function host:_SwitchToPlayerBackendAndApplyDisplay(displayID)
-        if not self:_SwitchToPlayerBackend() then return end
-        if self.SetDisplayInfo then self:SetDisplayInfo(displayID) end
-        local U = CLN.Utils
-        if U:ShouldLogAnimDebug("host") then
-            U:LogAnimDebug("host", "ModelHost: switched backend to 'player' due to scene missing SetModelByCreatureDisplayID")
-        end
-    end
-
     local U = CLN.Utils
     if U:ShouldLogAnimDebug("host") then
         U:LogAnimDebug("host", "ModelHost: using backend kind='" .. tostring(backend and backend.kind or "nil") .. "'")
