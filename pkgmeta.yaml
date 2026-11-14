@@ -3,6 +3,7 @@ ignore:
   - deploy.py
   - release.py
   - README.md
+  - CURSEFORGE.md
   - docs
   - .vscode
   - .github
