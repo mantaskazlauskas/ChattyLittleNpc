@@ -9,13 +9,20 @@
 
 Chatty Little NPC gives a voice to World of Warcraft's quest givers and NPCs. It plays AI-generated voiceovers for quest text, gossip, books and letters, with voices matched to each NPC's race and gender, and shows the NPC speaking in a small conversation frame.
 
+**Download:** [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc)  
 **Discord:** [discord.gg/dVjTXBgNb](https://discord.gg/dVjTXBgNb)
+
+## Demo
+
+[![Chatty Little NPC demo video](https://img.youtube.com/vi/3VhY3L3A5Dg/hqdefault.jpg)](https://www.youtube.com/watch?v=3VhY3L3A5Dg)
+
+Watch the demo on [YouTube](https://www.youtube.com/watch?v=3VhY3L3A5Dg).
 
 ## Getting Started
 
 The addon itself contains no audio. The voices come in separate voiceover packs, one per expansion:
 
-1. Install **Chatty Little NPC**.
+1. Install **Chatty Little NPC** from [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc).
 2. Install the voiceover packs for the content you play (see the list below).
 3. `/reload` or log in. A welcome screen walks you through the main settings the first time.
 
@@ -83,3 +90,7 @@ The game writes this file when you log out or `/reload`.
 - (DONE) Voiceovers for books, letters and other readable items.
 - (IN PROGRESS) Keep upgrading the voice engine to reduce hallucinations and improve voice quality.
 - (IN PROGRESS) Voiceover packs in more languages.
+
+## A Note on AI Use
+
+Chatty Little NPC started in May 2024 as a hand-written experiment, and I spent roughly the first year building and learning by hand. From mid-2025, once models like Claude Opus 4 and Sonnet 4 became accurate enough and available in VS Code, I started using AI more and more to help maintain the addon and build new features. That work is currently done with Anthropic's Claude Opus 5.5 model.
