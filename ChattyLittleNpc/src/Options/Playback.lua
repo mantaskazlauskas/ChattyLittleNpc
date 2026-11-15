@@ -167,7 +167,7 @@ sections.Playback = {
             order = 11,
             type = 'keybinding',
             name = 'Play / Stop Voiceover',
-            desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key (modifiers like Ctrl/Alt/Shift are supported). Right-click or press Escape to clear.\n\nController buttons can be bound in the game\'s Key Bindings menu under AddOns > Chatty Little NPC.',
+            desc = 'Key to trigger, resume, or stop voiceover playback. Click the button then press the desired key (modifiers like Ctrl/Alt/Shift are supported). Right-click or press Escape to clear.\n\nController buttons can be bound in the game\'s Key Bindings menu under Chatty Little NPC.',
             get = function()
                 return CLN.Keybinds:GetKeyText()
             end,

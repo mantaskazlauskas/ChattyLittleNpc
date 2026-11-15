@@ -48,7 +48,7 @@ The About tab in the settings window shows which packs you have installed.
 - **Voiced dialog**: quest greetings, descriptions, progress and completion text, NPC gossip, and readable items such as books and letters.
 - **Distinct voices**: separate voices by race and gender, so different NPCs sound different.
 - **Conversation frame**: an animated portrait of the speaking NPC with subtitles and a queue of upcoming lines. Choose from minimal, panel and cinematic styles, dock the portrait above, below or beside the text, and move it with Edit Mode.
-- **Play button and keybind**: replay any line from the quest log or dialog window, or bind a key to play and stop voiceovers (Key Bindings > AddOns > Chatty Little NPC).
+- **Play button and keybind**: replay any line from the quest log or dialog window, or bind a key to play and stop voiceovers (Key Bindings > Chatty Little NPC).
 - **Voiceover library**: browse, search and play every voiceover in your installed packs.
 - **Plays well with Blizzard voice acting**: pauses for NPCs that already have Blizzard voice acting, with a whitelist you can manage.
 - **Language-aware packs**: choose a voiceover language when packs for more than one language are installed.

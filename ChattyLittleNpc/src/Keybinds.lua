@@ -1,6 +1,6 @@
 -- Voiceover hotkey, backed by a regular WoW key binding declared in Bindings.xml.
 --
--- The game owns the key press: it shows up under AddOns in the game's Key
+-- The game owns the key press: it shows up under Chatty Little NPC in the game's Key
 -- Bindings UI (where controller buttons can be bound too), and pressing it just
 -- runs OnBindingPressed. No keyboard-capturing frame, no SetPropagateKeyboardInput
 -- and no override bindings, so nothing here can raise ADDON_ACTION_BLOCKED at
@@ -99,7 +99,7 @@ local function MigrateLegacyKey()
     else
         local actionName = _G["BINDING_NAME_" .. action] or action
         CLN:Print("Your voiceover hotkey " .. key .. " is already bound to " .. actionName
-            .. ". Set a new one in Options or in the game's Key Bindings (AddOns).")
+            .. ". Set a new one in Options or in the game's Key Bindings (Chatty Little NPC).")
     end
 end
 
