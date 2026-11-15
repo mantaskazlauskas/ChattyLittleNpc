@@ -166,7 +166,10 @@ local function buildFrame()
     local f = CreateFrame("Frame", "CLN_WhitelistWindow", UIParent, "BackdropTemplate")
     f:SetSize(WIN_WIDTH, WIN_HEIGHT)
     f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
+    -- Opens on top of the settings window (DIALOG), so it sits one strata above it;
+    -- sharing a strata lets the two windows' child frames interleave.
+    f:SetFrameStrata("FULLSCREEN")
+    f:SetToplevel(true) -- clicking it raises it above the other sub-windows
     Widgets.ApplyBackdrop(f, Widgets.Colors.windowBg, Widgets.Colors.windowBorder)
     f:EnableMouse(true)
     f:SetMovable(true)

@@ -111,8 +111,10 @@ local function createFrame()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetFrameStrata("DIALOG")
-    f:SetToplevel(true)
+    -- Opens on top of the settings window (DIALOG), so it sits one strata above it;
+    -- sharing a strata lets the two windows' child frames interleave.
+    f:SetFrameStrata("FULLSCREEN")
+    f:SetToplevel(true) -- clicking it raises it above the other sub-windows
     f:Hide()
     tinsert(UISpecialFrames, "CLN_PortraitTuner") -- close with Escape
 
@@ -491,6 +493,10 @@ StaticPopupDialogs["CLN_RESET_PORTRAIT_TUNING"] = {
     button1 = "Reset",
     button2 = "Cancel",
     OnAccept = function() PortraitTuner:ResetAll() end,
+    -- Blizzard popups sit in DIALOG, below this FULLSCREEN window; lift this one
+    -- while it's shown and put the shared popup frame back afterwards.
+    OnShow = function(self) self._clnStrata = self:GetFrameStrata(); self:SetFrameStrata("FULLSCREEN_DIALOG") end,
+    OnHide = function(self) self:SetFrameStrata(self._clnStrata or "DIALOG") end,
     timeout = 0,
     whileDead = true,
     hideOnEscape = true,

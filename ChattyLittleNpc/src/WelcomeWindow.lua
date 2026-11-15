@@ -199,6 +199,8 @@ local function buildContent(content)
     local links = Widgets.CreateButton(content, "Show Download Links")
     links:FitToText(160)
     links:SetScript("OnClick", function()
+        -- Close first: this window sits a strata above Settings and would cover it.
+        WelcomeWindow:Close()
         if CLN.SettingsWindow then CLN.SettingsWindow:OpenTab("about") end
     end)
     layout:Add(links, 22)
@@ -260,7 +262,10 @@ local function buildFrame()
     local f = CreateFrame("Frame", "CLN_WelcomeWindow", UIParent, "BackdropTemplate")
     f:SetSize(WIN_WIDTH, WIN_HEIGHT)
     f:SetPoint("CENTER")
-    f:SetFrameStrata("DIALOG")
+    -- Opens on top of the settings window (DIALOG), so it sits one strata above it;
+    -- sharing a strata lets the two windows' child frames interleave.
+    f:SetFrameStrata("FULLSCREEN")
+    f:SetToplevel(true) -- clicking it raises it above the other sub-windows
     Widgets.ApplyBackdrop(f, C.windowBg, C.windowBorder)
     f:EnableMouse(true)
     f:SetMovable(true)

@@ -137,8 +137,10 @@ local function createFrame()
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-    f:SetFrameStrata("DIALOG")
-    f:SetToplevel(true) -- opens from the settings window, which shares this strata
+    -- Opens on top of the settings window (DIALOG), so it sits one strata above it;
+    -- sharing a strata lets the two windows' child frames interleave.
+    f:SetFrameStrata("FULLSCREEN")
+    f:SetToplevel(true) -- clicking it raises it above the other sub-windows
     f:Hide()
     tinsert(UISpecialFrames, "CLN_RaceModelManager") -- close with Escape
 
