@@ -74,6 +74,9 @@ Found a line with no voice? Turn on **Track NPC Dialog Data** (Settings > Develo
 ## Coming Next
 
 *   Better voice quality with each voice engine update
-*   Voiceover packs in more languages
+
+## A Note on AI Use
+
+Chatty Little NPC started in May 2024 as a hand-written experiment, and I spent roughly the first year building and learning by hand. From mid-2025, once models like Claude Opus 4 and Sonnet 4 became accurate enough and available in VS Code, I started using AI more and more to help maintain the addon and build new features. That work is currently done with Anthropic's Claude Opus 5.5 model.
 
 ## Discord: [Chatty Little NPC](https://discord.gg/dVjTXBgNb)
