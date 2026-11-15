@@ -10,6 +10,8 @@ Paste the content below this comment into the CurseForge description editor (Mar
 
 Chatty Little NPC plays AI-generated voiceovers for quest text, NPC gossip, books and letters. Each NPC gets a voice that fits their race and gender, and a conversation window shows them talking with subtitles as they speak.
 
+<iframe src="https://www.youtube.com/embed/3VhY3L3A5Dg" width="560" height="314" allowfullscreen="allowfullscreen"></iframe>
+
 ### ✨ Now on every WoW client, including WoW Forever
 
 One addon covers every client. Install it, add the voiceover packs for the content you play, and it works:
@@ -75,7 +77,3 @@ Found a line with no voice? Turn on **Track NPC Dialog Data** (Settings > Develo
 *   Voiceover packs in more languages
 
 ## Discord: [Chatty Little NPC](https://discord.gg/dVjTXBgNb)
-
-[![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/donate/?hosted_button_id=CZGQYKYFRURMW)
-
-<iframe src="https://www.youtube.com/embed/3VhY3L3A5Dg" width="560" height="314" allowfullscreen="allowfullscreen"></iframe>
