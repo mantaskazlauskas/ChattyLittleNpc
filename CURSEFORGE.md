@@ -37,7 +37,7 @@ The base addon contains no audio. The voices come in separate packs, one for eac
 *   **Voiced dialog**: quest greetings, descriptions, progress and completion text, NPC gossip, and readable items such as books and letters.
 *   **Voices by race and gender**: different NPCs sound different.
 *   **Conversation window**: an animated portrait of the NPC who is speaking, with subtitles and a queue of upcoming lines. Pick a minimal, panel or cinematic style, place the portrait above, below or beside the text, and move it anywhere with Edit Mode.
-*   **Replay any line**: a play button in the quest log and dialog windows, plus a keybind to play or stop voiceovers.
+*   **Replay any line**: a play button in the quest log and dialog windows, plus a keybind to play or stop voiceovers that also works with controller buttons (Key Bindings > Chatty Little NPC).
 *   **Voiceover library**: browse, search and play every voiceover in your installed packs (`/clnlibrary`).
 *   **Works with Blizzard voice acting**: it stays quiet for NPCs that Blizzard already voices, and you can manage the list yourself.
 *   **Profiles**: use settings per character or share them across characters.
