@@ -43,9 +43,10 @@ These only count voiceovers the player can hear, in their selected language.
 
 | Function | Returns |
 | --- | --- |
-| `HasQuestVoiceover(questId, phase)` | `boolean` |
+| `HasQuestVoiceover(questId, phase, npcId)` | `boolean` |
 | `HasGossipVoiceover(npcId, soundType, text, gender)` | `boolean` |
 
+- `npcId` is optional. Quests offered by several NPCs can have a voiceover per NPC; with no `npcId`, any of them counts.
 - `soundType` is `"Gossip"`, `"GameObject"` or `"Item"`.
 - `text` must be exactly the text shown in game, because voiceovers are matched by a hash of it.
 - `gender` is `"Male"`, `"Female"`, `"Neutral"` or `nil`. Some lines are recorded separately for each gender. Without one, the addon uses the gender it last saw for that NPC, if any.

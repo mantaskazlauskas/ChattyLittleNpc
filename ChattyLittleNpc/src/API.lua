@@ -79,12 +79,13 @@ end
 --- Does the player have a voiceover for this quest text?
 ---@param questId number
 ---@param phase string "Desc", "Prog" or "Comp"
+---@param npcId number|nil The NPC speaking. Optional: without it, any NPC's voiceover counts
 ---@return boolean
-function API.HasQuestVoiceover(questId, phase)
+function API.HasQuestVoiceover(questId, phase, npcId)
     if not (ready() and questId and phase) then return false end
     local normalized = CLN.Utils:NormalizeQuestPhase(phase)
     if not CLN.Utils:IsCanonicalQuestPhase(normalized) then return false end
-    return CLN:HasQuestVoiceover(questId, normalized)
+    return CLN:HasQuestVoiceover(questId, normalized, npcId)
 end
 
 --- Does the player have a voiceover for this gossip, item or object text?

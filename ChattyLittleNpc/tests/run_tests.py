@@ -4162,6 +4162,87 @@ class TestWindowFadeIn(unittest.TestCase):
         self.assertEqual(self.model_alphas(True), "0,to1")
 
 
+class TestQuestVoiceoverPerNpc(unittest.TestCase):
+    """Quest files with an NPC suffix (<questId>_<phase>_<npcId>.ogg) and the fallback to the shared file."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.lua = make_lua()
+        load_file(cls.lua, "src/VoiceoverPacks.lua")
+
+    def setUp(self):
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.VoiceoverPacks = {}
+            CLN._activePacksKey = nil
+            CLN.db.profile.voiceoverLanguage = "auto"
+            CLN.db.profile.voiceoverLanguageFallback = true
+            _clientLocale = "enUS"
+            function GetLocale() return _clientLocale end
+            local packs = {
+                ChattyLittleNpc_Vanilla_voiceovers = { Voiceovers = {
+                    "100_Desc.ogg", "100_Desc_7.ogg", "100_Desc_8.ogg",
+                    "200_Comp_9.ogg", "200_Comp_5.ogg",
+                    "300_Prog.ogg",
+                    -- Gossip hash that happens to be all digits: not a quest file
+                    "400_Gossip_123.ogg",
+                } },
+                ChattyLittleNpc_Vanilla_deDE_voiceovers = { Voiceovers = { "500_Desc.ogg" } },
+                ChattyLittleNpc_Legion_voiceovers = { Voiceovers = { "500_Desc_7.ogg" } },
+            }
+            for name, data in pairs(packs) do
+                _G[name] = data
+                CLN:RegisterVoiceoverPack(name)
+            end
+        """)
+
+    def find(self, args):
+        return lua_call(self.lua, f"return ChattyLittleNpc:FindQuestVoiceover({args})")
+
+    def test_npc_file_wins(self):
+        self.assertEqual(self.find('100, "Desc", 8'), ("100_Desc_8.ogg", "ChattyLittleNpc_Vanilla_voiceovers"))
+
+    def test_npc_id_as_string(self):
+        self.assertEqual(self.find('100, "Desc", "7"')[0], "100_Desc_7.ogg")
+
+    def test_unknown_npc_falls_back_to_shared_file(self):
+        self.assertEqual(self.find('100, "Desc", 99')[0], "100_Desc.ogg")
+
+    def test_no_npc_uses_shared_file(self):
+        self.assertEqual(self.find('100, "Desc"')[0], "100_Desc.ogg")
+        self.assertEqual(self.find('100, "Desc", 0')[0], "100_Desc.ogg")
+
+    def test_old_pack_without_suffixes_still_works(self):
+        self.assertEqual(self.find('300, "Prog", 7')[0], "300_Prog.ogg")
+
+    def test_without_shared_file_any_npc_file_plays(self):
+        # Quest log replay has no NPC; pick one deterministically (lowest name)
+        self.assertEqual(self.find('200, "Comp"')[0], "200_Comp_5.ogg")
+        self.assertEqual(self.find('200, "Comp", 9')[0], "200_Comp_9.ogg")
+
+    def test_phase_must_match(self):
+        self.assertIsNone(self.find('200, "Desc", 9')[0])
+
+    def test_gossip_files_are_not_quest_variants(self):
+        self.assertIsNone(self.find('400, "Gossip"')[0])
+
+    def test_selected_language_beats_english_npc_file(self):
+        lua_call(self.lua, 'ChattyLittleNpc.db.profile.voiceoverLanguage = "deDE"')
+        self.assertEqual(self.find('500, "Desc", 7'), ("500_Desc.ogg", "ChattyLittleNpc_Vanilla_deDE_voiceovers"))
+
+    def test_has_quest_voiceover(self):
+        self.assertTrue(lua_call(self.lua, 'return ChattyLittleNpc:HasQuestVoiceover(200, "Comp")'))
+        self.assertTrue(lua_call(self.lua, 'return ChattyLittleNpc:HasQuestVoiceover(200, "Comp", 1)'))
+        self.assertFalse(lua_call(self.lua, 'return ChattyLittleNpc:HasQuestVoiceover(201, "Comp", 9)'))
+
+    def test_pack_with_prebuilt_index_only(self):
+        lua_call(self.lua, """
+            _G.ChattyLittleNpc_Cata_voiceovers = { _voiceoverIndex = { ["600_Desc_3.ogg"] = true } }
+            ChattyLittleNpc:RegisterVoiceoverPack("ChattyLittleNpc_Cata_voiceovers")
+        """)
+        self.assertEqual(self.find('600, "Desc", 3')[0], "600_Desc_3.ogg")
+
+
 class TestPlaybackPathDifferences(unittest.TestCase):
     """Pins how the quest, non-quest and library paths differ, ahead of merging them (roadmap 3.2)."""
 
@@ -4194,6 +4275,8 @@ class TestPlaybackPathDifferences(unittest.TestCase):
                     ["100_Desc.ogg"] = true, ["200_Prog.ogg"] = true,
                     -- Exists so that only the phase check can reject this phase
                     ["100_Nope.ogg"] = true,
+                    -- Voiced per NPC, no shared file
+                    ["700_Desc_9.ogg"] = true, ["700_Desc_4.ogg"] = true,
                 } },
             }
 
@@ -4313,6 +4396,25 @@ class TestPlaybackPathDifferences(unittest.TestCase):
         self.assertEqual(result, ("quest", 100, "Desc", 9, 10, "Male", "Humanoid",
                                   "Quest 100", "playing", self.QUEST_FILE, 500))
         self.assertEqual(self.log(), "play:100_Desc.ogg,reset")
+
+    def test_quest_plays_the_speaking_npcs_own_file(self):
+        result = self.run_lua("""
+            VP:PlayQuestSound(700, "Desc", 9)
+            return VP.currentlyPlaying._voiceoverFileName
+        """)
+        self.assertEqual(result, "700_Desc_9.ogg")
+        self.assertEqual(self.log(), "play:700_Desc_9.ogg,reset")
+
+    def test_paused_npc_quest_replays_the_same_file(self):
+        result = self.run_lua("""
+            VP:PlayQuestSound(700, "Desc", 9)
+            local cp = VP.currentlyPlaying
+            cp._voiceoverFileName = nil
+            VP:ReplayPausedEntry(cp)
+            return VP.currentlyPlaying._voiceoverFileName
+        """)
+        self.assertEqual(result, "700_Desc_9.ogg")
+        self.assertEqual(self.log(), "play:700_Desc_9.ogg,reset,play:700_Desc_9.ogg,reset")
 
     def test_non_quest_start_records_the_line_and_animates(self):
         result = self.run_lua("""

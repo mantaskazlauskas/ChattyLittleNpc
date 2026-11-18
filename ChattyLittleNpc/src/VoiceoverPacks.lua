@@ -176,18 +176,67 @@ function CLN:IterateVoiceoverPacks()
     end
 end
 
+-- Quest files come in two forms:
+--   <questId>_<phase>.ogg           one voice for every NPC (and the narrator)
+--   <questId>_<phase>_<npcId>.ogg   voiced for one NPC, when several share a quest
+local QUEST_PHASE_FILE = { Desc = true, Prog = true, Comp = true }
+
+--- Filename index for a pack, plus the first NPC-suffixed file per quest
+--- phase, so a quest can still play when we don't know who is speaking.
+---@param packData table
+---@return table|nil index, table variants
+local function GetPackIndexes(packData)
+    if not packData._voiceoverIndex and packData.Voiceovers then
+        local index = {}
+        for _, name in ipairs(packData.Voiceovers) do index[name] = true end
+        packData._voiceoverIndex = index
+    end
+    local index = packData._voiceoverIndex
+    if not packData._questVariants then
+        local variants = {}
+        if index then
+            for name in pairs(index) do
+                local base, phase = name:match("^(%d+_(%a+))_%d+%.ogg$")
+                if base and QUEST_PHASE_FILE[phase] and (not variants[base] or name < variants[base]) then
+                    variants[base] = name
+                end
+            end
+        end
+        packData._questVariants = variants
+    end
+    return index, packData._questVariants
+end
+
+--- Find the voiceover file for a quest phase in the active packs.
+--- Packs are tried in language order; within a pack, the speaking NPC's own
+--- file wins, then the shared file, then any other NPC's file for the quest.
+---@param questId number
+---@param phase string  one of CLN.Utils.QuestPhases
+---@param npcId number|string|nil  the NPC speaking, if known
+---@return string|nil fileName, string|nil packName
+function CLN:FindQuestVoiceover(questId, phase, npcId)
+    if not questId or not phase then return nil, nil end
+    local base = questId .. "_" .. phase
+    local shared = base .. ".ogg"
+    local own = (npcId and npcId ~= 0 and npcId ~= "") and (base .. "_" .. npcId .. ".ogg") or nil
+    for packName, packData in self:IterateVoiceoverPacks() do
+        local index, variants = GetPackIndexes(packData)
+        if index then
+            if own and index[own] then return own, packName end
+            if index[shared] then return shared, packName end
+        end
+        if variants[base] then return variants[base], packName end
+    end
+    return nil, nil
+end
+
 --- Whether the active packs have the voiceover for a quest phase.
 ---@param questId number
 ---@param phase string  one of CLN.Utils.QuestPhases
+---@param npcId number|nil  the NPC speaking, if known
 ---@return boolean
-function CLN:HasQuestVoiceover(questId, phase)
-    local fileName = questId .. "_" .. phase .. ".ogg"
-    for _, packData in self:IterateVoiceoverPacks() do
-        if packData._voiceoverIndex and packData._voiceoverIndex[fileName] then
-            return true
-        end
-    end
-    return false
+function CLN:HasQuestVoiceover(questId, phase, npcId)
+    return self:FindQuestVoiceover(questId, phase, npcId) ~= nil
 end
 
 --- Register every voiceover pack that is already loaded.

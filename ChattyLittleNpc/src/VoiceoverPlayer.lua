@@ -401,7 +401,8 @@ function VoiceoverPlayer:GetQueuedEntryDuration(q)
     end
     local fileName
     if q.questId and q.phase then
-        fileName = q.questId .. "_" .. q.phase .. ".ogg"
+        fileName = CLN:FindQuestVoiceover(q.questId, q.phase, q.npcId)
+            or (q.questId .. "_" .. q.phase .. ".ogg")
     elseif q.npcId and q.title and q.entryType then
         -- Any hash variant, gender suffix: same lookup playback uses
         local hashes = CLN.Utils:GetHashes(q.npcId, q.title)
@@ -702,8 +703,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
     end
 
     local addonsFolderPath = "Interface\\AddOns\\"
-    local fileName = questId .. "_" .. phase .. ".ogg"
-    local fileLocation = "\\voiceovers\\" .. fileName
+    -- This NPC's own file when the quest is voiced per NPC, else the shared one
+    local resolvedFile, resolvedPack = CLN:FindQuestVoiceover(questId, phase, npcId)
+    local fileName = resolvedFile or (questId .. "_" .. phase .. ".ogg")
     local success, newSoundHandle
 
     if (VoiceoverPlayer.currentlyPlaying
@@ -739,14 +741,9 @@ function VoiceoverPlayer:PlayQuestSound(questId, phase, npcId, displayID, gender
     end
 
     -- Find the voiceover file first, before stopping current audio
-    local foundPath = nil
-    for packName, packData in CLN:IterateVoiceoverPacks() do
-        local fileNameFound = packData._voiceoverIndex and packData._voiceoverIndex[fileName]
-        if (fileNameFound) then
-            foundPath = addonsFolderPath .. packName .. fileLocation
-            break
-        end
-    end
+    local foundPath = resolvedPack
+        and (addonsFolderPath .. resolvedPack .. "\\voiceovers\\" .. resolvedFile)
+        or nil
 
     -- Only stop the current sound if we have a replacement to play
     if foundPath then

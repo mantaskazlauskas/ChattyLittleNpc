@@ -305,19 +305,11 @@ function VoiceoverPlayer:ReplayPausedEntry(cp)
     local addonsFolderPath = "Interface\\AddOns\\"
 
     if cp.entryType == "quest" and cp.questId and cp.phase then
-        local fileName = cp.questId .. "_" .. cp.phase .. ".ogg"
-        local fileLocation = "\\voiceovers\\" .. fileName
-        local foundPath = nil
-        for packName, packData in CLN:IterateVoiceoverPacks() do
-            local found = (packData._voiceoverIndex and packData._voiceoverIndex[fileName])
-                or CLN.Utils:ContainsString(packData.Voiceovers, fileName)
-            if found then
-                foundPath = addonsFolderPath .. packName .. fileLocation
-                break
-            end
-        end
-        if foundPath then
+        local fileName, packName = CLN:FindQuestVoiceover(cp.questId, cp.phase, cp.npcId)
+        if packName then
+            local foundPath = addonsFolderPath .. packName .. "\\voiceovers\\" .. fileName
             success, newSoundHandle = PlaySoundFile(foundPath, CLN.db.profile.audioChannel)
+            cp._voiceoverFileName = cp._voiceoverFileName or fileName
         end
     elseif cp.npcId and cp.title and cp.entryType then
         local hashes = CLN.Utils:GetHashes(cp.npcId, cp.title)
