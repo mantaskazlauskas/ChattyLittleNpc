@@ -129,10 +129,18 @@ function NpcRaceLookup:GetUnitModelFileID(unit)
 end
 
 -- Unknown model IDs seen while collecting, labeled by hand in the Race Model Manager.
--- UnknownRaceModelsDB[fileId] = { npcId, name, displayId, creatureType, count, race, ignored }
+-- [fileId] = { npcId, name, displayId, creatureType, count, race, ignored }
+-- Saved by ChattyLittleNpc_Collector as ChattyLittleNpc_UnknownRaceModelsDB (it is
+-- only filled and used while recording). Up to 3.7 the main addon saved it as
+-- UnknownRaceModelsDB; that is read until the collector has moved it.
 local function getUnknownDB()
-    if not UnknownRaceModelsDB then UnknownRaceModelsDB = {} end
-    return UnknownRaceModelsDB
+    local db = _G.ChattyLittleNpc_UnknownRaceModelsDB
+    if type(db) == "table" then return db end
+    db = _G.UnknownRaceModelsDB
+    if type(db) == "table" then return db end
+    -- Neither is loaded: an empty list. Recording only happens once the
+    -- collector has loaded and created its table.
+    return {}
 end
 
 --- Race for a model file ID: built-in table first, then manual labels. "" when unknown.

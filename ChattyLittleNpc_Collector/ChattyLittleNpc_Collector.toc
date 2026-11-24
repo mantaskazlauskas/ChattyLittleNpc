@@ -5,7 +5,7 @@
 ## Version: 3.7.0
 ## Dependencies: ChattyLittleNpc
 ## LoadOnDemand: 1
-## SavedVariables: ChattyLittleNpc_NpcInfoDB, ChattyLittleNpc_UnitInfoDB
+## SavedVariables: ChattyLittleNpc_NpcInfoDB, ChattyLittleNpc_UnitInfoDB, ChattyLittleNpc_UnknownRaceModelsDB
 ## Group: ChattyLittleNpc
 
 # Chatty Little NPC loads this module with C_AddOns.LoadAddOn() at login (and

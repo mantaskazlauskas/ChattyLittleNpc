@@ -5624,6 +5624,28 @@ class TestCollectorModule(unittest.TestCase):
         self.assertIsNone(self.value("UnitInfoDB"))
         self.assertTrue(self.value("ChattyLittleNpc.Collector:IsLoaded()"))
 
+    def test_module_load_moves_race_labels_and_lookup_still_finds_them(self):
+        load_file(self.lua, "Core/NpcRaceLookup.lua")
+        lua_call(self.lua, """
+            UnknownRaceModelsDB = { [999001] = { race = "Tauren", count = 3 } }
+            ChattyLittleNpc_UnknownRaceModelsDB = { [999002] = { race = "Gnome", count = 1 } }
+        """)
+        self.load_module()
+        self.assertIsNone(self.value("UnknownRaceModelsDB"))
+        self.assertEqual(self.value("ChattyLittleNpc_UnknownRaceModelsDB[999001].count"), 3)
+        self.assertEqual(self.value("ChattyLittleNpc.NpcRaceLookup:GetRaceForFileID(999001)"), "Tauren")
+        self.assertEqual(self.value("ChattyLittleNpc.NpcRaceLookup:GetRaceForFileID(999002)"), "Gnome")
+
+    def test_race_lookup_reads_old_labels_until_the_collector_loads(self):
+        load_file(self.lua, "Core/NpcRaceLookup.lua")
+        lua_call(self.lua, """
+            ChattyLittleNpc_UnknownRaceModelsDB = nil
+            UnknownRaceModelsDB = { [999001] = { race = "Tauren" } }
+        """)
+        self.assertEqual(self.value("ChattyLittleNpc.NpcRaceLookup:GetRaceForFileID(999001)"), "Tauren")
+        lua_call(self.lua, "UnknownRaceModelsDB = nil")
+        self.assertEqual(self.value("ChattyLittleNpc.NpcRaceLookup:GetRaceForFileID(999001)"), "")
+
     def test_module_load_without_old_data_creates_empty_tables(self):
         lua_call(self.lua, "NpcInfoDB = nil UnitInfoDB = nil")
         self.load_module()

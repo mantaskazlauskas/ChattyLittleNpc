@@ -8,7 +8,7 @@
 ## OptionalDeps: EditModeExpanded, DialogueUI, ElvUI
 ## Group: ChattyLittleNpc
 
-# NpcInfoDB and UnitInfoDB are only kept so data from 3.7 and earlier is not lost:
+# NpcInfoDB, UnitInfoDB and UnknownRaceModelsDB are only kept so data from 3.7 and earlier is not lost:
 # ChattyLittleNpc_Collector moves it into its own saved variables the first time
 # it loads. Remove them once players have had time to update.
 

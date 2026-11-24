@@ -4,7 +4,8 @@
 -- Names are the primary key (IDs vary across phases/locations).
 --
 -- To contribute: enable "Log NPC Texts" in addon settings, play through
--- voiced content, and share your VoicedNpcContributions SavedVariable.
+-- voiced content, and share your VoicedNpcContributions SavedVariable
+-- (in ChattyLittleNpc.lua; it stays in the main addon because the whitelist reads it).
 
 ---@type table<string, { ids: number[] }>
 KnownVoicedNpcsDB = KnownVoicedNpcsDB or {

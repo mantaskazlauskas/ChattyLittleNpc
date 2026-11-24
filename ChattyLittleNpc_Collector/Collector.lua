@@ -1,14 +1,15 @@
--- Collector.lua - Sets up the collected-text tables when this module loads.
+-- Collector.lua - Sets up the recorded-data tables when this module loads.
 --
--- This load-on-demand addon owns the dialog text the player has recorded:
+-- This load-on-demand addon owns the data the player has recorded:
 --   ChattyLittleNpc_NpcInfoDB[locale][npcId]   (layout: Core/CollectedData.lua)
 --   ChattyLittleNpc_UnitInfoDB[locale][unitId]
+--   ChattyLittleNpc_UnknownRaceModelsDB[fileId] (layout: Core/NpcRaceLookup.lua)
 -- They are saved in SavedVariables\ChattyLittleNpc_Collector.lua.
 --
--- Versions up to 3.7 kept them in the main addon as NpcInfoDB and UnitInfoDB.
--- The main .toc still declares those names so older data is not lost; the
--- first time this module loads, it moves that data here and clears the old
--- globals, so ChattyLittleNpc.lua no longer saves a copy.
+-- Versions up to 3.7 kept them in the main addon as NpcInfoDB, UnitInfoDB and
+-- UnknownRaceModelsDB. The main .toc still declares those names so older data
+-- is not lost; the first time this module loads, it moves that data here and
+-- clears the old globals, so ChattyLittleNpc.lua no longer saves a copy.
 
 local ADDON_NAME = ...
 
@@ -20,15 +21,29 @@ local CollectedData = CLN.CollectedData
 --- the old global.
 ---@param newName string global saved by this module
 ---@param oldName string global the main addon used to save
----@param locale string
+---@param merge fun(dst: table, src: table): integer  copies src into dst, returns the key count
 ---@return integer moved  how many top-level keys were copied in
-local function adopt(newName, oldName, locale)
+local function adopt(newName, oldName, merge)
     if type(_G[newName]) ~= "table" then _G[newName] = {} end
     local old = _G[oldName]
     if type(old) ~= "table" then return 0 end
 
-    local moved = CollectedData.MoveInto(_G[newName], old, locale)
+    local moved = merge(_G[newName], old)
     _G[oldName] = nil
+    return moved
+end
+
+--- Merge for tables keyed by id with no locale level: what dst already has wins.
+local function mergeById(dst, src)
+    local moved = 0
+    for key, value in pairs(src) do
+        if dst[key] == nil then
+            dst[key] = value
+        elseif type(dst[key]) == "table" and type(value) == "table" then
+            CollectedData.FillMissing(dst[key], value)
+        end
+        moved = moved + 1
+    end
     return moved
 end
 
@@ -39,12 +54,14 @@ frame:SetScript("OnEvent", function(self, _, addonName)
     self:UnregisterEvent("ADDON_LOADED")
 
     local locale = CLN.locale or GetLocale()
-    local npcs = adopt("ChattyLittleNpc_NpcInfoDB", "NpcInfoDB", locale)
-    local units = adopt("ChattyLittleNpc_UnitInfoDB", "UnitInfoDB", locale)
-    if (npcs + units) > 0 then
+    local function mergeText(dst, src) return CollectedData.MoveInto(dst, src, locale) end
+    local npcs = adopt("ChattyLittleNpc_NpcInfoDB", "NpcInfoDB", mergeText)
+    local units = adopt("ChattyLittleNpc_UnitInfoDB", "UnitInfoDB", mergeText)
+    local models = adopt("ChattyLittleNpc_UnknownRaceModelsDB", "UnknownRaceModelsDB", mergeById)
+    if (npcs + units + models) > 0 then
         CLN.Logger:info(string.format(
-            "Collected dialog text moved to ChattyLittleNpc_Collector.lua (%d NPC and %d object/item locale tables)",
-            npcs, units), false, CLN.Utils.LogCategories.misc)
+            "Collected data moved to ChattyLittleNpc_Collector.lua (%d NPC and %d object/item locale tables, %d unknown race models)",
+            npcs, units, models), false, CLN.Utils.LogCategories.misc)
     end
 
     -- Data saved by a module from before the locale-first layout, if any

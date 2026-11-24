@@ -206,6 +206,9 @@ sections.DeveloperDebug = {
             name = 'Manage Unknown Race Models',
             desc = 'Label NPC models whose race could not be identified. Unknown models are collected while NPC text logging is enabled.',
             func = function()
+                -- The labels are saved by the collector; load it so they show
+                -- even while recording is off (it only records when ticked)
+                CLN.Collector:Load()
                 if CLN.RaceModelManager then CLN.RaceModelManager:Toggle() end
             end,
         },

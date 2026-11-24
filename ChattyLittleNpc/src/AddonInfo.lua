@@ -39,9 +39,10 @@ AddonInfo.VoiceoverPackLinks = {
 }
 
 AddonInfo.CONTRIBUTE_TEXT = "Missing a voiceover? Help expand the database by sharing your "
-    .. "|cffffd100ChattyLittleNpc_Collector.lua|r file with us in the " .. AddonInfo.DISCORD_CHANNEL
-    .. " channel on Discord. It holds the quest and NPC dialog the addon recorded while you played, "
-    .. "which is what new voiceovers are made from."
+    .. "|cffffd100ChattyLittleNpc_Collector.lua|r and |cffffd100ChattyLittleNpc.lua|r files with us in the "
+    .. AddonInfo.DISCORD_CHANNEL .. " channel on Discord. They hold the quest and NPC dialog the addon "
+    .. "recorded while you played, which is what new voiceovers are made from, and the NPCs you marked "
+    .. "as already voiced by Blizzard."
 
 AddonInfo.SAVED_VARIABLES_HINT = "You'll find it in your World of Warcraft game folder (_retail_, _classic_ or "
     .. "_classic_era_) under |cffffffff" .. AddonInfo.SAVED_VARIABLES_PATH .. "|r. "
@@ -71,9 +72,9 @@ end
 ---@param tooltip GameTooltip
 function AddonInfo:AddContributeTooltipLines(tooltip)
     tooltip:AddLine("Help expand the database!", 1, 0.82, 0)
-    tooltip:AddLine("Share your ChattyLittleNpc_Collector.lua file in the " .. self.DISCORD_CHANNEL
-        .. " channel on our Discord. It holds the dialog the addon recorded while you played,"
-        .. " and new voiceovers are made from it.", 0.9, 0.9, 0.9, true)
+    tooltip:AddLine("Share your ChattyLittleNpc_Collector.lua and ChattyLittleNpc.lua files in the "
+        .. self.DISCORD_CHANNEL .. " channel on our Discord. They hold the dialog the addon recorded"
+        .. " while you played, and new voiceovers are made from it.", 0.9, 0.9, 0.9, true)
     tooltip:AddLine(" ")
     tooltip:AddLine(self.SAVED_VARIABLES_PATH, 0.6, 0.6, 0.65, true)
     if not CLN.db.profile.logNpcTexts then

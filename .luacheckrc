@@ -36,6 +36,7 @@ globals = {
     -- SavedVariables (see ChattyLittleNpc_Collector.toc)
     "ChattyLittleNpc_NpcInfoDB",
     "ChattyLittleNpc_UnitInfoDB",
+    "ChattyLittleNpc_UnknownRaceModelsDB",
     "VoicedNpcContributions",
     "NpcMetadataCache",
     "UnknownRaceModelsDB",
