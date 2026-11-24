@@ -18,6 +18,28 @@ Collector.ADDON_NAME = "ChattyLittleNpc_Collector"
 
 local loadAddOn = (C_AddOns and C_AddOns.LoadAddOn) or _G.LoadAddOn
 
+--- Says in chat that one of the load-on-demand modules (collector, tools) is
+--- not available, and what to do about it. Shared with src/Tools.lua.
+---@param addonName string
+---@param reason string|nil LoadAddOn's reason code (DISABLED, MISSING, ...), or
+---  "NOT_READY" when the addon loaded but one of its files raised an error
+---@param consequence string what the player loses, e.g. "Can't record NPC dialog"
+function CLN:WarnAddonNotLoaded(addonName, reason, consequence)
+    local message
+    if reason == "NOT_READY" then
+        message = string.format(
+            "%s: %s loaded but failed to start. Check for a Lua error at login, or reinstall Chatty Little NPC.",
+            consequence, addonName)
+    else
+        -- ADDON_DISABLED, ADDON_MISSING, ... are the client's own descriptions
+        local why = reason and _G["ADDON_" .. reason] or reason or "unknown reason"
+        message = string.format(
+            "%s: %s could not be loaded (%s). Enable it in the AddOns list, or reinstall Chatty Little NPC.",
+            consequence, addonName, tostring(why))
+    end
+    CLN.Logger:warn(message, true, CLN.Utils.LogCategories.misc)
+end
+
 --- True once the module has loaded and set up its tables.
 ---@return boolean
 function Collector:IsLoaded()
@@ -55,12 +77,7 @@ function Collector:LoadIfEnabled()
 
     local ok, reason = self:Load()
     if ok then return end
-
-    -- ADDON_DISABLED, ADDON_MISSING, ... are the client's own descriptions
-    local why = reason and _G["ADDON_" .. reason] or reason or "unknown reason"
-    CLN.Logger:warn(string.format(
-        "Can't record NPC dialog: %s could not be loaded (%s). Enable it in the AddOns list, or reinstall Chatty Little NPC.",
-        self.ADDON_NAME, tostring(why)), true, CLN.Utils.LogCategories.misc)
+    CLN:WarnAddonNotLoaded(self.ADDON_NAME, reason, "Can't record NPC dialog")
 end
 
 return Collector

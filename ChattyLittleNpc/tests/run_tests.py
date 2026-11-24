@@ -5707,6 +5707,8 @@ class TestToolsLoader(unittest.TestCase):
                 return table.unpack(_G._loadResult)
             end }
         """)
+        # Defines CLN:WarnAddonNotLoaded, shared by both loaders
+        load_file(self.lua, "src/Collector.lua")
         load_file(self.lua, "src/Tools.lua")
 
     def value(self, expr):
@@ -5729,6 +5731,33 @@ class TestToolsLoader(unittest.TestCase):
         self.assertEqual(self.value("#_opened"), 0)
         self.assertIn("Missing", self.value("_warnings[1]"))
         self.assertFalse(self.value("ChattyLittleNpc.Tools.loaded == true"))
+
+    def test_window_whose_file_failed_to_load_warns_instead_of_erroring(self):
+        # LoadAddOn succeeds, but RaceModelManager.lua raised an error, so
+        # CLN.RaceModelManager was never set
+        lua_call(self.lua, 'ChattyLittleNpc.Tools:Toggle("raceModels")')
+        self.assertIn("failed to start", self.value("_warnings[1]"))
+
+    def test_window_whose_file_stopped_part_way_warns_instead_of_erroring(self):
+        # The file set its table, then errored before defining Toggle
+        lua_call(self.lua, """
+            ChattyLittleNpc.RaceModelManager = {}
+            ChattyLittleNpc.Tools:Toggle("raceModels")
+        """)
+        self.assertIn("failed to start", self.value("_warnings[1]"))
+
+    def test_race_manager_opens_and_warns_once_when_the_collector_cannot_load(self):
+        lua_call(self.lua, """
+            ADDON_DISABLED = "Disabled"
+            ChattyLittleNpc.Collector.Load = function() return false, "DISABLED" end
+            ChattyLittleNpc.RaceModelManager = { Toggle = function() table.insert(_G._opened, "raceModels") end }
+            ChattyLittleNpc.Tools:Toggle("raceModels")
+            ChattyLittleNpc.Tools:Toggle("raceModels")
+        """)
+        self.assertEqual(self.value("#_opened"), 2)
+        self.assertEqual(self.value("#_warnings"), 1)
+        self.assertIn("ChattyLittleNpc_Collector", self.value("_warnings[1]"))
+        self.assertIn("Disabled", self.value("_warnings[1]"))
 
     def test_slash_commands_go_through_the_loader(self):
         lua_call(self.lua, """
