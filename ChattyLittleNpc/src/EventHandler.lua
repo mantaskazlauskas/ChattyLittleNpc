@@ -154,8 +154,6 @@ end
 function EventHandler:ADDON_LOADED()
     CLN.Logger:debug("ADDON_LOADED", false, CLN.Utils.LogCategories.loader)
 
-    CLN.NpcDialogTracker:InitializeTables()
-
     -- Initialize and prune the persistent NPC metadata cache
     if CLN.NpcMetadataCache then
         CLN.NpcMetadataCache:Initialize()
@@ -178,8 +176,9 @@ function EventHandler:GOSSIP_SHOW()
         return
     end
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleGossipText()
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleGossipText()
     end
 
     -- Capture NPC metadata for the persistent cache (even without voiceover)
@@ -220,8 +219,9 @@ function EventHandler:QUEST_GREETING()
     CLN.PlayButton:ClearButtons()
     CLN.QuestInfoPanel:Hide()
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleQuestTexts("QUEST_GREETING")
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleQuestTexts("QUEST_GREETING")
     end
 end
 
@@ -253,8 +253,9 @@ function EventHandler:QUEST_DETAIL()
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.DESC)
     end
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleQuestTexts("QUEST_DETAIL")
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleQuestTexts("QUEST_DETAIL")
     end
 end
 
@@ -271,8 +272,9 @@ function EventHandler:QUEST_PROGRESS()
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.PROG)
     end
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleQuestTexts("QUEST_PROGRESS")
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleQuestTexts("QUEST_PROGRESS")
     end
 end
 
@@ -289,8 +291,9 @@ function EventHandler:QUEST_COMPLETE()
         CLN:HandlePlaybackStart(CLN.Utils.QuestPhases.COMP)
     end
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleQuestTexts("QUEST_COMPLETE")
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleQuestTexts("QUEST_COMPLETE")
     end
 end
 
@@ -341,8 +344,9 @@ function EventHandler:ITEM_TEXT_READY()
         CLN.VoiceoverPlayer:PlayNonQuestSound(itemId, unitType, itemText, nil, displayID)
     end or nil)
 
-    if CLN.db.profile.logNpcTexts then
-        CLN.NpcDialogTracker:HandleItemTextReady(itemId, itemText, itemName)
+    local tracker = CLN.Collector:Active()
+    if tracker then
+        tracker:HandleItemTextReady(itemId, itemText, itemName)
     end
 
     -- Remember the page style so the portrait can show a book, scroll or plaque

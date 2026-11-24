@@ -23,7 +23,10 @@ sections.DataCollection = {
             get = function(info) return CLN.db.profile.logNpcTexts end,
             set = function(info, value)
                 CLN.db.profile.logNpcTexts = value
-                if (not value) then
+                if (value) then
+                    -- Recording lives in the load-on-demand collector module
+                    CLN.Collector:LoadIfEnabled()
+                else
                     CLN.db.profile.printNpcTexts = false
                 end
             end,

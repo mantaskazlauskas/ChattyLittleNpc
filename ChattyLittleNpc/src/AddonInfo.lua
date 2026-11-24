@@ -17,7 +17,7 @@ CLN.AddonInfo = AddonInfo
 
 AddonInfo.DISCORD_URL = "https://discord.gg/dVjTXBgNb"
 AddonInfo.DISCORD_CHANNEL = "#data-gathering-chat"
-AddonInfo.SAVED_VARIABLES_PATH = "WTF\\Account\\<ACCOUNT>\\SavedVariables\\ChattyLittleNpc.lua"
+AddonInfo.SAVED_VARIABLES_PATH = "WTF\\Account\\<ACCOUNT>\\SavedVariables\\ChattyLittleNpc_Collector.lua"
 
 -- English voiceover packs on CurseForge, in release order. expansion matches
 -- the pack folder name (ChattyLittleNpc_<expansion>_voiceovers).
@@ -39,7 +39,7 @@ AddonInfo.VoiceoverPackLinks = {
 }
 
 AddonInfo.CONTRIBUTE_TEXT = "Missing a voiceover? Help expand the database by sharing your "
-    .. "|cffffd100ChattyLittleNpc.lua|r file with us in the " .. AddonInfo.DISCORD_CHANNEL
+    .. "|cffffd100ChattyLittleNpc_Collector.lua|r file with us in the " .. AddonInfo.DISCORD_CHANNEL
     .. " channel on Discord. It holds the quest and NPC dialog the addon recorded while you played, "
     .. "which is what new voiceovers are made from."
 
@@ -71,7 +71,7 @@ end
 ---@param tooltip GameTooltip
 function AddonInfo:AddContributeTooltipLines(tooltip)
     tooltip:AddLine("Help expand the database!", 1, 0.82, 0)
-    tooltip:AddLine("Share your ChattyLittleNpc.lua file in the " .. self.DISCORD_CHANNEL
+    tooltip:AddLine("Share your ChattyLittleNpc_Collector.lua file in the " .. self.DISCORD_CHANNEL
         .. " channel on our Discord. It holds the dialog the addon recorded while you played,"
         .. " and new voiceovers are made from it.", 0.9, 0.9, 0.9, true)
     tooltip:AddLine(" ")

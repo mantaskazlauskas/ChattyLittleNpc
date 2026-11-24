@@ -139,6 +139,8 @@ function CLN:OnInitialize()
 
     -- Collected text is stored per language first (NpcInfoDB[locale][id]); move
     -- anything an older version saved id-first. Saved variables are loaded by now.
+    -- Only touches data from 3.7 and earlier that ChattyLittleNpc_Collector has
+    -- not moved yet; the collector handles its own tables.
     self.CollectedData:Migrate(self.locale)
 
     self.gameVersion = select(4, GetBuildInfo())
@@ -237,10 +239,6 @@ function CLN:OnEnable()
 
     self:GetLoadedExpansionVoiceoverPacks()
     self:GetLoadedAddonsForIntegrations()
-
-    if (self.db.profile.logNpcTexts) then
-        self.NpcDialogTracker:GatherTooltipInfo()
-    end
 
     -- Live option change hooks: apply visuals immediately
     if self.db and self.db.RegisterCallback and not self._dbProfileHooked then

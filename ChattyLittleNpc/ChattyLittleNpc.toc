@@ -8,6 +8,10 @@
 ## OptionalDeps: EditModeExpanded, DialogueUI, ElvUI
 ## Group: ChattyLittleNpc
 
+# NpcInfoDB and UnitInfoDB are only kept so data from 3.7 and earlier is not lost:
+# ChattyLittleNpc_Collector moves it into its own saved variables the first time
+# it loads. Remove them once players have had time to update.
+
 # Vendored libraries: the standard minimap button stack, so button collectors
 # (EllesmereUI, OneForAll, Leatrix Plus, ...) recognise our button.
 Libs/LibStub/LibStub.lua
@@ -32,6 +36,7 @@ Main.lua
 
 # Main addon modules
 src/VoiceoverPacks.lua
+src/Collector.lua
 src/EventHandler.lua
 src/Options.lua
 src/Options/Profiles.lua
@@ -111,7 +116,6 @@ src/ReplayFrame/NativeVOPopup.lua
 src/PlayButton.lua
 src/QuestInfoPanel.lua
 src/Keybinds.lua
-src/NpcDialogTracker.lua
 src/VoiceoverPlayer.lua
 src/VoiceoverPlayer/Queue.lua
 src/VoiceoverPlayer/Pause.lua

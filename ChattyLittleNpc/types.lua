@@ -128,7 +128,8 @@
 ---@field itemTextStyles table<string, {material: string?, multiPage: boolean}>
 ---@field Utils table
 ---@field VoiceoverPlayer table
----@field NpcDialogTracker table
+---@field NpcDialogTracker table|nil  set once ChattyLittleNpc_Collector has loaded
+---@field Collector Collector
 ---@field PlayButton table
 ---@field ReplayFrame table
 ---@field Print fun(self: ChattyLittleNpc, ...: any)

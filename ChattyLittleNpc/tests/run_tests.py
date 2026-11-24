@@ -5536,6 +5536,136 @@ class TestCollectedDataMigration(unittest.TestCase):
         self.assertIsNone(self.value('ChattyLittleNpc.CollectedData.Get(NpcInfoDB, 68, "deDE")'))
 
 
+COLLECTOR_ROOT = os.path.join(os.path.dirname(ADDON_ROOT), "ChattyLittleNpc_Collector")
+
+
+class TestCollectorModule(unittest.TestCase):
+    """The load-on-demand ChattyLittleNpc_Collector addon and its loader (src/Collector.lua)."""
+
+    def setUp(self):
+        self.lua = make_lua()
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.locale = "enUS"
+            CLN.Utils.LogCategories = { misc = "misc", loader = "loader", ui = "ui" }
+            CLN.db.profile.logNpcTexts = true
+            _G._warnings = {}
+            CLN.Logger.warn = function(_, msg) table.insert(_G._warnings, msg) end
+            -- Frames remember their OnEvent handler so a test can fire events
+            _G._handlers = {}
+            function CreateFrame()
+                local f = { RegisterEvent = function() end, UnregisterEvent = function() end }
+                function f:SetScript(_, fn) table.insert(_G._handlers, { frame = self, fn = fn }) end
+                return f
+            end
+            function GetLocale() return "enUS" end
+        """)
+        load_file(self.lua, "src/Collector.lua")
+
+    def value(self, expr):
+        return lua_call(self.lua, "return " + expr)
+
+    def load_module(self):
+        """Run the module's files as the client would, then fire its ADDON_LOADED."""
+        for name in ("NpcDialogTracker.lua", "Collector.lua"):
+            path = os.path.join(COLLECTOR_ROOT, name).replace("\\", "/")
+            lua_call(self.lua, f'assert(loadfile("{path}"))("ChattyLittleNpc_Collector", {{}})')
+        lua_call(self.lua, """
+            for _, h in ipairs(_G._handlers) do h.fn(h.frame, "ADDON_LOADED", "ChattyLittleNpc_Collector") end
+        """)
+
+    # -- accessors ---------------------------------------------------------
+
+    def test_npcs_prefers_the_collector_table(self):
+        lua_call(self.lua, """
+            NpcInfoDB = { enUS = { [1] = { name = "Old" } } }
+            ChattyLittleNpc_NpcInfoDB = { enUS = { [1] = { name = "New" } } }
+        """)
+        self.assertEqual(self.value("ChattyLittleNpc.CollectedData.Npcs().enUS[1].name"), "New")
+
+    def test_npcs_falls_back_to_the_old_table(self):
+        lua_call(self.lua, "NpcInfoDB = { enUS = { [1] = { name = 'Old' } } } ChattyLittleNpc_NpcInfoDB = nil")
+        self.assertEqual(self.value("ChattyLittleNpc.CollectedData.Npcs().enUS[1].name"), "Old")
+
+    def test_accessors_return_nil_when_nothing_is_saved(self):
+        lua_call(self.lua, "NpcInfoDB = nil UnitInfoDB = nil")
+        self.assertIsNone(self.value("ChattyLittleNpc.CollectedData.Npcs()"))
+        self.assertIsNone(self.value("ChattyLittleNpc.CollectedData.Units()"))
+
+    # -- MoveInto ----------------------------------------------------------
+
+    def test_move_into_keeps_destination_values_and_empties_source(self):
+        lua_call(self.lua, """
+            _dst = { enUS = { [1] = { name = "Kept", race = "" } } }
+            _src = { enUS = { [1] = { name = "Lost", race = "Human" }, [2] = { name = "Added" } },
+                     [3] = { deDE = { name = "Id-first" } } }
+            _moved = ChattyLittleNpc.CollectedData.MoveInto(_dst, _src, "enUS")
+        """)
+        self.assertEqual(self.value("_dst.enUS[1].name"), "Kept")
+        self.assertEqual(self.value("_dst.enUS[1].race"), "Human")
+        self.assertEqual(self.value("_dst.enUS[2].name"), "Added")
+        self.assertEqual(self.value("_dst.deDE[3].name"), "Id-first")
+        self.assertIsNone(self.value("next(_src)"))
+        self.assertEqual(self.value("_moved"), 2)
+
+    # -- module load -------------------------------------------------------
+
+    def test_module_load_moves_old_data_and_clears_old_globals(self):
+        lua_call(self.lua, """
+            NpcInfoDB = { enUS = { [68] = { name = "Guard" } } }
+            UnitInfoDB = { [175726] = { enUS = { unitName = "Old Book" } } }
+            ChattyLittleNpc_NpcInfoDB = nil
+            ChattyLittleNpc_UnitInfoDB = nil
+        """)
+        self.load_module()
+        self.assertEqual(self.value("ChattyLittleNpc_NpcInfoDB.enUS[68].name"), "Guard")
+        self.assertEqual(self.value("ChattyLittleNpc_UnitInfoDB.enUS[175726].unitName"), "Old Book")
+        self.assertIsNone(self.value("NpcInfoDB"))
+        self.assertIsNone(self.value("UnitInfoDB"))
+        self.assertTrue(self.value("ChattyLittleNpc.Collector:IsLoaded()"))
+
+    def test_module_load_without_old_data_creates_empty_tables(self):
+        lua_call(self.lua, "NpcInfoDB = nil UnitInfoDB = nil")
+        self.load_module()
+        self.assertIsNone(self.value("next(ChattyLittleNpc_NpcInfoDB)"))
+        self.assertIsNone(self.value("next(ChattyLittleNpc_UnitInfoDB)"))
+
+    def test_tracker_writes_into_the_collector_table(self):
+        lua_call(self.lua, "NpcInfoDB = nil UnitInfoDB = nil")
+        self.load_module()
+        lua_call(self.lua, "ChattyLittleNpc.Collector:Active():EnsureNpcInfoInitialized(42).name = 'Recorded'")
+        self.assertEqual(self.value("ChattyLittleNpc_NpcInfoDB.enUS[42].name"), "Recorded")
+
+    # -- loader ------------------------------------------------------------
+
+    def test_active_is_nil_until_loaded_and_while_recording_is_off(self):
+        self.assertIsNone(self.value("ChattyLittleNpc.Collector:Active()"))
+        self.load_module()
+        self.assertIsNotNone(self.value("ChattyLittleNpc.Collector:Active()"))
+        lua_call(self.lua, "ChattyLittleNpc.db.profile.logNpcTexts = false")
+        self.assertIsNone(self.value("ChattyLittleNpc.Collector:Active()"))
+
+    def test_load_if_enabled_warns_when_the_module_is_disabled(self):
+        # Collector.lua captured LoadAddOn when it loaded, so reload it with the stub in place
+        lua_call(self.lua, """
+            ADDON_DISABLED = "Disabled"
+            C_AddOns = { LoadAddOn = function(name) _G._loadedName = name return false, "DISABLED" end }
+        """)
+        load_file(self.lua, "src/Collector.lua")
+        lua_call(self.lua, "ChattyLittleNpc.Collector:LoadIfEnabled()")
+        self.assertEqual(self.value("_loadedName"), "ChattyLittleNpc_Collector")
+        self.assertIn("Disabled", self.value("_warnings[1]"))
+
+    def test_load_if_enabled_does_nothing_while_recording_is_off(self):
+        lua_call(self.lua, """
+            ChattyLittleNpc.db.profile.logNpcTexts = false
+            C_AddOns = { LoadAddOn = function() _G._called = true return true end }
+        """)
+        load_file(self.lua, "src/Collector.lua")
+        lua_call(self.lua, "ChattyLittleNpc.Collector:LoadIfEnabled()")
+        self.assertIsNone(self.value("_called"))
+
+
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)
     unittest.main(verbosity=2)

@@ -1,0 +1,16 @@
+## Interface: 120107, 120105, 50504, 40402, 30405, 20506, 16001, 11509
+## Title: Chatty Little NPC - Data Collector
+## Notes: Records NPC dialog, quest and book text for new voiceovers. Loaded by Chatty Little NPC when 'Track NPC Dialog Data' is on.
+## Author: Tuubby
+## Version: 3.7.0
+## Dependencies: ChattyLittleNpc
+## LoadOnDemand: 1
+## SavedVariables: ChattyLittleNpc_NpcInfoDB, ChattyLittleNpc_UnitInfoDB
+## Group: ChattyLittleNpc
+
+# Chatty Little NPC loads this module with C_AddOns.LoadAddOn() at login (and
+# when the checkbox is ticked). Players who don't record dialog never load it or
+# its saved variables. Keep ## Interface and ## Version in step with the main .toc.
+
+NpcDialogTracker.lua
+Collector.lua

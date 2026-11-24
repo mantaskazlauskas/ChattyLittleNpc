@@ -1,21 +1,25 @@
 ---@class ChattyLittleNpc
 local CLN = _G.ChattyLittleNpc
 
+-- Records what the player sees (gossip, quest, book and tooltip text) into
+-- ChattyLittleNpc_NpcInfoDB / ChattyLittleNpc_UnitInfoDB. Part of the
+-- load-on-demand ChattyLittleNpc_Collector addon: the main addon reaches it
+-- through CLN.Collector:Active(), which is nil until this module has loaded.
+
 ---@class NpcDialogTracker
 local NpcDialogTracker = {}
 CLN.NpcDialogTracker = NpcDialogTracker
 
---- This client's entry for an NPC (NpcInfoDB[locale][npcID], see
---- Core/CollectedData.lua), created with empty fields when missing.
+--- This client's entry for an NPC (ChattyLittleNpc_NpcInfoDB[locale][npcID],
+--- see Core/CollectedData.lua), created with empty fields when missing.
 ---@return table info
 function NpcDialogTracker:EnsureNpcInfoInitialized(npcID)
-    if (not NpcInfoDB) then
-    CLN.Logger:info("Initializing NpcInfoDB", false, CLN.Utils.LogCategories.misc)
-        NpcInfoDB = {}
+    if (type(ChattyLittleNpc_NpcInfoDB) ~= "table") then
+        ChattyLittleNpc_NpcInfoDB = {}
     end
 
     npcID = CLN.CollectedData.ToId(npcID) or npcID
-    local npcs = CLN.CollectedData.Bucket(NpcInfoDB, CLN.locale)
+    local npcs = CLN.CollectedData.Bucket(ChattyLittleNpc_NpcInfoDB, CLN.locale)
     if (not npcs[npcID]) then
         npcs[npcID] = {
             name = "",
@@ -155,18 +159,18 @@ function NpcDialogTracker:StoreGossipOptionsInfo(npcID, gossipText, overwrite, o
     end
 end
 
---- This client's entry for an item or game object (UnitInfoDB[locale][unitID]),
---- created with empty fields when missing. Ids are stored as numbers: a book's
---- id comes from its GUID as a string, and "123" and 123 are different keys.
+--- This client's entry for an item or game object
+--- (ChattyLittleNpc_UnitInfoDB[locale][unitID]), created with empty fields when
+--- missing. Ids are stored as numbers: a book's id comes from its GUID as a
+--- string, and "123" and 123 are different keys.
 ---@return table info
 function NpcDialogTracker:EnsureUnitInfoInitialized(unitID)
-    if (not UnitInfoDB) then
-    CLN.Logger:info("Initializing UnitInfoDB", false, CLN.Utils.LogCategories.misc)
-        UnitInfoDB = {}
+    if (type(ChattyLittleNpc_UnitInfoDB) ~= "table") then
+        ChattyLittleNpc_UnitInfoDB = {}
     end
 
     unitID = CLN.CollectedData.ToId(unitID) or unitID
-    local units = CLN.CollectedData.Bucket(UnitInfoDB, CLN.locale)
+    local units = CLN.CollectedData.Bucket(ChattyLittleNpc_UnitInfoDB, CLN.locale)
     if (not units[unitID]) then
         units[unitID] = {
             unitType = "",
@@ -304,19 +308,10 @@ function NpcDialogTracker:HandleGossipText()
 end
 
 function NpcDialogTracker:HandleNpcTooltip(npcTooltipInfo)
-    local npcInfo = CLN.CollectedData.Get(NpcInfoDB, npcTooltipInfo.Id)
+    local npcInfo = CLN.CollectedData.Get(ChattyLittleNpc_NpcInfoDB, npcTooltipInfo.Id)
     if not npcInfo then return end
     if (not npcInfo.tooltip_info) then
         npcInfo.tooltip_info = npcTooltipInfo.tooltip_info
-    end
-end
-
-function NpcDialogTracker:InitializeTables()
-    if (not NpcInfoDB) then
-        NpcInfoDB = {}
-    end
-    if (not UnitInfoDB) then
-        UnitInfoDB = {}
     end
 end
 
@@ -337,7 +332,7 @@ function NpcDialogTracker:GatherTooltipInfo()
             local unitID = select(6, strsplit("-", unitGuid))
             local unitIdAsNumber = tonumber(unitID)
             -- Early-out: skip tooltip scanning if NPC isn't tracked
-            if not CLN.CollectedData.Get(NpcInfoDB, unitIdAsNumber) then return end
+            if not CLN.CollectedData.Get(ChattyLittleNpc_NpcInfoDB, unitIdAsNumber) then return end
 
             local npcTooltipInfo = {
                 Id = unitIdAsNumber,

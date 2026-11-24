@@ -18,6 +18,10 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
         self:UnregisterEvent("PLAYER_LOGIN")
         -- Give the loading screen time to clear before the first-run welcome.
         C_Timer.After(3, function() CLN.WelcomeWindow:ShowIfFirstRun() end)
+        -- Load the dialog recorder if 'Track NPC Dialog Data' is on. Done here
+        -- rather than in our own ADDON_LOADED, so it never runs inside another
+        -- addon's load (see above).
+        CLN.Collector:LoadIfEnabled()
         return
     end
 
@@ -25,8 +29,7 @@ addonFrame:SetScript("OnEvent", function(self, event, addonName)
         -- Initialize the addon
         CLN:OnInitialize()
 
-        -- Initialize dialog tracker tables and NPC metadata cache
-        CLN.NpcDialogTracker:InitializeTables()
+        -- Initialize the NPC metadata cache
         CLN.NpcMetadataCache:Initialize()
         CLN.NpcMetadataCache:Prune(30)
 
