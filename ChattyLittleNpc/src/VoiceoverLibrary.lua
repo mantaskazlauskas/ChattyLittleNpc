@@ -151,12 +151,13 @@ end
 ---@param npcId number
 ---@return string|nil
 function Library:GetNpcName(npcId)
-    local info = type(NpcInfoDB) == "table" and NpcInfoDB[npcId]
-    if info then
-        local own = info[CLN.locale or "enUS"]
-        if own and own.name and own.name ~= "" then return own.name end
-        for _, byLocale in pairs(info) do
-            if type(byLocale) == "table" and byLocale.name and byLocale.name ~= "" then return byLocale.name end
+    local own = CLN.CollectedData.Get(NpcInfoDB, npcId, CLN.locale or "enUS")
+    if own and own.name and own.name ~= "" then return own.name end
+    -- Seen on another client language: its name beats no name at all
+    if type(NpcInfoDB) == "table" then
+        for locale, bucket in pairs(NpcInfoDB) do
+            local other = CLN.CollectedData.IsLocaleKey(locale) and type(bucket) == "table" and bucket[npcId]
+            if type(other) == "table" and other.name and other.name ~= "" then return other.name end
         end
     end
     local cached = CLN.NpcMetadataCache:Lookup(npcId)
@@ -195,19 +196,11 @@ local function idsMatchingName(self, query)
     for questId, title in pairs(self._titles) do
         if title and title:lower():find(query, 1, true) then quests[questId] = true end
     end
-    if type(NpcInfoDB) == "table" then
-        for npcId, info in pairs(NpcInfoDB) do
-            if type(info) == "table" then
-                for _, byLocale in pairs(info) do
-                    if type(byLocale) == "table" and type(byLocale.name) == "string"
-                        and byLocale.name:lower():find(query, 1, true) then
-                        npcs[npcId] = true
-                        break
-                    end
-                end
-            end
+    CLN.CollectedData.ForEach(NpcInfoDB, function(npcId, info)
+        if type(info.name) == "string" and info.name:lower():find(query, 1, true) then
+            npcs[npcId] = true
         end
-    end
+    end)
     local meta = CLN.NpcMetadataCache.db
     if type(meta) == "table" then
         for npcId, entry in pairs(meta) do

@@ -233,10 +233,7 @@ end
 ---@return string|nil bodyText  The full quest dialogue, or nil if unavailable.
 function VoiceoverPlayer:GetQuestBodyText(cp)
     if not (cp and cp.npcId and cp.questId and cp.phase) then return nil end
-    if not (_G.NpcInfoDB and CLN.locale) then return nil end
-    local npcData = _G.NpcInfoDB[cp.npcId]
-    if not npcData then return nil end
-    local localeData = npcData[CLN.locale]
+    local localeData = CLN.CollectedData.Get(_G.NpcInfoDB, cp.npcId, CLN.locale)
     if not localeData or not localeData.quests then return nil end
     local questData = localeData.quests[cp.questId]
     if not questData then return nil end

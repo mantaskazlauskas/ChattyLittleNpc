@@ -103,6 +103,8 @@ def make_lua():
         _G._loggedErrors = {}
         CLN.Logger.error = function(_, msg) table.insert(_G._loggedErrors, tostring(msg)) end
     """)
+    # Accessors for NpcInfoDB/UnitInfoDB, which several modules read
+    load_file(lua, "Core/CollectedData.lua")
     return lua
 
 
@@ -3455,7 +3457,7 @@ class TestVoiceoverLibrary(unittest.TestCase):
         lua_call(self.lua, """
             local CLN = ChattyLittleNpc
             CLN.locale = "enUS"
-            NpcInfoDB = { [68] = { enUS = { name = "Stormwind City Guard" } } }
+            NpcInfoDB = { enUS = { [68] = { name = "Stormwind City Guard" } } }
             CLN.NpcMetadataCache = { db = { [1747] = { name = "Anduin Wrynn" } }, Lookup = function(self, id) return self.db[id] end }
             C_QuestLog = { GetTitleForQuestID = function(id) return ({ [783] = "A Threat Within" })[id] end }
             CLN.VoiceoverPacks = {
@@ -4552,7 +4554,7 @@ class TestPlaybackPathDifferences(unittest.TestCase):
 
     def test_quest_without_pack_duration_estimates_from_the_body_text(self):
         record = self.record("""
-            _G.NpcInfoDB = { [9] = { enUS = { quests = { [200] = { quest_progress = "A longer body text" } } } } }
+            _G.NpcInfoDB = { enUS = { [9] = { quests = { [200] = { quest_progress = "A longer body text" } } } } }
             VP:PlayQuestSound(200, "Prog", 9)
         """)
         self.assertEqual((record["_estimatedDuration"], record["_hasPackDuration"]), ("18", "false"))
@@ -5380,6 +5382,151 @@ class TestMigrations(unittest.TestCase):
             return p.schemaVersion, p.frameAnchor
         """)
         self.assertEqual(r, (5, "objectives"))
+
+
+class TestCollectedDataMigration(unittest.TestCase):
+    """Core/CollectedData.lua: NpcInfoDB/UnitInfoDB move from [id][locale] to [locale][id]."""
+
+    def setUp(self):
+        self.lua = make_lua()
+
+    def migrate(self, setup):
+        """Run setup (which fills NpcInfoDB/UnitInfoDB), migrate as an enUS client."""
+        lua_call(self.lua, setup + """
+            ChattyLittleNpc.locale = "enUS"
+            ChattyLittleNpc.CollectedData:Migrate("enUS")
+        """)
+
+    def value(self, expr):
+        return lua_call(self.lua, "return " + expr)
+
+    def count(self, table_expr):
+        return lua_call(self.lua, f"local n = 0 for _ in pairs({table_expr}) do n = n + 1 end return n")
+
+    def test_old_layout_moves_under_each_locale(self):
+        self.migrate("""
+            NpcInfoDB = {
+                [68] = { enUS = { name = "Stormwind City Guard", quests = { [783] = { quest_detail = "Hi" } } },
+                         deDE = { name = "Wache von Sturmwind" } },
+                [0] = { enUS = { name = "Player" } },
+            }
+            UnitInfoDB = { [175726] = { enUS = { unitName = "Old Book", unitTexts = { h = "Page" } } } }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "Stormwind City Guard")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].quests[783].quest_detail"), "Hi")
+        self.assertEqual(self.value("NpcInfoDB.deDE[68].name"), "Wache von Sturmwind")
+        self.assertEqual(self.value("NpcInfoDB.enUS[0].name"), "Player")
+        self.assertEqual(self.value("UnitInfoDB.enUS[175726].unitTexts.h"), "Page")
+        # Nothing is left in the old layout
+        self.assertIsNone(self.value("NpcInfoDB[68]"))
+        self.assertIsNone(self.value("NpcInfoDB[0]"))
+        self.assertIsNone(self.value("UnitInfoDB[175726]"))
+        self.assertEqual(self.count("NpcInfoDB"), 2)
+
+    def test_new_layout_data_wins_and_only_gaps_are_filled(self):
+        self.migrate("""
+            NpcInfoDB = {
+                enUS = { [68] = { name = "New Name", race = "", hasMultipleGenders = false,
+                                  gossipOptions = { a = "Kept" } } },
+                [68] = { enUS = { name = "Old Name", race = "Human", hasMultipleGenders = true,
+                                  gossipOptions = { a = "Old text", b = "Only in old" } } },
+            }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "New Name")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].race"), "Human")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].hasMultipleGenders"), True)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].gossipOptions.a"), "Kept")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].gossipOptions.b"), "Only in old")
+        self.assertIsNone(self.value("NpcInfoDB[68]"))
+
+    def test_entry_without_locale_goes_to_the_client_locale(self):
+        self.migrate("""
+            NpcInfoDB = { [68] = { name = "Stormwind City Guard", sex = "Male" } }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].sex"), "Male")
+        self.assertIsNone(self.value("NpcInfoDB[68]"))
+
+    def test_string_ids_merge_into_numeric_ids(self):
+        self.migrate("""
+            UnitInfoDB = {
+                ["516649"] = { enUS = { unitName = "Book", unitTexts = { p1 = "One" } } },
+                [516649] = { enUS = { unitName = "Book", unitTexts = { p2 = "Two" } } },
+                enUS = { ["555786"] = { unitName = "Plaque" } },
+            }
+        """)
+        self.assertEqual(self.value("UnitInfoDB.enUS[516649].unitTexts.p1"), "One")
+        self.assertEqual(self.value("UnitInfoDB.enUS[516649].unitTexts.p2"), "Two")
+        self.assertEqual(self.value("UnitInfoDB.enUS[555786].unitName"), "Plaque")
+        self.assertIsNone(self.value('UnitInfoDB.enUS["555786"]'))
+        self.assertEqual(self.count("UnitInfoDB"), 1)
+
+    def test_numeric_id_wins_a_conflict_with_its_string_twin(self):
+        # Seen on real data: the same page saved under 123 and "123", differing only in line breaks
+        for order in ('["7"] = S, [7] = N', '[7] = N, ["7"] = S'):
+            self.setUp()
+            self.migrate(f"""
+                local S = {{ enUS = {{ unitTexts = {{ h = "from the string key" }} }} }}
+                local N = {{ enUS = {{ unitTexts = {{ h = "from the number key" }} }} }}
+                UnitInfoDB = {{ {order} }}
+            """)
+            self.assertEqual(self.value("UnitInfoDB.enUS[7].unitTexts.h"), "from the number key")
+
+    def test_new_layout_string_id_still_wins_over_old_layout(self):
+        self.migrate("""
+            NpcInfoDB = { enUS = { ["68"] = { name = "New" } }, [68] = { enUS = { name = "Old", race = "Human" } } }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "New")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].race"), "Human")
+        self.assertIsNone(self.value('NpcInfoDB.enUS["68"]'))
+
+    def test_non_table_under_a_locale_key_is_not_overwritten(self):
+        self.migrate("""
+            NpcInfoDB = { deDE = "something else", [68] = { deDE = { name = "Wache" }, enUS = { name = "Guard" } } }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.deDE"), "something else")
+        # The German entry stays where it was; the English one moves
+        self.assertEqual(self.value("NpcInfoDB[68].deDE.name"), "Wache")
+        self.assertIsNone(self.value("NpcInfoDB[68].enUS"))
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "Guard")
+
+    def test_without_a_client_locale_flat_entries_stay(self):
+        lua_call(self.lua, """
+            NpcInfoDB = { [68] = { name = "Guard" }, [69] = { enUS = { name = "Other" } } }
+            ChattyLittleNpc.CollectedData:Migrate(nil)
+        """)
+        self.assertEqual(self.value("NpcInfoDB[68].name"), "Guard")
+        self.assertEqual(self.value("NpcInfoDB.enUS[69].name"), "Other")
+
+    def test_unrecognised_keys_are_left_alone(self):
+        self.migrate("""
+            NpcInfoDB = { [68] = { enUS = { name = "Guard" }, someFlag = true }, version = 3 }
+        """)
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "Guard")
+        # The locale moved out; what wasn't recognised stays where it was
+        self.assertIsNone(self.value("NpcInfoDB[68].enUS"))
+        self.assertEqual(self.value("NpcInfoDB[68].someFlag"), True)
+        self.assertEqual(self.value("NpcInfoDB.version"), 3)
+
+    def test_running_twice_changes_nothing(self):
+        self.migrate("""
+            NpcInfoDB = { [68] = { enUS = { name = "Guard" } } }
+        """)
+        self.migrate("")
+        self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "Guard")
+        self.assertEqual(self.count("NpcInfoDB"), 1)
+
+    def test_missing_tables_are_created_empty(self):
+        self.migrate("NpcInfoDB = nil UnitInfoDB = nil")
+        self.assertEqual(self.count("NpcInfoDB"), 0)
+        self.assertEqual(self.count("UnitInfoDB"), 0)
+
+    def test_get_reads_the_new_layout(self):
+        self.migrate("""
+            NpcInfoDB = { [68] = { enUS = { name = "Guard" } } }
+        """)
+        self.assertEqual(self.value('ChattyLittleNpc.CollectedData.Get(NpcInfoDB, "68").name'), "Guard")
+        self.assertEqual(self.value('ChattyLittleNpc.CollectedData.Get(NpcInfoDB, 68, "enUS").name'), "Guard")
+        self.assertIsNone(self.value('ChattyLittleNpc.CollectedData.Get(NpcInfoDB, 68, "deDE")'))
 
 
 if __name__ == "__main__":

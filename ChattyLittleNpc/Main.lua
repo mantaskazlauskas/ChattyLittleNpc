@@ -134,6 +134,11 @@ function CLN:OnInitialize()
     end
 
     self.locale = GetLocale()
+
+    -- Collected text is stored per language first (NpcInfoDB[locale][id]); move
+    -- anything an older version saved id-first. Saved variables are loaded by now.
+    self.CollectedData:Migrate(self.locale)
+
     self.gameVersion = select(4, GetBuildInfo())
     self.useNamespaces = self.gameVersion >= 90000 -- namespaces were added in starting Shadowlands
 
