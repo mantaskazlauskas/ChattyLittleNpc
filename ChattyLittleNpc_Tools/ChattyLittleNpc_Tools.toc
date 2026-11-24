@@ -1,0 +1,28 @@
+## Interface: 120107, 120105, 50504, 40402, 30405, 20506, 16001, 11509
+## Title: Chatty Little NPC - Tools
+## Notes: Portrait camera, book & letter model, logs and model inspection windows. Loaded by Chatty Little NPC when one of them is opened.
+## Author: Tuubby
+## Version: 3.7.0
+## Dependencies: ChattyLittleNpc
+## LoadOnDemand: 1
+## Group: ChattyLittleNpc
+
+# Chatty Little NPC loads this module with C_AddOns.LoadAddOn() the first time
+# one of these windows is opened (src/Tools.lua). The settings they change are
+# saved in the main addon's profile, so playback never needs this module.
+# Keep ## Interface and ## Version in step with the main .toc.
+
+# Logs window (the log buffer itself stays in the main addon: LogsBuffer.lua)
+LogsView.lua
+LogsWindow.lua
+
+# Model inspection: /clndebug, /clnmodel
+DebugWindow.lua
+
+# Labels NPC models whose race is unknown (data saved by ChattyLittleNpc_Collector)
+RaceModelManager.lua
+
+# Display settings windows
+Db/ItemPropCandidates.lua
+ItemPropPicker.lua
+PortraitTuner.lua

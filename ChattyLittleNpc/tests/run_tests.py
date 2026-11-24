@@ -5688,6 +5688,59 @@ class TestCollectorModule(unittest.TestCase):
         self.assertIsNone(self.value("_called"))
 
 
+class TestToolsLoader(unittest.TestCase):
+    """src/Tools.lua: windows in the load-on-demand ChattyLittleNpc_Tools addon."""
+
+    def setUp(self):
+        self.lua = make_lua()
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.Utils.LogCategories = { misc = "misc" }
+            _G._warnings, _G._loads, _G._opened = {}, {}, {}
+            CLN.Logger.warn = function(_, msg) table.insert(_G._warnings, msg) end
+            ADDON_MISSING = "Missing"
+            _G._loadResult = { true }
+            C_AddOns = { LoadAddOn = function(name)
+                table.insert(_G._loads, name)
+                -- What the module's files do when the client loads them
+                CLN.PortraitTuner = { Toggle = function() table.insert(_G._opened, "portraitTuner") end }
+                return table.unpack(_G._loadResult)
+            end }
+        """)
+        load_file(self.lua, "src/Tools.lua")
+
+    def value(self, expr):
+        return lua_call(self.lua, "return " + expr)
+
+    def test_toggle_loads_the_module_once_then_opens_the_window(self):
+        lua_call(self.lua, """
+            ChattyLittleNpc.Tools:Toggle("portraitTuner")
+            ChattyLittleNpc.Tools:Toggle("portraitTuner")
+        """)
+        self.assertEqual(self.value("#_loads"), 1)
+        self.assertEqual(self.value("_loads[1]"), "ChattyLittleNpc_Tools")
+        self.assertEqual(self.value("#_opened"), 2)
+
+    def test_toggle_warns_and_opens_nothing_when_the_module_is_missing(self):
+        lua_call(self.lua, """
+            _G._loadResult = { false, "MISSING" }
+            ChattyLittleNpc.Tools:Toggle("portraitTuner")
+        """)
+        self.assertEqual(self.value("#_opened"), 0)
+        self.assertIn("Missing", self.value("_warnings[1]"))
+        self.assertFalse(self.value("ChattyLittleNpc.Tools.loaded == true"))
+
+    def test_slash_commands_go_through_the_loader(self):
+        lua_call(self.lua, """
+            ChattyLittleNpc.Tools.Toggle = function(_, window) table.insert(_G._opened, window) end
+            SlashCmdList["CLNLOGS"]()
+            SlashCmdList["CLNDEBUG"]()
+        """)
+        self.assertEqual(self.value("_opened[1]"), "logs")
+        self.assertEqual(self.value("_opened[2]"), "debug")
+        self.assertEqual(self.value("SLASH_CLNDEBUG2"), "/clnmodel")
+
+
 if __name__ == "__main__":
     os.chdir(ADDON_ROOT)
     unittest.main(verbosity=2)

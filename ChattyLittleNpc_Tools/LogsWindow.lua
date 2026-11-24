@@ -776,14 +776,5 @@ function LW:Hide()
     uninstallPrintHook()
 end
 
--- Slash commands
-SLASH_CLNLOGS1 = "/clnlogs"
-SlashCmdList["CLNLOGS"] = function()
-    if not LW._frame or not LW._frame:IsShown() then LW:Show() else LW:Hide() end
-end
-
-SLASH_CLNMARK1 = "/clnmark"
-SlashCmdList["CLNMARK"] = function(msg)
-    local label = (msg and msg ~= "") and msg or nil
-    LW:Mark(label)
-end
+-- /clnlogs is registered by the main addon (src/Tools.lua), which loads this
+-- module first; /clnmark by LogsBuffer.lua.

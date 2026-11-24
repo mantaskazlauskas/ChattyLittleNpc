@@ -1458,9 +1458,5 @@ function DW:Hide()
     if self.mirrorFrame then self.mirrorFrame:Hide() end
 end
 
--- Slash commands
-SLASH_CLNDEBUG1 = "/clndebug"
-SLASH_CLNDEBUG2 = "/clnmodel"
-SlashCmdList["CLNDEBUG"] = function()
-    if not DW.frame or not DW.frame:IsShown() then DW:Show() else DW:Hide() end
-end
+-- /clndebug and /clnmodel are registered by the main addon (src/Tools.lua),
+-- which loads this module first.

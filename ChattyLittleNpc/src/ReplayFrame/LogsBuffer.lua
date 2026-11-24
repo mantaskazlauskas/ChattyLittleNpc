@@ -213,3 +213,11 @@ LW._shared = {
     installPrintHook = installPrintHook,
     uninstallPrintHook = uninstallPrintHook,
 }
+
+-- Adds a marker line to the log. Works without the logs window (which lives
+-- in the ChattyLittleNpc_Tools module).
+SLASH_CLNMARK1 = "/clnmark"
+SlashCmdList["CLNMARK"] = function(msg)
+    local label = (msg and msg ~= "") and msg or nil
+    LW:Mark(label)
+end

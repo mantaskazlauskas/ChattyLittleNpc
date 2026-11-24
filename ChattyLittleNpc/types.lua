@@ -130,6 +130,7 @@
 ---@field VoiceoverPlayer table
 ---@field NpcDialogTracker table|nil  set once ChattyLittleNpc_Collector has loaded
 ---@field Collector Collector
+---@field Tools Tools
 ---@field PlayButton table
 ---@field ReplayFrame table
 ---@field Print fun(self: ChattyLittleNpc, ...: any)

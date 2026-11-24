@@ -37,6 +37,7 @@ Main.lua
 # Main addon modules
 src/VoiceoverPacks.lua
 src/Collector.lua
+src/Tools.lua
 src/EventHandler.lua
 src/Options.lua
 src/Options/Profiles.lua
@@ -56,10 +57,7 @@ src/MinimapButton.lua
 src/IconAtlas.lua
 src/ReplayFrame/init.lua
 src/ReplayFrame/HostCamera.lua
-src/ReplayFrame/DebugWindow.lua
 src/ReplayFrame/LogsBuffer.lua
-src/ReplayFrame/LogsView.lua
-src/ReplayFrame/LogsWindow.lua
 src/ReplayFrame/FramerScene.lua
 src/ReplayFrame/Position.lua
 src/ReplayFrame/UI.lua
@@ -121,9 +119,6 @@ src/VoiceoverPlayer/Queue.lua
 src/VoiceoverPlayer/Pause.lua
 src/API.lua
 src/VoiceoverLibrary.lua
-src/RaceModelManager.lua
-src/ItemPropPicker.lua
-src/PortraitTuner.lua
 
 # Utilities
 Utils/Logger.lua
@@ -134,7 +129,6 @@ Utils/SimHash.lua
 
 # Database
 Db/KnownVoicedNpcs.lua
-Db/ItemPropCandidates.lua
 
 # Initialization - MUST load last
 Init.lua

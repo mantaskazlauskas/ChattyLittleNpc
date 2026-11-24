@@ -162,18 +162,14 @@ sections.FrameLayout = {
             type = 'execute',
             name = 'Customize Portrait Camera',
             desc = 'Adjust how the NPC portrait is framed for each frame style (height, zoom, camera angle, facing), preview emotes, and save. Each shot can be reset to its default.',
-            func = function()
-                if CLN.PortraitTuner then CLN.PortraitTuner:Toggle() end
-            end,
+            func = function() CLN.Tools:Toggle("portraitTuner") end,
         },
         openItemPropPicker = {
             order = 6.3,
             type = 'execute',
             name = 'Customize Book & Letter Models',
             desc = 'Choose the book, letter and plaque models shown as the portrait for readable items and objects. Each one can be reset to its default.',
-            func = function()
-                if CLN.ItemPropPicker then CLN.ItemPropPicker:Toggle() end
-            end,
+            func = function() CLN.Tools:Toggle("itemProps") end,
         },
         playButtonSpacer = {
             order = 6.5,

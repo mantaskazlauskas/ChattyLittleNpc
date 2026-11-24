@@ -69,24 +69,14 @@ sections.DeveloperDebug = {
             type = 'execute',
             name = 'Open Logs Window',
             desc = 'Open the debug logs viewer. Also accessible via /clnlogs.',
-            func = function()
-                local LW = CLN.ReplayFrame.LogsWindow
-                if LW then
-                    if not LW._frame or not LW._frame:IsShown() then LW:Show() else LW:Hide() end
-                end
-            end,
+            func = function() CLN.Tools:Toggle("logs") end,
         },
         openDebugWindow = {
             order = 0.5,
             type = 'execute',
             name = 'Open Debug Window',
             desc = 'Open the model debug/inspection window. Also accessible via /clndebug.',
-            func = function()
-                local DW = CLN.ReplayFrame.DebugWindow
-                if DW then
-                    if not DW.frame or not DW.frame:IsShown() then DW:Show() else DW:Hide() end
-                end
-            end,
+            func = function() CLN.Tools:Toggle("debug") end,
         },
         debugMode = {
             order = 1,
@@ -205,12 +195,7 @@ sections.DeveloperDebug = {
             type = 'execute',
             name = 'Manage Unknown Race Models',
             desc = 'Label NPC models whose race could not be identified. Unknown models are collected while NPC text logging is enabled.',
-            func = function()
-                -- The labels are saved by the collector; load it so they show
-                -- even while recording is off (it only records when ticked)
-                CLN.Collector:Load()
-                if CLN.RaceModelManager then CLN.RaceModelManager:Toggle() end
-            end,
+            func = function() CLN.Tools:Toggle("raceModels") end,
         },
     },
 }

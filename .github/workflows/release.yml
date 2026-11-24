@@ -26,7 +26,7 @@ jobs:
 
       - name: Create Addon ZIP
         run: |
-          zip -r "ChattyLittleNpc-${{ github.ref_name }}.zip" ChattyLittleNpc ChattyLittleNpc_Collector \
+          zip -r "ChattyLittleNpc-${{ github.ref_name }}.zip" ChattyLittleNpc ChattyLittleNpc_Collector ChattyLittleNpc_Tools \
             -x "ChattyLittleNpc/tests/*" "ChattyLittleNpc/docs/*" "ChattyLittleNpc/types.lua"
 
       - name: Upload ZIP to GitHub Release

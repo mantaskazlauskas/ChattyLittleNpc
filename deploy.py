@@ -27,7 +27,7 @@ VERSION_LABELS = {
 ADDONS_RELATIVE = os.path.join("Interface", "AddOns")
 
 # Extra addon folders deployed alongside ChattyLittleNpc/
-ADDON_MODULES = ["ChattyLittleNpc_Collector"]
+ADDON_MODULES = ["ChattyLittleNpc_Collector", "ChattyLittleNpc_Tools"]
 
 
 def find_addon_source():
