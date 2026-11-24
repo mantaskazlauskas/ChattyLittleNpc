@@ -26,6 +26,9 @@ VERSION_LABELS = {
 
 ADDONS_RELATIVE = os.path.join("Interface", "AddOns")
 
+# Extra addon folders deployed alongside ChattyLittleNpc/
+ADDON_MODULES = ["ChattyLittleNpc_Collector"]
+
 
 def find_addon_source():
     """Return the absolute path to the ChattyLittleNpc addon folder."""
@@ -115,6 +118,14 @@ def main():
         sys.exit(0)
 
     deploy(source_dir, addons_dir, addon_name)
+
+    # Load-on-demand modules shipped in the same zip, next to the main folder
+    for module in ADDON_MODULES:
+        module_dir = os.path.join(os.path.dirname(source_dir), module)
+        if os.path.isdir(module_dir):
+            deploy(module_dir, addons_dir, module)
+        else:
+            print(f"WARNING: {module}/ not found next to {addon_name}/, skipped.")
 
 
 if __name__ == "__main__":
