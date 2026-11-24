@@ -3,153 +3,86 @@ local CLN = _G.ChattyLittleNpc
 
 -- ============================================================================
 -- Minimap Button
--- A circular icon button docked to the minimap edge, matching the style used
--- by addons like DBM, WeakAuras, etc.
+-- A LibDataBroker launcher shown on the minimap through LibDBIcon-1.0, the
+-- library most addons use for their minimap button. Button collectors
+-- (EllesmereUI's minimap flyout, OneForAll's button bar, Leatrix Plus, ...)
+-- look for LibDBIcon buttons first, and LibDBIcon follows square minimaps and
+-- remembers the position for us. LDB displays (Titan Panel, ChocolateBar)
+-- pick up the same launcher.
 --
 -- Left-click  → toggle Settings window
 -- Right-click → toggle the Voiceover replay frame
--- Drag        → reposition around the minimap edge (angle saved to profile)
+-- Drag        → reposition around the minimap edge (saved to the profile)
 -- ============================================================================
 
-local ICON_SIZE     = 31          -- diameter of the button (px) — standard minimap addon size
-local RING_SIZE     = 56          -- border ring rendered larger than button (standard addon style)
-local ICON_RADIUS_PAD = 5         -- extra gap between minimap edge and button centre
-local DEFAULT_ANGLE = math.pi     -- 180° = left side of minimap
-
--- ─────────────────────────────────────────────────────────────────────────────
--- Angle → screen position helpers
--- ─────────────────────────────────────────────────────────────────────────────
-
---- Return the radius used for positioning (minimap half-width + padding + icon half).
-local function getRadius()
-    local mm = Minimap
-    if mm then
-        return (mm:GetWidth() / 2) + ICON_RADIUS_PAD + (ICON_SIZE / 2)
-    end
-    return 85  -- sensible fallback if Minimap not yet available
-end
-
---- Apply an angle (radians) to the button's position around the minimap.
-local function applyAngle(btn, angle)
-    local r = getRadius()
-    btn:ClearAllPoints()
-    btn:SetPoint("CENTER", Minimap, "CENTER", math.cos(angle) * r, math.sin(angle) * r)
-end
-
---- Compute angle from cursor position relative to the minimap centre.
-local function angleFromCursor()
-    local mx, my = Minimap:GetCenter()
-    -- GetCursorPosition returns scaled UI coords on Retail; divide by UIParent scale.
-    local scale  = UIParent:GetScale()
-    local cx, cy = GetCursorPosition()
-    cx = cx / scale
-    cy = cy / scale
-    return math.atan2(cy - my, cx - mx)
-end
-
--- ─────────────────────────────────────────────────────────────────────────────
--- Module
--- ─────────────────────────────────────────────────────────────────────────────
+local NAME = "ChattyLittleNpc"   -- the LDB object name; the frame is LibDBIcon10_ChattyLittleNpc
+local ICON = "Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc.png"
 
 ---@class MinimapButton
 local MinimapButton = {}
 CLN.MinimapButton = MinimapButton
 
-local _btn = nil  ---@type Button|nil
+local LDB = LibStub and LibStub("LibDataBroker-1.1", true)
+local LDBIcon = LibStub and LibStub("LibDBIcon-1.0", true)
 
---- Build and show the minimap button.  Idempotent.
-function MinimapButton:Create()
-    if _btn then return end
+--- The profile table LibDBIcon keeps its state in ({ minimapPos, hide }).
+--- Before LibDBIcon the button saved its angle in radians as
+--- `minimapButtonAngle`; LibDBIcon uses degrees with the same zero and
+--- direction, so the old position carries over.
+local function iconDb()
+    local profile = CLN.db.profile
+    local db = profile.minimapIcon
+    if type(db) ~= "table" then
+        db = {}
+        profile.minimapIcon = db
+    end
+    if db.minimapPos == nil and type(profile.minimapButtonAngle) == "number" then
+        db.minimapPos = math.deg(profile.minimapButtonAngle) % 360
+    end
+    return db
+end
 
-    local btn = CreateFrame("Button", "CLN_MinimapButton", Minimap)
-    btn:SetSize(ICON_SIZE, ICON_SIZE)
-    btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(8)
-    btn:SetClampedToScreen(true)
-
-    -- ── Icon texture ──────────────────────────────────────────────────────────
-    local tex = btn:CreateTexture(nil, "ARTWORK")
-    tex:SetSize(ICON_SIZE - 8, ICON_SIZE - 8)
-    tex:SetPoint("CENTER", btn, "CENTER", 0, 0)
-    tex:SetTexture("Interface\\AddOns\\ChattyLittleNpc\\Icons\\ChattyLittleNpc.png")
-    btn.tex = tex
-
-    -- Circular mask so the square icon is clipped into a circle.
-    local mask = btn:CreateMaskTexture(nil, "ARTWORK")
-    mask:SetTexture("Interface/CHARACTERFRAME/TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-    mask:SetAllPoints(tex)
-    tex:AddMaskTexture(mask)
-
-    -- ── Border ring — TOPLEFT-anchored to compensate for texture's internal offset ──
-    local ring = btn:CreateTexture(nil, "OVERLAY")
-    ring:SetSize(RING_SIZE, RING_SIZE)
-    ring:SetPoint("TOPLEFT", btn, "TOPLEFT", -2, 2)
-    ring:SetTexture("Interface/Minimap/MiniMap-TrackingBorder")
-    btn.ring = ring
-
-    -- ── Highlight overlay ─────────────────────────────────────────────────────
-    local hi = btn:CreateTexture(nil, "HIGHLIGHT")
-    hi:SetAllPoints()
-    hi:SetTexture("Interface/Minimap/UI-Minimap-ZoomButton-Highlight")
-    hi:SetBlendMode("ADD")
-
-    -- ── Tooltip ───────────────────────────────────────────────────────────────
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Chatty Little NPC", 1, 0.82, 0)
-        GameTooltip:AddLine("Left-click: Open Settings", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Right-click: Toggle Voiceover Frame", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Drag: Reposition", 0.6, 0.6, 0.6)
-        GameTooltip:Show()
-    end)
-    btn:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    -- ── Click handling ────────────────────────────────────────────────────────
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    btn:SetScript("OnClick", function(self, button)
-        if button == "LeftButton" then
-            CLN.SettingsWindow:Toggle()
-        elseif button == "RightButton" then
+local launcher = LDB and LDB:NewDataObject(NAME, {
+    type = "launcher",
+    label = "Chatty Little NPC",
+    icon = ICON,
+    OnClick = function(_, button)
+        if button == "RightButton" then
             CLN.ReplayFrame:ToggleUserHidden()
+        else
+            CLN.SettingsWindow:Toggle()
         end
-    end)
+    end,
+    OnTooltipShow = function(tooltip)
+        tooltip:AddLine("Chatty Little NPC", 1, 0.82, 0)
+        tooltip:AddLine("Left-click: Open Settings", 0.8, 0.8, 0.8)
+        tooltip:AddLine("Right-click: Toggle Voiceover Frame", 0.8, 0.8, 0.8)
+        tooltip:AddLine("Drag: Reposition", 0.6, 0.6, 0.6)
+    end,
+})
 
-    -- ── Dragging around the minimap edge ─────────────────────────────────────
-    btn:RegisterForDrag("LeftButton")
-    btn:SetScript("OnDragStart", function(self)
-        self._dragging = true
-        self:SetScript("OnUpdate", function(b)
-            if not b._dragging then return end
-            local angle = angleFromCursor()
-            applyAngle(b, angle)
-            b._angle = angle
-        end)
-    end)
-    btn:SetScript("OnDragStop", function(self)
-        self._dragging = false
-        self:SetScript("OnUpdate", nil)
-        -- Persist the new angle.
-        CLN.db.profile.minimapButtonAngle = self._angle or DEFAULT_ANGLE
-    end)
-
-    -- ── Initial position ──────────────────────────────────────────────────────
-    local angle = CLN.db.profile.minimapButtonAngle or DEFAULT_ANGLE
-    btn._angle = angle
-    applyAngle(btn, angle)
-
-    btn:Show()
-    _btn = btn
+--- Register the button with LibDBIcon.  Idempotent.
+function MinimapButton:Create()
+    if not (launcher and LDBIcon) or LDBIcon:IsRegistered(NAME) then return end
+    LDBIcon:Register(NAME, launcher, iconDb())
+    -- Each profile keeps its own position and visibility.
+    local function refresh() LDBIcon:Refresh(NAME, iconDb()) end
+    CLN.db:RegisterCallback("OnProfileChanged", refresh)
+    CLN.db:RegisterCallback("OnProfileCopied", refresh)
+    CLN.db:RegisterCallback("OnProfileReset", refresh)
 end
 
 --- Show the button (create if needed).
 function MinimapButton:Show()
-    if not _btn then self:Create() end
-    _btn:Show()
+    self:Create()
+    if not LDBIcon then return end
+    iconDb().hide = false
+    LDBIcon:Show(NAME)
 end
 
 --- Hide the button.
 function MinimapButton:Hide()
-    if _btn then _btn:Hide() end
+    if not (LDBIcon and LDBIcon:IsRegistered(NAME)) then return end
+    iconDb().hide = true
+    LDBIcon:Hide(NAME)
 end

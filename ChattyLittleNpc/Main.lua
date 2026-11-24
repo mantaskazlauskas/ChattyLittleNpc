@@ -110,7 +110,9 @@ local defaults = {
         textContinuationThreshold = 0.75,
         -- Reading pace coefficient: adjusted by adaptive-pace learning (1.0 = default ~200 WPM)
         readingPaceCoefficient = 1.0,
-        -- Minimap button: angle in radians around the minimap edge (math.pi = left side)
+        -- Minimap button: angle in radians around the minimap edge (math.pi = left side).
+        -- Superseded by `minimapIcon` (LibDBIcon's { minimapPos, hide }), which takes
+        -- its starting position from this; kept so older profiles still migrate.
         minimapButtonAngle = math.pi,
     }
 }
@@ -164,9 +166,9 @@ function CLN:OnEnable()
         self.ReplayFrame:LoadFramePosition()
     end
 
-    -- Minimap button
+    -- Minimap button (LibDBIcon shows it unless the profile has it hidden)
     if self.MinimapButton then
-        self.MinimapButton:Show()
+        self.MinimapButton:Create()
     end
 
     -- Quest Log play button: QuestMapFrame is a load-on-demand Blizzard addon

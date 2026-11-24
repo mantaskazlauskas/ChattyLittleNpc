@@ -86,7 +86,8 @@
         "FauxScrollFrame_OnVerticalScroll",
         "SOUNDKIT",
         "YES",
-        "NO"
+        "NO",
+        "AddonCompartmentFrame"
     ],
     "Lua.diagnostics.disable": [
         "assign-type-mismatch"

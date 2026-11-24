@@ -16,6 +16,7 @@ unused_args = false   -- event/script callbacks have fixed signatures
 exclude_files = {
     "ChattyLittleNpc/types.lua",   -- LuaLS type annotations only
     "ChattyLittleNpc/tests/**",
+    "ChattyLittleNpc/Libs/**",     -- vendored third-party libraries
 }
 
 ignore = {

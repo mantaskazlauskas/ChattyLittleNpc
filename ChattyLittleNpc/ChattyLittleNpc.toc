@@ -6,6 +6,14 @@
 ## SavedVariables: ChattyLittleNpcDB, NpcInfoDB, UnitInfoDB, VoicedNpcContributions, NpcMetadataCache, UnknownRaceModelsDB
 ## SavedVariablesPerCharacter: ChattyLittleNpcCharDB
 ## OptionalDeps: EditModeExpanded, DialogueUI, ElvUI
+## Group: ChattyLittleNpc
+
+# Vendored libraries: the standard minimap button stack, so button collectors
+# (EllesmereUI, OneForAll, Leatrix Plus, ...) recognise our button.
+Libs/LibStub/LibStub.lua
+Libs/CallbackHandler-1.0/CallbackHandler-1.0.lua
+Libs/LibDataBroker-1.1/LibDataBroker-1.1.lua
+Libs/LibDBIcon-1.0/LibDBIcon-1.0.lua
 
 Core/Print.lua
 Core/Events.lua
