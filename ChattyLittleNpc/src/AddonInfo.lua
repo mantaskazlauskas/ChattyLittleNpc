@@ -22,7 +22,9 @@ AddonInfo.SAVED_VARIABLES_PATH = "WTF\\Account\\<ACCOUNT>\\SavedVariables\\Chatt
 -- English voiceover packs on CurseForge, in release order. expansion matches
 -- the pack folder name (ChattyLittleNpc_<expansion>_voiceovers).
 AddonInfo.VoiceoverPackLinks = {
-    { expansion = "Vanilla",                label = "Vanilla (Classic / Classic Era)", url = "https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla" },
+    { expansion = "Vanilla",                label = "Vanilla quests (Classic / Era)",  url = "https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla" },
+    -- Vanilla is split in two to stay under CurseForge's size limit; this half has gossip, books and objects.
+    { expansion = "Vanilla_Gossip",         label = "Vanilla books & gossip",          url = "https://www.curseforge.com/wow/addons/chatty-little-npc-classic-forever-books-and-gossip" },
     { expansion = "The_Burning_Crusade",    label = "The Burning Crusade",             url = "https://www.curseforge.com/wow/addons/chatty-little-npc-the-burning-crusade" },
     { expansion = "Wrath_of_the_Lich_King", label = "Wrath of the Lich King",          url = "https://www.curseforge.com/wow/addons/chatty-little-npc-wrath-of-the-lich-king" },
     { expansion = "Cataclysm",              label = "Cataclysm",                       url = "https://www.curseforge.com/wow/addons/chatty-little-npc-cataclysm" },

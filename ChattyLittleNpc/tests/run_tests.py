@@ -3248,6 +3248,11 @@ class TestVoiceoverPackLanguages(unittest.TestCase):
         self.assertEqual(self._parse("ChattyLittleNpc_The_War_Within_deDE_voiceovers"), ("The_War_Within", "deDE"))
         self.assertEqual(self._parse("ChattyLittleNpc_Vanilla_enUS_voiceovers"), ("Vanilla", "enUS"))
 
+    def test_parse_split_pack_part_stays_in_expansion(self):
+        # Vanilla's books & gossip half: the part before the locale is kept, so it is
+        # its own pack in the same language.
+        self.assertEqual(self._parse("ChattyLittleNpc_Vanilla_Gossip_enUS_voiceovers"), ("Vanilla_Gossip", "enUS"))
+
     def test_parse_unknown_suffix_stays_in_expansion(self):
         # "Within" is not a locale code, so it must not be split off.
         self.assertEqual(self._parse("ChattyLittleNpc_The_War_Within_voiceovers"), ("The_War_Within", "enUS"))

@@ -31,8 +31,10 @@ CLN.VoiceoverLocales = {
 }
 
 -- Release order, so the pack list reads chronologically. Unknown expansions sort last.
+-- Vanilla_Gossip is Vanilla's books & gossip pack (Vanilla is split in two for size);
+-- it shares Vanilla's slot and sorts right after it by name.
 local EXPANSION_ORDER = {
-    Vanilla = 1, The_Burning_Crusade = 2, Wrath_of_the_Lich_King = 3, Cataclysm = 4,
+    Vanilla = 1, Vanilla_Gossip = 1, The_Burning_Crusade = 2, Wrath_of_the_Lich_King = 3, Cataclysm = 4,
     Mists_of_Pandaria = 5, Warlords_of_Draenor = 6, Legion = 7, Battle_for_Azeroth = 8,
     Shadowlands = 9, Dragonflight = 10, The_War_Within = 11, Midnight = 12,
 }

@@ -28,7 +28,8 @@ The addon itself contains no audio. The voices come in separate voiceover packs,
 
 | Expansion | Pack |
 | --- | --- |
-| Vanilla (Classic / Classic Era) | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla) |
+| Vanilla quests (Classic / Classic Era) | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla) |
+| Vanilla books & gossip (install with the quests pack) | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-classic-forever-books-and-gossip) |
 | The Burning Crusade | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-the-burning-crusade) |
 | Wrath of the Lich King | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-wrath-of-the-lich-king) |
 | Cataclysm | [CurseForge](https://www.curseforge.com/wow/addons/chatty-little-npc-cataclysm) |

@@ -22,7 +22,7 @@ One addon covers every client. Install it, add the voiceover packs for the conte
 *   **The Burning Crusade Anniversary**
 *   **Classic Era**
 
-Playing on WoW Forever or Classic Era? Install the **Vanilla** pack. Anniversary needs **Vanilla** and **The Burning Crusade**.
+Playing on WoW Forever or Classic Era? Install both **Vanilla** packs: quests, and books & gossip. Anniversary needs both **Vanilla** packs and **The Burning Crusade**.
 
 ## Getting Started
 
@@ -52,7 +52,8 @@ The base addon contains no audio. The voices come in separate packs, one for eac
 
 ## Voiceover Packs
 
-*   [Vanilla](https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla)
+*   [Vanilla quests](https://www.curseforge.com/wow/addons/chatty-little-npc-vanilla)
+*   [Vanilla books & gossip](https://www.curseforge.com/wow/addons/chatty-little-npc-classic-forever-books-and-gossip)
 *   [The Burning Crusade](https://www.curseforge.com/wow/addons/chatty-little-npc-the-burning-crusade)
 *   [Wrath of the Lich King](https://www.curseforge.com/wow/addons/chatty-little-npc-wrath-of-the-lich-king)
 *   [Cataclysm](https://www.curseforge.com/wow/addons/chatty-little-npc-cataclysm)
