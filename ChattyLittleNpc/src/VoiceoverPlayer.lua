@@ -226,14 +226,14 @@ function VoiceoverPlayer:GetBestDuration(fileName, fallbackText)
     return nil, false
 end
 
---- Look up the quest body text from NpcInfoDB for a playing/queued entry.
+--- Look up the quest body text from the collected NPC data for a playing/queued entry.
 --- Returns the full dialogue text that the voiceover audio is based on,
 --- which is far more accurate for duration estimation than the quest title.
 ---@param cp table  A currentlyPlaying or queue entry with npcId, questId, phase.
 ---@return string|nil bodyText  The full quest dialogue, or nil if unavailable.
 function VoiceoverPlayer:GetQuestBodyText(cp)
     if not (cp and cp.npcId and cp.questId and cp.phase) then return nil end
-    local localeData = CLN.CollectedData.Get(_G.NpcInfoDB, cp.npcId, CLN.locale)
+    local localeData = CLN.CollectedData.Get(CLN.CollectedData.Npcs(), cp.npcId, CLN.locale)
     if not localeData or not localeData.quests then return nil end
     local questData = localeData.quests[cp.questId]
     if not questData then return nil end

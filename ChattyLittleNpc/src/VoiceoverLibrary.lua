@@ -151,11 +151,12 @@ end
 ---@param npcId number
 ---@return string|nil
 function Library:GetNpcName(npcId)
-    local own = CLN.CollectedData.Get(NpcInfoDB, npcId, CLN.locale or "enUS")
+    local npcs = CLN.CollectedData.Npcs()
+    local own = CLN.CollectedData.Get(npcs, npcId, CLN.locale or "enUS")
     if own and own.name and own.name ~= "" then return own.name end
     -- Seen on another client language: its name beats no name at all
-    if type(NpcInfoDB) == "table" then
-        for locale, bucket in pairs(NpcInfoDB) do
+    if npcs then
+        for locale, bucket in pairs(npcs) do
             local other = CLN.CollectedData.IsLocaleKey(locale) and type(bucket) == "table" and bucket[npcId]
             if type(other) == "table" and other.name and other.name ~= "" then return other.name end
         end
@@ -196,7 +197,7 @@ local function idsMatchingName(self, query)
     for questId, title in pairs(self._titles) do
         if title and title:lower():find(query, 1, true) then quests[questId] = true end
     end
-    CLN.CollectedData.ForEach(NpcInfoDB, function(npcId, info)
+    CLN.CollectedData.ForEach(CLN.CollectedData.Npcs(), function(npcId, info)
         if type(info.name) == "string" and info.name:lower():find(query, 1, true) then
             npcs[npcId] = true
         end

@@ -417,7 +417,7 @@ function ReplayFrame:GetNpcNameById(npcId)
     local loc = CLN.locale or "enUS"
     local byLoc = self._npcNameCache[loc]
     if byLoc and byLoc[npcId] ~= nil then return byLoc[npcId] end
-    local info = CLN.CollectedData.Get(NpcInfoDB, npcId, loc)
+    local info = CLN.CollectedData.Get(CLN.CollectedData.Npcs(), npcId, loc)
     local name = info and info.name or nil
     if not self._npcNameCache[loc] then self._npcNameCache[loc] = {} end
     self._npcNameCache[loc][npcId] = name -- cache misses as nil to avoid re-lookup churn

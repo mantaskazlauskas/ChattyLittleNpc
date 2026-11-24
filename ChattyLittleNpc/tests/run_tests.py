@@ -5520,10 +5520,12 @@ class TestCollectedDataMigration(unittest.TestCase):
         self.assertEqual(self.value("NpcInfoDB.enUS[68].name"), "Guard")
         self.assertEqual(self.count("NpcInfoDB"), 1)
 
-    def test_missing_tables_are_created_empty(self):
+    def test_missing_tables_are_left_missing(self):
+        # Once the collector has moved the data out, the main addon must not
+        # create (and keep saving) empty NpcInfoDB / UnitInfoDB again.
         self.migrate("NpcInfoDB = nil UnitInfoDB = nil")
-        self.assertEqual(self.count("NpcInfoDB"), 0)
-        self.assertEqual(self.count("UnitInfoDB"), 0)
+        self.assertIsNone(self.value("NpcInfoDB"))
+        self.assertIsNone(self.value("UnitInfoDB"))
 
     def test_get_reads_the_new_layout(self):
         self.migrate("""

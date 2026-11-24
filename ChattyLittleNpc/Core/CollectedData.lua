@@ -1,10 +1,16 @@
 -- CollectedData.lua - Layout of the collected-text saved variables.
 --
--- NpcInfoDB and UnitInfoDB hold what the player has seen in game, grouped by
+-- The NPC and unit tables hold what the player has seen in game, grouped by
 -- game language first:
 --
---   NpcInfoDB[locale][npcId]   = { name, sex, race, zone, quests, gossipOptions, ... }
---   UnitInfoDB[locale][unitId] = { unitName, unitType, unitTexts, quests }
+--   npcs[locale][npcId]   = { name, sex, race, zone, quests, gossipOptions, ... }
+--   units[locale][unitId] = { unitName, unitType, unitTexts, quests }
+--
+-- The load-on-demand ChattyLittleNpc_Collector addon saves them as
+-- ChattyLittleNpc_NpcInfoDB and ChattyLittleNpc_UnitInfoDB. Up to 3.7 the main
+-- addon saved them as NpcInfoDB and UnitInfoDB; that data stays there until the
+-- collector first loads and moves it. Read them through Npcs() and Units(),
+-- which return whichever is present, or nil when neither is.
 --
 -- Older versions stored the id first (NpcInfoDB[npcId][locale]). Migrate()
 -- moves that data into the layout above once, without losing anything:
@@ -43,6 +49,25 @@ CollectedData.ToId = toId
 -- ============================================================================
 -- Accessors
 -- ============================================================================
+
+--- The collected NPC table: the collector's when it has loaded, else the one
+--- older versions saved in the main addon, else nil.
+---@return table|nil
+function CollectedData.Npcs()
+    local db = _G.ChattyLittleNpc_NpcInfoDB
+    if type(db) == "table" then return db end
+    db = _G.NpcInfoDB
+    return type(db) == "table" and db or nil
+end
+
+--- The collected item/game-object table; see Npcs().
+---@return table|nil
+function CollectedData.Units()
+    local db = _G.ChattyLittleNpc_UnitInfoDB
+    if type(db) == "table" then return db end
+    db = _G.UnitInfoDB
+    return type(db) == "table" and db or nil
+end
 
 --- The entry for one id in one locale, or nil.
 ---@param db table|nil NpcInfoDB or UnitInfoDB
@@ -217,13 +242,37 @@ function CollectedData.MigrateTable(db, clientLocale)
     return moved, kept
 end
 
---- Brings NpcInfoDB and UnitInfoDB into the locale-first layout. Call once the
---- saved variables are loaded (OnInitialize) and before anything reads them.
+--- Moves everything in src into dst (both locale-first collected tables) and
+--- leaves src empty. src is brought into the locale-first layout first. Where
+--- both have a value, dst keeps its own (see FillMissing).
+---@param dst table
+---@param src table
+---@param clientLocale string locale for old entries that have none
+---@return integer moved  how many of src's top-level keys were copied
+function CollectedData.MoveInto(dst, src, clientLocale)
+    CollectedData.MigrateTable(src, clientLocale)
+    local moved = 0
+    for key, value in pairs(src) do
+        local current = dst[key]
+        if current == nil then
+            dst[key] = value
+        elseif type(current) == "table" and type(value) == "table" then
+            fillMissing(current, value)
+        end
+        moved = moved + 1
+    end
+    -- Clearing fields during pairs() is allowed; adding them is not.
+    for key in pairs(src) do src[key] = nil end
+    return moved
+end
+
+--- Brings the NpcInfoDB and UnitInfoDB the main addon still saves (versions up
+--- to 3.7) into the locale-first layout. Call once the saved variables are
+--- loaded (OnInitialize) and before anything reads them. Tables that are not
+--- there are left alone, so the main addon stops saving empty ones once the
+--- collector has moved the data out.
 ---@param clientLocale string GetLocale()
 function CollectedData:Migrate(clientLocale)
-    if type(NpcInfoDB) ~= "table" then NpcInfoDB = {} end
-    if type(UnitInfoDB) ~= "table" then UnitInfoDB = {} end
-
     local npcMoved, npcKept = self.MigrateTable(NpcInfoDB, clientLocale)
     local unitMoved, unitKept = self.MigrateTable(UnitInfoDB, clientLocale)
 
