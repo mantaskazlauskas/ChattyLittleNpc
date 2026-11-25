@@ -53,6 +53,13 @@ function Options:SetupOptions()
         if CLN.SettingsWindow then
             CLN.SettingsWindow:Refresh()
         end
+        -- The new profile may have 'Track NPC Dialog Data' on: load the
+        -- recorder now, not at the next login. Before login, Init.lua's
+        -- PLAYER_LOGIN handler does it (and loading addons during startup is
+        -- avoided there on purpose).
+        if IsLoggedIn() then
+            CLN.Collector:LoadIfEnabled()
+        end
     end
     CLN.db:RegisterCallback("OnProfileChanged", onProfileChange)
     CLN.db:RegisterCallback("OnProfileCopied",  onProfileChange)

@@ -5688,6 +5688,56 @@ class TestCollectorModule(unittest.TestCase):
         self.assertIsNone(self.value("_called"))
 
 
+class TestCollectorOnProfileChange(unittest.TestCase):
+    """src/Options.lua: switching to a profile that records loads the collector."""
+
+    def setUp(self):
+        self.lua = make_lua()
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            CLN.Utils.LogCategories = { misc = "misc" }
+            -- Frames and the Blizzard options panel: accept any call
+            local any = setmetatable({}, { __index = function() return function() end end })
+            function CreateFrame() return setmetatable({}, { __index = any }) end
+            Settings = nil
+            InterfaceOptions_AddCategory = function() end
+            CLN.ConfigSystem = { New = function() return {} end }
+            CLN.ReplayFrame.ApplyProfileSettings = function() end
+            _G._loggedIn = true
+            function IsLoggedIn() return _G._loggedIn end
+            _G._loads = {}
+            C_AddOns = { LoadAddOn = function(name) table.insert(_G._loads, name) return true end }
+        """)
+        load_file(self.lua, "Core/Database.lua")
+        load_file(self.lua, "src/Collector.lua")
+        load_file(self.lua, "src/Options.lua")
+        lua_call(self.lua, """
+            local CLN = ChattyLittleNpc
+            ChattyLittleNpcDB = {
+                profileKeys = {},
+                profiles = { Quiet = { logNpcTexts = false }, Recording = { logNpcTexts = true } },
+            }
+            CLN.db = CLN.Database:New("ChattyLittleNpcDB", { profile = { logNpcTexts = false } }, true, "ChattyLittleNpcCharDB")
+            CLN.db:SetProfile("Quiet")
+            CLN.Options:SetupOptions()
+        """)
+
+    def value(self, expr):
+        return lua_call(self.lua, "return " + expr)
+
+    def test_switching_to_a_recording_profile_loads_the_collector(self):
+        lua_call(self.lua, 'ChattyLittleNpc.db:SetProfile("Recording")')
+        self.assertEqual(self.value("_loads[1]"), "ChattyLittleNpc_Collector")
+
+    def test_switching_to_a_profile_that_does_not_record_loads_nothing(self):
+        lua_call(self.lua, 'ChattyLittleNpc.db:SetProfile("Recording") _G._loads = {} ChattyLittleNpc.db:SetProfile("Quiet")')
+        self.assertEqual(self.value("#_loads"), 0)
+
+    def test_nothing_is_loaded_before_login(self):
+        lua_call(self.lua, '_G._loggedIn = false ChattyLittleNpc.db:SetProfile("Recording")')
+        self.assertEqual(self.value("#_loads"), 0)
+
+
 class TestToolsLoader(unittest.TestCase):
     """src/Tools.lua: windows in the load-on-demand ChattyLittleNpc_Tools addon."""
 
