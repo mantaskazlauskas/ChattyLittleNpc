@@ -1,4 +1,11 @@
 package-as: ChattyLittleNpc
+
+# The repo holds three addon folders side by side. The packager copies the
+# repo into ChattyLittleNpc/, so move each one up to the top of the zip.
+move-folders:
+  ChattyLittleNpc/ChattyLittleNpc: ChattyLittleNpc
+  ChattyLittleNpc/ChattyLittleNpc_Collector: ChattyLittleNpc_Collector
+  ChattyLittleNpc/ChattyLittleNpc_Tools: ChattyLittleNpc_Tools
 ignore:
   - deploy.py
   - release.py

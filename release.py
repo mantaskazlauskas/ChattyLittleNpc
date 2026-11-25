@@ -17,21 +17,18 @@ import sys
 import argparse
 
 
+# The main addon's .toc, and the load-on-demand modules shipped beside it.
+# All of them must carry the same ## Version.
+MAIN_TOC = os.path.join('ChattyLittleNpc', 'ChattyLittleNpc.toc')
+MODULE_TOCS = [
+    os.path.join('ChattyLittleNpc_Collector', 'ChattyLittleNpc_Collector.toc'),
+    os.path.join('ChattyLittleNpc_Tools', 'ChattyLittleNpc_Tools.toc'),
+]
+
+
 def find_toc_file():
-    """Find the .toc file in the current directory or subdirectories."""
-    # First check current directory
-    for file in os.listdir('.'):
-        if file.endswith('.toc'):
-            return file
-    
-    # Check immediate subdirectories (for repo root)
-    for item in os.listdir('.'):
-        if os.path.isdir(item):
-            for file in os.listdir(item):
-                if file.endswith('.toc'):
-                    return os.path.join(item, file)
-    
-    return None
+    """Return the main addon's .toc path, or None if it is missing."""
+    return MAIN_TOC if os.path.isfile(MAIN_TOC) else None
 
 
 def get_version_from_toc(toc_path):
@@ -89,7 +86,7 @@ def main():
     # Find .toc file
     toc_path = find_toc_file()
     if not toc_path:
-        print("Error: No .toc file found in current directory or subdirectories")
+        print(f"Error: {MAIN_TOC} not found (run release.py from the repo root)")
         sys.exit(1)
     
     print(f"Found .toc file: {toc_path}")
@@ -100,6 +97,17 @@ def main():
         print("Error: Could not find ## Version in .toc file")
         sys.exit(1)
     
+    mismatched = []
+    for module_toc in MODULE_TOCS:
+        module_version = get_version_from_toc(module_toc) if os.path.isfile(module_toc) else None
+        if module_version != version:
+            mismatched.append(f"{module_toc}: {module_version or 'missing'}")
+    if mismatched:
+        print(f"Error: module versions don't match {toc_path} ({version}):")
+        for line in mismatched:
+            print(f"  {line}")
+        sys.exit(1)
+
     addon_name = get_addon_name_from_toc(toc_path)
     tag_suffix = f"-{args.release_type}" if args.release_type != 'release' else ''
     tag_name = f"{args.tag_prefix}{version}{tag_suffix}"

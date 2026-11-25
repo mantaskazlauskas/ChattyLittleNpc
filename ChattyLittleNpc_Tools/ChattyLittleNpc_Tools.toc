@@ -2,7 +2,7 @@
 ## Title: Chatty Little NPC - Tools
 ## Notes: Portrait camera, book & letter model, logs and model inspection windows. Loaded by Chatty Little NPC when one of them is opened.
 ## Author: Tuubby
-## Version: 3.7.0
+## Version: 3.8.0
 ## Dependencies: ChattyLittleNpc
 ## LoadOnDemand: 1
 ## Group: ChattyLittleNpc

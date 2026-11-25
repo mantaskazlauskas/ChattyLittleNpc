@@ -2,7 +2,7 @@
 ## Title: Chatty Little NPC - Data Collector
 ## Notes: Records NPC dialog, quest and book text for new voiceovers. Loaded by Chatty Little NPC when 'Track NPC Dialog Data' is on.
 ## Author: Tuubby
-## Version: 3.7.0
+## Version: 3.8.0
 ## Dependencies: ChattyLittleNpc
 ## LoadOnDemand: 1
 ## SavedVariables: ChattyLittleNpc_NpcInfoDB, ChattyLittleNpc_UnitInfoDB, ChattyLittleNpc_UnknownRaceModelsDB
